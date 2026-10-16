@@ -86,6 +86,8 @@ class UploadedDocument {
   final List<ExtractedQuizQuestion> quizzes;
   final ExtractedSummary summary;
   final DateTime uploadedAt;
+  /// Firebase Storage download URL — populated after cloud upload
+  final String? downloadUrl;
 
   const UploadedDocument({
     required this.id,
@@ -99,6 +101,7 @@ class UploadedDocument {
     required this.quizzes,
     required this.summary,
     required this.uploadedAt,
+    this.downloadUrl,
   });
 }
 
@@ -129,7 +132,10 @@ class DocumentProcessingService {
   Future<PlatformFile?> pickFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
-      allowedExtensions: ['pdf', 'pptx', 'docx', 'txt', 'md', 'json', 'csv'],
+      allowedExtensions: [
+        'pdf', 'pptx', 'docx', 'txt', 'md', 'json', 'csv',
+        'png', 'jpg', 'jpeg', 'webp', // image support
+      ],
       withData: true,
     );
 
@@ -260,6 +266,40 @@ class DocumentProcessingService {
       quizzes: quizzes,
       summary: summary,
       uploadedAt: DateTime.now(),
+    );
+  }
+
+  /// Process from raw bytes + metadata — used by the Firebase upload pipeline.
+  /// The [firestoreDocId] is stored on the document so it can be updated
+  /// via [FirebaseUploadService.markAsProcessed] after processing completes.
+  Future<UploadedDocument> processFromBytes({
+    required Uint8List bytes,
+    required String fileName,
+    required int byteSize,
+    required String firestoreDocId,
+    required String downloadUrl,
+  }) async {
+    // PlatformFile derives extension from `name` — no separate extension param needed
+    final file = PlatformFile(
+      name: fileName,
+      size: byteSize,
+      bytes: bytes,
+    );
+    final doc = await processDocument(file);
+    // Return the document with the Firebase doc ID and download URL injected
+    return UploadedDocument(
+      id: firestoreDocId,
+      fileName: doc.fileName,
+      fileType: doc.fileType,
+      byteSize: doc.byteSize,
+      fullText: doc.fullText,
+      chunks: doc.chunks,
+      concepts: doc.concepts,
+      flashcards: doc.flashcards,
+      quizzes: doc.quizzes,
+      summary: doc.summary,
+      uploadedAt: doc.uploadedAt,
+      downloadUrl: downloadUrl,
     );
   }
 

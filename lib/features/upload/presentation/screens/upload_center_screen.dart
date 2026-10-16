@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
+import '../../../../core/services/firebase_upload_service.dart';
 import '../../../../core/theme/app_colors.dart';
 
 class UploadCenterScreen extends ConsumerStatefulWidget {
@@ -17,48 +18,96 @@ class UploadCenterScreen extends ConsumerStatefulWidget {
 class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
   bool _isProcessing = false;
   String _statusMessage = '';
+  double _uploadProgress = 0.0; // 0.0 – 1.0
 
   static const _fileTypes = [
     _FileType(icon: '📄', label: 'PDF', color: Color(0xFFFF6B6B), description: 'Textbooks, papers'),
     _FileType(icon: '📊', label: 'PPTX', color: Color(0xFFFF9F43), description: 'Lecture slides'),
     _FileType(icon: '📝', label: 'DOCX', color: Color(0xFF5F85DB), description: 'Word documents'),
-    _FileType(icon: '📃', label: 'TXT / MD', color: Color(0xFF8B8BA7), description: 'Plain text notes'),
+    _FileType(icon: '🖼️', label: 'Image', color: Color(0xFF26de81), description: 'PNG, JPG, WEBP'),
   ];
 
   Future<void> _pickFile() async {
     setState(() {
       _isProcessing = true;
+      _uploadProgress = 0.0;
       _statusMessage = 'Selecting file...';
     });
 
     try {
-      final service = ref.read(documentProcessingServiceProvider);
-      final file = await service.pickFile();
+      final processingService = ref.read(documentProcessingServiceProvider);
+      final uploadService = ref.read(firebaseUploadServiceProvider);
 
+      // 1. Pick file
+      final file = await processingService.pickFile();
       if (file == null) {
         setState(() => _isProcessing = false);
         return;
       }
 
-      setState(() => _statusMessage = 'Extracting text from ${file.name}...');
-      final processedDoc = await service.processDocument(file);
+      // 2. Validate (type + size) — throws ArgumentError on failure
+      try {
+        uploadService.validateFile(file);
+      } on ArgumentError catch (e) {
+        setState(() => _isProcessing = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(e.message.toString()),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
+          ));
+        }
+        return;
+      }
 
+      // 3. Upload to Firebase Storage
+      setState(() => _statusMessage = 'Uploading ${file.name}...');
+      final uploadResult = await uploadService.uploadFile(
+        file,
+        onProgress: (p) => setState(() {
+          _uploadProgress = p;
+          _statusMessage = 'Uploading... ${(p * 100).toStringAsFixed(0)}%';
+        }),
+      );
+
+      // 4. Process document (extract text, generate flashcards/quizzes etc.)
+      setState(() {
+        _uploadProgress = 1.0;
+        _statusMessage = 'Analysing ${file.name}...';
+      });
+
+      final processedDoc = await processingService.processFromBytes(
+        bytes: file.bytes!,
+        fileName: file.name,
+        byteSize: file.size,
+        firestoreDocId: uploadResult.firestoreDocId,
+        downloadUrl: uploadResult.downloadUrl,
+      );
+
+      // 5. Update Firestore with processing results
+      await uploadService.markAsProcessed(
+        uploadResult.firestoreDocId,
+        conceptCount: processedDoc.concepts.length,
+        flashcardCount: processedDoc.flashcards.length,
+        quizCount: processedDoc.quizzes.length,
+        summary: processedDoc.summary.overview,
+      );
+
+      // 6. Set as active document in Riverpod state
       ref.read(activeDocumentProvider.notifier).setDocument(processedDoc);
 
       setState(() => _isProcessing = false);
 
-      if (mounted) {
-        _showSuccessSheet(processedDoc);
-      }
+      if (mounted) _showSuccessSheet(processedDoc);
+
     } catch (e) {
       setState(() => _isProcessing = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Processing failed: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Upload failed: $e'),
+          backgroundColor: AppColors.error,
+          duration: const Duration(seconds: 5),
+        ));
       }
     }
   }
@@ -230,7 +279,22 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
                   ? Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const CircularProgressIndicator(color: AppColors.electricViolet),
+                        // Show linear progress during upload, circular during processing
+                        if (_uploadProgress > 0.0 && _uploadProgress < 1.0)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: LinearProgressIndicator(
+                                value: _uploadProgress,
+                                backgroundColor: Colors.white.withOpacity(0.1),
+                                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.electricViolet),
+                                minHeight: 6,
+                              ),
+                            ),
+                          )
+                        else
+                          const CircularProgressIndicator(color: AppColors.electricViolet),
                         const SizedBox(height: 16),
                         Text(
                           _statusMessage,
