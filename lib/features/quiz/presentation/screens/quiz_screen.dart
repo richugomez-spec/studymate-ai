@@ -3,7 +3,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/ai/engines/ai_engine_providers.dart';
 import '../../../../core/services/document_processing_service.dart';
 
 class QuizScreen extends ConsumerStatefulWidget {

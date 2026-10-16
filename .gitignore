@@ -7,7 +7,14 @@
 .packages
 .pub-cache/
 .pub/
-build/
+build/android/
+build/ios/
+build/macos/
+build/linux/
+build/windows/
+build/cache.dill.track.dill
+build/f9b5c91cf407af7b23b48d0911c6cc33/
+# build/web is intentionally NOT ignored — committed for Vercel static deploy
 
 # Generated files (mocks only)
 *.mocks.dart

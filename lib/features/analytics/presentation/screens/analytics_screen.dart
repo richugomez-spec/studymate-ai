@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/providers/active_document_provider.dart';
+import '../../../../core/services/document_processing_service.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});

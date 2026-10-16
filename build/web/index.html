@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="/">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="StudyMate AI — Your AI-powered Learning Operating System. Upload notes, get AI explanations, quizzes, flashcards and more.">
+  <meta name="keywords" content="AI study app, flashcards, quiz generator, PDF notes, AI tutor, university study">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="StudyMate AI — Learn Smarter">
+  <meta property="og:description" content="AI-powered study platform. Upload your notes, get summaries, quizzes, flashcards and personalized learning guidance.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://studymateai.app">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="StudyMate AI">
+  <meta name="twitter:description" content="AI-powered study platform for university students.">
+
+  <!-- Theme -->
+  <meta name="theme-color" content="#0D0D12">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="StudyMate AI">
+
+  <title>StudyMate AI — Learn Smarter</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="icons/Icon-192.png"/>
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Google Fonts preconnect for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #0D0D12;
+      overflow: hidden;
+    }
+    /* Loading splash */
+    #loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      font-family: 'Inter', -apple-system, sans-serif;
+      color: rgba(240, 240, 255, 0.6);
+    }
+    .logo-wrap {
+      width: 72px;
+      height: 72px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #7B61FF, #61C9FF);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      margin-bottom: 20px;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .app-name {
+      font-size: 22px;
+      font-weight: 700;
+      color: #F0F0FF;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+    .tagline {
+      font-size: 14px;
+      color: rgba(240, 240, 255, 0.4);
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(123, 97, 255, 0.4); }
+      50% { box-shadow: 0 0 0 16px rgba(123, 97, 255, 0); }
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="logo-wrap">📖</div>
+    <div class="app-name">StudyMate AI</div>
+    <div class="tagline">Learn smarter, not harder.</div>
+  </div>
+
+  <script>
+    window.addEventListener('flutter-first-frame', function() {
+      var loading = document.getElementById('loading');
+      if (loading) {
+        loading.style.opacity = '0';
+        loading.style.transition = 'opacity 0.5s ease';
+        setTimeout(function() { loading.remove(); }, 500);
+      }
+    });
+  </script>
+
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
