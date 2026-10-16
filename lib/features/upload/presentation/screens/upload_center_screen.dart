@@ -65,58 +65,7 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
     }
   }
 
-  void _loadSampleLecture() {
-    setState(() {
-      _isProcessing = true;
-      _statusMessage = 'Loading Concurrency & Distributed Transactions lecture...';
-    });
 
-    const sampleContent = '''
-Title: Concurrency Control and Strict Two-Phase Locking (Strict 2PL)
-Author: Computer Science Department
-
-Slide 1: Transaction Concepts & ACID Properties
-A transaction is a unit of program execution that accesses and possibly updates various data items.
-To preserve the integrity of data the database system must ensure:
-1. Atomicity: Either all operations of the transaction are reflected properly in the database, or none are.
-2. Consistency: Execution of a transaction in isolation preserves the consistency of the database.
-3. Isolation: Although multiple transactions may execute concurrently, each transaction must be unaware of other concurrently executing transactions.
-4. Durability: After a transaction completes successfully, the changes it has made to the database persist, even if there are system failures.
-
-Slide 2: Conflict Serializability
-Two operations in a schedule are said to conflict if they belong to different transactions, access the same data item, and at least one of them is a write operation.
-A schedule S is conflict serializable if it is conflict equivalent to a serial schedule.
-We test for conflict serializability using a Precedence Graph (Serialization Graph). If the precedence graph has a cycle, the schedule is not conflict serializable.
-
-Slide 3: Two-Phase Locking Protocol (2PL)
-The Two-Phase Locking protocol guarantees conflict serializability.
-In 2PL, a transaction must acquire locks in two distinct phases:
-- Growing Phase: A transaction may acquire locks, but may not release any lock.
-- Shrinking Phase: A transaction may release locks, but may not obtain any new locks.
-Notice: 2PL does NOT prevent deadlocks!
-
-Slide 4: Strict Two-Phase Locking (Strict 2PL)
-Strict 2PL requires that in addition to locking being two-phase, all exclusive (X) locks held by a transaction must be retained until that transaction commits or aborts.
-Why Strict 2PL?
-1. It guarantees conflict serializability.
-2. It avoids cascading rollbacks (cascadeless schedules).
-3. If a transaction aborts, uncommitted updates are not visible to other transactions, enabling simple recovery via before-images.
-''';
-
-    final dummyFile = PlatformFile(
-      name: 'Lecture_Concurrency_Strict2PL.pdf',
-      size: 48200,
-      bytes: Uint8List.fromList(sampleContent.codeUnits),
-    );
-
-    ref.read(documentProcessingServiceProvider).processDocument(dummyFile).then((doc) {
-      ref.read(activeDocumentProvider.notifier).setDocument(doc);
-      setState(() => _isProcessing = false);
-      if (mounted) {
-        _showSuccessSheet(doc);
-      }
-    });
-  }
 
   void _showSuccessSheet(UploadedDocument doc) {
     showModalBottomSheet(
@@ -262,70 +211,7 @@ Why Strict 2PL?
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // ── Quick Load Real Sample Slide ──────────────────────────────────
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.electricViolet.withOpacity(0.15),
-                  AppColors.skyBlue.withOpacity(0.08),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.electricViolet.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: AppColors.electricViolet.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.bolt_rounded, color: AppColors.electricViolet, size: 24),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '1-Click Real Lecture Load',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Load "Concurrency & Strict 2PL" lecture slides',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 11,
-                          color: Colors.white.withOpacity(0.6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: _isProcessing ? null : _loadSampleLecture,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.electricViolet,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  ),
-                  child: const Text('Load Demo', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                ),
-              ],
-            ),
-          ).animate().fadeIn().slideY(begin: 0.1, end: 0),
 
-          const SizedBox(height: 20),
 
           // ── Drop Zone ──────────────────────────────────────────────────────
           GestureDetector(

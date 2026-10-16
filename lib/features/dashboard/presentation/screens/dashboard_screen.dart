@@ -8,6 +8,7 @@ import '../../../../core/routing/app_routes.dart';
 import '../../../../core/ai/engines/ai_engine_providers.dart';
 import '../../../../core/ai/engines/ai_learning_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// Living Mission Control Dashboard
 ///
@@ -23,7 +24,8 @@ class DashboardScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    const userId = 'user_alex_chen';
+    final user = ref.watch(currentUserProvider);
+    final userId = user?.id ?? 'guest_user';
     final missionAsync = ref.watch(dailyLearningMissionProvider(userId));
     final examReadinessAsync = ref.watch(examReadinessScoreProvider(userId));
     final activeDoc = ref.watch(activeDocumentProvider);
@@ -143,22 +145,13 @@ class DashboardScreen extends ConsumerWidget {
 
                 // ── 2. Today's Learning Mission (Hero Card) ──────────────────
                 missionAsync.when(
-                  data: (mission) => _TodayLearningMissionCard(mission: mission)
-                      .animate(delay: 100.ms).fadeIn().slideY(begin: 0.08, end: 0),
+                  data: (mission) => mission != null
+                      ? _TodayLearningMissionCard(mission: mission)
+                          .animate(delay: 100.ms).fadeIn().slideY(begin: 0.08, end: 0)
+                      : const _EmptyLearningMissionCard()
+                          .animate(delay: 100.ms).fadeIn().slideY(begin: 0.08, end: 0),
                   loading: () => const _MissionLoadingCard(),
-                  error: (_, __) => const _TodayLearningMissionCard(
-                    mission: DailyLearningMission(
-                      id: 'default',
-                      title: 'Master Conflict Serializability & Strict 2PL',
-                      description:
-                          'You have mastered 71% of Conflict Serializability. Spend approximately 16 minutes revising to reach 92% mastery before tomorrow\'s forgetting threshold.',
-                      targetConcepts: [],
-                      estimatedMinutes: 16,
-                      expectedMasteryGainPercent: 21,
-                      subjectName: 'DBMS: Transactions',
-                      callToAction: 'Start Targeted Mission',
-                    ),
-                  ),
+                  error: (_, __) => const _EmptyLearningMissionCard(),
                 ),
 
                 const SizedBox(height: 20),
@@ -167,8 +160,8 @@ class DashboardScreen extends ConsumerWidget {
                 examReadinessAsync.when(
                   data: (readiness) => _CognitiveRadarVitalsRow(readinessScore: readiness)
                       .animate(delay: 180.ms).fadeIn().slideY(begin: 0.08, end: 0),
-                  loading: () => const _CognitiveRadarVitalsRow(readinessScore: 78.0),
-                  error: (_, __) => const _CognitiveRadarVitalsRow(readinessScore: 78.0),
+                  loading: () => const _CognitiveRadarVitalsRow(readinessScore: 0.0),
+                  error: (_, __) => const _CognitiveRadarVitalsRow(readinessScore: 0.0),
                 ),
 
                 const SizedBox(height: 20),
@@ -200,15 +193,32 @@ class DashboardScreen extends ConsumerWidget {
 
 // ── 1. Greeting & Academic Status Header ─────────────────────────────────────
 
-class _GreetingAndStatusHeader extends StatelessWidget {
+class _GreetingAndStatusHeader extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final activeDoc = ref.watch(activeDocumentProvider);
+
     final hour = DateTime.now().hour;
     final timeGreeting = hour < 12
         ? '☀️ Good morning'
         : hour < 17
             ? '⛅ Good afternoon'
             : '🌙 Good evening';
+
+    final displayName = (user?.displayName != null && user!.displayName!.isNotEmpty)
+        ? user.displayName!
+        : (user?.email != null && user!.email.isNotEmpty)
+            ? user.email.split('@').first
+            : 'Student';
+
+    final headline = activeDoc != null
+        ? 'Active Study: ${activeDoc.fileName}'
+        : 'Welcome to your Learning OS';
+
+    final subtitle = activeDoc != null
+        ? '${activeDoc.concepts.length} concepts indexed • ${activeDoc.quizzes.length} quiz questions ready'
+        : 'Upload study materials to begin personalized AI learning.';
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -235,7 +245,7 @@ class _GreetingAndStatusHeader extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '$timeGreeting, Alex',
+                '$timeGreeting, $displayName',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 14,
@@ -254,7 +264,7 @@ class _GreetingAndStatusHeader extends StatelessWidget {
                   children: [
                     Text('🔥 ', style: TextStyle(fontSize: 12)),
                     Text(
-                      '14-Day Streak',
+                      'Day 1 Streak',
                       style: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 11,
@@ -268,9 +278,9 @@ class _GreetingAndStatusHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Midterms in 18 days.',
-            style: TextStyle(
+          Text(
+            headline,
+            style: const TextStyle(
               fontFamily: 'Inter',
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -280,7 +290,7 @@ class _GreetingAndStatusHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Today\'s mission elevates your DBMS readiness by +21%.',
+            subtitle,
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 13,
@@ -291,22 +301,22 @@ class _GreetingAndStatusHeader extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              _StatusPill(
+              const _StatusPill(
                 icon: Icons.bolt_rounded,
-                label: '1,420 C-XP',
+                label: '0 C-XP',
                 color: AppColors.electricViolet,
               ),
               const SizedBox(width: 8),
               _StatusPill(
                 icon: Icons.school_rounded,
-                label: 'Semester 5',
+                label: user?.course ?? (user?.yearOfStudy != null ? 'Year ${user!.yearOfStudy}' : 'Semester 1'),
                 color: AppColors.teal,
               ),
               const SizedBox(width: 8),
-              _StatusPill(
+              const _StatusPill(
                 icon: Icons.timer_outlined,
-                label: '42m studied',
-                color: const Color(0xFF5F85DB),
+                label: '0m studied',
+                color: Color(0xFF5F85DB),
               ),
             ],
           ),
@@ -496,7 +506,10 @@ class _TodayLearningMissionCard extends StatelessWidget {
               ),
               child: ElevatedButton.icon(
                 onPressed: () {
-                  context.push(AppRoutes.quiz.replaceFirst(':topicId', 'top_transactions'));
+                  final targetId = mission.targetConcepts.isNotEmpty
+                      ? mission.targetConcepts.first.topicId
+                      : 'general';
+                  context.push(AppRoutes.quiz.replaceFirst(':topicId', targetId));
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.transparent,
@@ -507,6 +520,121 @@ class _TodayLearningMissionCard extends StatelessWidget {
                 label: Text(
                   mission.callToAction,
                   style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyLearningMissionCard extends StatelessWidget {
+  const _EmptyLearningMissionCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF211545), Color(0xFF160E30)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.electricViolet.withOpacity(0.4), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.electricViolet.withOpacity(0.2),
+            blurRadius: 20,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF7B61FF), Color(0xFF61C9FF)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome_rounded, size: 13, color: Colors.white),
+                SizedBox(width: 5),
+                Text(
+                  "TODAY'S MISSION",
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'Ready to Begin Your First Mission',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Upload your course notes, slides, or syllabus to automatically extract micro-concepts and generate your daily active recall mission.',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              height: 1.45,
+              color: Colors.white.withOpacity(0.75),
+            ),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.electricViolet.withOpacity(0.35),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ElevatedButton.icon(
+                onPressed: () => context.push(AppRoutes.uploadCenter),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                icon: const Icon(Icons.upload_file_rounded, color: Colors.white, size: 18),
+                label: const Text(
+                  'Upload Study Material',
+                  style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -584,13 +712,14 @@ class _CognitiveRadarVitalsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasReadiness = readinessScore > 0;
     return Row(
       children: [
         Expanded(
           child: _VitalCard(
             title: 'Exam Readiness',
-            value: '${readinessScore.toInt()}%',
-            trend: '+6% this wk',
+            value: hasReadiness ? '${readinessScore.toInt()}%' : '0%',
+            trend: hasReadiness ? 'Calculated' : 'No data yet',
             color: const Color(0xFF43D197),
             icon: Icons.military_tech_rounded,
             progress: readinessScore / 100.0,
@@ -600,22 +729,22 @@ class _CognitiveRadarVitalsRow extends StatelessWidget {
         Expanded(
           child: _VitalCard(
             title: 'Memory Stability',
-            value: '82%',
-            trend: 'Decay Halved',
+            value: hasReadiness ? '${(readinessScore * 0.9).toInt()}%' : '0%',
+            trend: hasReadiness ? 'Active Decay' : 'No data yet',
             color: const Color(0xFF61C9FF),
             icon: Icons.shield_rounded,
-            progress: 0.82,
+            progress: hasReadiness ? (readinessScore * 0.9) / 100.0 : 0.0,
           ),
         ),
         const SizedBox(width: 12),
-        Expanded(
+        const Expanded(
           child: _VitalCard(
             title: 'Focus Today',
-            value: '42m',
+            value: '0m',
             trend: 'Target: 60m',
             color: AppColors.electricViolet,
             icon: Icons.timelapse_rounded,
-            progress: 42 / 60,
+            progress: 0.0,
           ),
         ),
       ],
@@ -702,9 +831,12 @@ class _VitalCard extends StatelessWidget {
 
 // ── 4. High-Yield Gap Radar Card ─────────────────────────────────────────────
 
-class _HighYieldGapRadarCard extends StatelessWidget {
+class _HighYieldGapRadarCard extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeDoc = ref.watch(activeDocumentProvider);
+    final concepts = activeDoc?.concepts ?? [];
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -732,36 +864,89 @@ class _HighYieldGapRadarCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          _GapRow(
-            label: 'Weakest Concept',
-            concept: 'Normalization: 3NF vs BCNF',
-            masteryPct: '41% Mastery',
-            status: 'Critical Gap',
-            color: const Color(0xFFFF6B6B),
-            onAction: () {
-              context.push(AppRoutes.quiz.replaceFirst(':topicId', 'top_relational'));
-            },
-          ),
-          const Divider(color: AppColors.darkBorder, height: 20),
-          _GapRow(
-            label: 'Imminent Forgetting',
-            concept: 'Strict Two-Phase Locking (2PL)',
-            masteryPct: '64% Mastery',
-            status: 'Decays in 14h',
-            color: const Color(0xFFFF9F43),
-            onAction: () {
-              context.push(AppRoutes.flashcards.replaceFirst(':topicId', 'top_transactions'));
-            },
-          ),
-          const Divider(color: AppColors.darkBorder, height: 20),
-          _GapRow(
-            label: 'Strongest Mastery',
-            concept: 'ACID Properties in DBMS',
-            masteryPct: '88% Mastery',
-            status: 'Solidified',
-            color: const Color(0xFF43D197),
-            onAction: null,
-          ),
+          if (concepts.isEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white.withOpacity(0.06)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.electricViolet.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.analytics_outlined, color: AppColors.electricViolet, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Radar Inactive — No Data Yet',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Upload lecture notes or take an active recall drill to detect vulnerable concepts.',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 11,
+                            color: Colors.white.withOpacity(0.55),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            _GapRow(
+              label: 'Weakest Concept',
+              concept: concepts.first.title,
+              masteryPct: '${(concepts.first.initialMastery * 100).toInt()}% Mastery',
+              status: 'Critical Gap',
+              color: const Color(0xFFFF6B6B),
+              onAction: () {
+                context.push(AppRoutes.quiz.replaceFirst(':topicId', activeDoc!.id));
+              },
+            ),
+            if (concepts.length > 1) ...[
+              const Divider(color: AppColors.darkBorder, height: 20),
+              _GapRow(
+                label: 'Imminent Forgetting',
+                concept: concepts[1].title,
+                masteryPct: '${(concepts[1].initialMastery * 100).toInt()}% Mastery',
+                status: 'Review Priority',
+                color: const Color(0xFFFF9F43),
+                onAction: () {
+                  context.push(AppRoutes.flashcards.replaceFirst(':topicId', activeDoc!.id));
+                },
+              ),
+            ],
+            if (concepts.length > 2) ...[
+              const Divider(color: AppColors.darkBorder, height: 20),
+              _GapRow(
+                label: 'Strongest Mastery',
+                concept: concepts.last.title,
+                masteryPct: '${(concepts.last.initialMastery * 100).toInt()}% Mastery',
+                status: 'Solidified',
+                color: const Color(0xFF43D197),
+                onAction: null,
+              ),
+            ],
+          ],
         ],
       ),
     );
@@ -858,9 +1043,20 @@ class _GapRow extends StatelessWidget {
 
 // ── 5. Proactive AI Coach Feed ───────────────────────────────────────────────
 
-class _ProactiveAICoachFeed extends StatelessWidget {
+class _ProactiveAICoachFeed extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeDoc = ref.watch(activeDocumentProvider);
+    final hasConcepts = activeDoc != null && activeDoc.concepts.isNotEmpty;
+
+    final tipText = hasConcepts
+        ? '💡 "Keep your momentum going on ${activeDoc.concepts.first.title}! Take a quick active recall drill to reinforce retention."'
+        : '💡 "Welcome to StudyMate AI! Start by uploading your course materials, slides, or syllabus to automatically extract concepts and quizzes."';
+
+    final tipSub = hasConcepts
+        ? 'Study DNA: Your retention doubles when reviewing within 24h.'
+        : 'Adaptive OS: Socratic tutoring tailored to your learning pace.';
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -924,9 +1120,9 @@ class _ProactiveAICoachFeed extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        '💡 "Yesterday you struggled with Strict 2PL. Take a 4-minute active recall drill to lock it in?"',
-                        style: TextStyle(
+                      Text(
+                        tipText,
+                        style: const TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 12,
                           height: 1.4,
@@ -935,7 +1131,7 @@ class _ProactiveAICoachFeed extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Study DNA: Your retention doubles when reviewing within 24h.',
+                        tipSub,
                         style: TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 10,
@@ -948,7 +1144,11 @@ class _ProactiveAICoachFeed extends StatelessWidget {
                 const SizedBox(width: 12),
                 ElevatedButton(
                   onPressed: () {
-                    context.push(AppRoutes.quiz.replaceFirst(':topicId', 'top_transactions'));
+                    if (hasConcepts) {
+                      context.push(AppRoutes.quiz.replaceFirst(':topicId', activeDoc.id));
+                    } else {
+                      context.push(AppRoutes.uploadCenter);
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.electricViolet,
@@ -956,7 +1156,10 @@ class _ProactiveAICoachFeed extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Start (4m)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  child: Text(
+                    hasConcepts ? 'Start Drill' : 'Upload',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
                 ),
               ],
             ),
@@ -969,37 +1172,54 @@ class _ProactiveAICoachFeed extends StatelessWidget {
 
 // ── 6. Quick Cognitive Learning Tools Grid ───────────────────────────────────
 
-class _QuickCognitiveActionsGrid extends StatelessWidget {
+class _QuickCognitiveActionsGrid extends ConsumerWidget {
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeDoc = ref.watch(activeDocumentProvider);
+
+    void navigateOrPrompt(String routeTemplate) {
+      if (activeDoc != null) {
+        context.push(routeTemplate.replaceFirst(':topicId', activeDoc.id));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please upload study material first to generate cognitive tools!'),
+            backgroundColor: AppColors.electricViolet,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        context.push(AppRoutes.uploadCenter);
+      }
+    }
+
     final actions = [
       _ActionItem(
         icon: Icons.quiz_rounded,
         title: 'Active Quiz',
         subtitle: 'Micro-Drills',
         color: const Color(0xFF7B61FF),
-        onTap: () => context.push(AppRoutes.quiz.replaceFirst(':topicId', 'top_transactions')),
+        onTap: () => navigateOrPrompt(AppRoutes.quiz),
       ),
       _ActionItem(
         icon: Icons.flip_to_front_rounded,
         title: '3D Flashcards',
         subtitle: 'SM-2 Repetition',
         color: const Color(0xFF4ECDC4),
-        onTap: () => context.push(AppRoutes.flashcards.replaceFirst(':topicId', 'top_transactions')),
+        onTap: () => navigateOrPrompt(AppRoutes.flashcards),
       ),
       _ActionItem(
         icon: Icons.hub_rounded,
         title: 'Mind Map',
         subtitle: 'Semantic DAG',
         color: const Color(0xFFFF9F43),
-        onTap: () => context.push(AppRoutes.mindMap.replaceFirst(':topicId', 'top_transactions')),
+        onTap: () => navigateOrPrompt(AppRoutes.mindMap),
       ),
       _ActionItem(
         icon: Icons.auto_stories_rounded,
         title: 'Smart Summary',
         subtitle: 'Key Formulas',
         color: const Color(0xFF5F85DB),
-        onTap: () => context.push(AppRoutes.summary.replaceFirst(':topicId', 'top_transactions')),
+        onTap: () => navigateOrPrompt(AppRoutes.summary),
       ),
     ];
 

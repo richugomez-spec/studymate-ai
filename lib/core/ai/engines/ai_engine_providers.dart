@@ -36,15 +36,19 @@ final studyDnaProvider = FutureProvider.family<StudyDna, String>((ref, userId) a
 });
 
 /// Living Daily Learning Mission Provider
-final dailyLearningMissionProvider = FutureProvider.family<DailyLearningMission, String>((ref, userId) async {
+final dailyLearningMissionProvider = FutureProvider.family<DailyLearningMission?, String>((ref, userId) async {
   final brain = ref.watch(aiBrainServiceProvider);
   final learningEngine = ref.watch(aiLearningEngineProvider);
 
   final studyDna = await ref.watch(studyDnaProvider(userId).future);
   final concepts = await brain.getAllMicroConcepts();
 
+  if (concepts.isEmpty) {
+    return null;
+  }
+
   return learningEngine.generateDailyMission(
-    subjectName: concepts.isNotEmpty ? 'Active Semester' : 'Orientation',
+    subjectName: 'Active Semester',
     concepts: concepts,
     studyDna: studyDna,
   );
@@ -58,7 +62,7 @@ final examReadinessScoreProvider = FutureProvider.family<double, String>((ref, u
   final studyDna = await ref.watch(studyDnaProvider(userId).future);
   final concepts = await brain.getAllMicroConcepts();
 
-  if (concepts.isEmpty) return 74.0; // Baseline default for demo / new user
+  if (concepts.isEmpty) return 0.0;
 
   return predictionEngine.estimateExamReadiness(
     concepts: concepts,

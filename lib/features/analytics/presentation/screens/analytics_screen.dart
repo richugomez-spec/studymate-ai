@@ -4,12 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/providers/active_document_provider.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final activeDoc = ref.watch(activeDocumentProvider);
+    final quizCount = activeDoc?.quizzes.length ?? 0;
+    final cardCount = activeDoc?.flashcards.length ?? 0;
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: CustomScrollView(
@@ -20,12 +25,6 @@ class AnalyticsScreen extends ConsumerWidget {
               'Progress',
               style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700),
             ),
-            actions: [
-              TextButton(
-                onPressed: () {},
-                child: const Text('This Week', style: TextStyle(color: AppColors.electricViolet, fontSize: 13)),
-              ),
-            ],
           ),
           SliverPadding(
             padding: const EdgeInsets.all(20),
@@ -35,41 +34,41 @@ class AnalyticsScreen extends ConsumerWidget {
                 // ── Stats Row ─────────────────────────────────────────────
                 Row(
                   children: [
-                    _StatCard(label: 'Study Hours', value: '14.5', icon: '⏱️', color: AppColors.electricViolet),
+                    const _StatCard(label: 'Study Hours', value: '0.0', icon: '⏱️', color: AppColors.electricViolet),
                     const SizedBox(width: 12),
-                    _StatCard(label: 'Quizzes', value: '23', icon: '✅', color: AppColors.teal),
+                    _StatCard(label: 'Quizzes', value: '$quizCount', icon: '✅', color: AppColors.teal),
                     const SizedBox(width: 12),
-                    _StatCard(label: 'Flashcards', value: '148', icon: '🃏', color: AppColors.skyBlue),
+                    _StatCard(label: 'Flashcards', value: '$cardCount', icon: '🃏', color: AppColors.skyBlue),
                   ],
                 ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0),
 
                 const SizedBox(height: 24),
 
                 // ── Study Time Chart ───────────────────────────────────────
-                _SectionTitle(title: 'Daily Study Time'),
+                const _SectionTitle(title: 'Daily Study Time'),
                 const SizedBox(height: 12),
-                _StudyTimeChart().animate(delay: 100.ms).fadeIn().slideY(begin: 0.1, end: 0),
+                const _StudyTimeChart().animate(delay: 100.ms).fadeIn().slideY(begin: 0.1, end: 0),
 
                 const SizedBox(height: 24),
 
                 // ── Subject Mastery ────────────────────────────────────────
-                _SectionTitle(title: 'Subject Mastery'),
+                const _SectionTitle(title: 'Subject Mastery'),
                 const SizedBox(height: 12),
-                _SubjectMasteryList().animate(delay: 200.ms).fadeIn(),
+                _SubjectMasteryList(activeDoc: activeDoc).animate(delay: 200.ms).fadeIn(),
 
                 const SizedBox(height: 24),
 
                 // ── Weak Topics ────────────────────────────────────────────
-                _SectionTitle(title: 'Needs Attention'),
+                const _SectionTitle(title: 'Needs Attention'),
                 const SizedBox(height: 12),
-                _WeakTopicsList().animate(delay: 300.ms).fadeIn(),
+                _WeakTopicsList(activeDoc: activeDoc).animate(delay: 300.ms).fadeIn(),
 
                 const SizedBox(height: 24),
 
-                // ── Achievement Previews ───────────────────────────────────
-                _SectionTitle(title: 'Recent Achievements'),
+                // ── Achievements ───────────────────────────────────────────
+                const _SectionTitle(title: 'Achievements'),
                 const SizedBox(height: 12),
-                _AchievementsRow().animate(delay: 400.ms).fadeIn(),
+                const _AchievementsEmpty().animate(delay: 400.ms).fadeIn(),
 
                 const SizedBox(height: 32),
               ]),
@@ -151,11 +150,13 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
+// Study Time Chart — shows empty bars until real session tracking is implemented
 class _StudyTimeChart extends StatelessWidget {
+  const _StudyTimeChart();
+
   @override
   Widget build(BuildContext context) {
-    final data = [1.5, 2.0, 0.5, 3.0, 2.5, 1.0, 3.5];
-    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
     return Container(
       height: 180,
@@ -199,46 +200,57 @@ class _StudyTimeChart extends StatelessWidget {
             drawVerticalLine: false,
           ),
           borderData: FlBorderData(show: false),
-          barGroups: data.asMap().entries.map((e) {
-            final isToday = e.key == 6;
-            return BarChartGroupData(
-              x: e.key,
-              barRods: [
-                BarChartRodData(
-                  toY: e.value,
-                  width: 22,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-                  gradient: isToday ? AppColors.primaryGradient : LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      AppColors.electricViolet.withOpacity(0.3),
-                      AppColors.electricViolet.withOpacity(0.6),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          }).toList(),
+          barGroups: List.generate(7, (i) => BarChartGroupData(
+            x: i,
+            barRods: [
+              BarChartRodData(
+                toY: 0,
+                width: 22,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                color: AppColors.electricViolet.withOpacity(0.2),
+              ),
+            ],
+          )),
         ),
       ),
     );
   }
 }
 
+// Subject Mastery — derived from real flashcard known/total ratios
 class _SubjectMasteryList extends StatelessWidget {
+  final dynamic activeDoc;
+  const _SubjectMasteryList({this.activeDoc});
+
   @override
   Widget build(BuildContext context) {
-    final subjects = [
-      ('Data Structures', 0.82, AppColors.subjectColors[1]),
-      ('Operating Systems', 0.65, AppColors.subjectColors[0]),
-      ('Database Management', 0.51, AppColors.subjectColors[4]),
-      ('Computer Networks', 0.34, AppColors.subjectColors[3]),
-    ];
+    final flashcards = activeDoc?.flashcards ?? [];
+
+    if (flashcards.isEmpty) {
+      return _emptyCard(
+        icon: Icons.bar_chart_rounded,
+        message: 'No subject mastery data yet.\nUpload documents and review flashcards to track progress.',
+      );
+    }
+
+    final Map<String, List<dynamic>> byTopic = {};
+    for (final card in flashcards) {
+      final topic = (card.topic as String?) ?? 'General';
+      byTopic.putIfAbsent(topic, () => []).add(card);
+    }
+
+    final colors = AppColors.subjectColors;
+    final entries = byTopic.entries.toList();
 
     return Column(
-      children: subjects.asMap().entries.map((e) {
-        final s = e.value;
+      children: entries.asMap().entries.map((e) {
+        final idx = e.key;
+        final topic = e.value.key;
+        final cards = e.value.value;
+        final known = cards.where((c) => c.isKnown == true).length;
+        final ratio = cards.isEmpty ? 0.0 : known / cards.length;
+        final color = colors[idx % colors.length];
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: Container(
@@ -255,7 +267,7 @@ class _SubjectMasteryList extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        s.$1,
+                        topic,
                         style: const TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 13,
@@ -267,10 +279,10 @@ class _SubjectMasteryList extends StatelessWidget {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value: s.$2,
+                          value: ratio,
                           minHeight: 5,
                           backgroundColor: Colors.white.withOpacity(0.08),
-                          valueColor: AlwaysStoppedAnimation<Color>(s.$3),
+                          valueColor: AlwaysStoppedAnimation<Color>(color),
                         ),
                       ),
                     ],
@@ -278,34 +290,61 @@ class _SubjectMasteryList extends StatelessWidget {
                 ),
                 const SizedBox(width: 14),
                 Text(
-                  '${(s.$2 * 100).round()}%',
+                  '${(ratio * 100).round()}%',
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: s.$3,
+                    color: color,
                   ),
                 ),
               ],
             ),
-          ).animate(delay: Duration(milliseconds: 200 + e.key * 50)).fadeIn().slideX(begin: 0.05, end: 0),
+          ).animate(delay: Duration(milliseconds: 200 + idx * 50)).fadeIn().slideX(begin: 0.05, end: 0),
         );
       }).toList(),
     );
   }
 }
 
+// Weak Topics — derived from real quiz incorrect-attempt counts
 class _WeakTopicsList extends StatelessWidget {
+  final dynamic activeDoc;
+  const _WeakTopicsList({this.activeDoc});
+
   @override
   Widget build(BuildContext context) {
-    final topics = [
-      ('Semaphores & Mutex', 'Operating Systems', 2),
-      ('Deadlock Detection', 'Operating Systems', 3),
-      ('Virtual Memory', 'Operating Systems', 5),
-    ];
+    final quizzes = activeDoc?.quizzes ?? [];
+
+    if (quizzes.isEmpty) {
+      return _emptyCard(
+        icon: Icons.warning_amber_rounded,
+        message: 'No weak topics identified yet.\nComplete quizzes to find areas that need attention.',
+      );
+    }
+
+    final List<Map<String, dynamic>> weak = [];
+    for (final quiz in quizzes) {
+      for (final q in (quiz.questions ?? [])) {
+        if ((q.incorrectAttempts ?? 0) > 0) {
+          weak.add({'question': q.text ?? '', 'topic': q.topic ?? 'General', 'attempts': q.incorrectAttempts ?? 1});
+        }
+      }
+    }
+
+    if (weak.isEmpty) {
+      return _emptyCard(
+        icon: Icons.check_circle_outline_rounded,
+        message: 'Great work! No weak topics detected.\nKeep taking quizzes to track your performance.',
+      );
+    }
+
+    weak.sort((a, b) => (b['attempts'] as int).compareTo(a['attempts'] as int));
+    final display = weak.take(5).toList();
 
     return Column(
-      children: topics.map((t) {
+      children: display.map((t) {
+        final attempts = (t['attempts'] as int).clamp(0, 5);
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(14),
@@ -322,8 +361,16 @@ class _WeakTopicsList extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(t.$1, style: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white)),
-                    Text(t.$2, style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white.withOpacity(0.4))),
+                    Text(
+                      t['question'] as String,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white),
+                    ),
+                    Text(
+                      t['topic'] as String,
+                      style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white.withOpacity(0.4)),
+                    ),
                   ],
                 ),
               ),
@@ -331,7 +378,7 @@ class _WeakTopicsList extends StatelessWidget {
                 children: List.generate(5, (i) => Icon(
                   Icons.circle,
                   size: 7,
-                  color: i < t.$3 ? AppColors.error : Colors.white.withOpacity(0.1),
+                  color: i < attempts ? AppColors.error : Colors.white.withOpacity(0.1),
                 )),
               ),
             ],
@@ -342,40 +389,44 @@ class _WeakTopicsList extends StatelessWidget {
   }
 }
 
-class _AchievementsRow extends StatelessWidget {
+// Achievements — empty state until real badge tracking is implemented
+class _AchievementsEmpty extends StatelessWidget {
+  const _AchievementsEmpty();
+
   @override
   Widget build(BuildContext context) {
-    final achievements = [
-      ('🔥', '14-Day Streak', AppColors.amber),
-      ('⚡', 'Quiz Master', AppColors.electricViolet),
-      ('📚', '50 Topics', AppColors.teal),
-    ];
-
-    return Row(
-      children: achievements.map((a) {
-        return Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.darkSurface,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.darkBorder),
-            ),
-            child: Column(
-              children: [
-                Text(a.$1, style: const TextStyle(fontSize: 24)),
-                const SizedBox(height: 6),
-                Text(
-                  a.$2,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
-                ),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
+    return _emptyCard(
+      icon: Icons.emoji_events_outlined,
+      message: 'Achievements will appear here as you\nstudy, complete quizzes, and hit streaks.',
     );
   }
+}
+
+// Shared empty-state helper
+Widget _emptyCard({required IconData icon, required String message}) {
+  return Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+    decoration: BoxDecoration(
+      color: AppColors.darkSurface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.darkBorder),
+    ),
+    child: Column(
+      children: [
+        Icon(icon, size: 32, color: Colors.white.withOpacity(0.2)),
+        const SizedBox(height: 10),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 13,
+            color: Colors.white.withOpacity(0.4),
+            height: 1.5,
+          ),
+        ),
+      ],
+    ),
+  );
 }
