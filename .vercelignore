@@ -1,0 +1,7 @@
+backend/
+android/
+ios/
+windows/
+macos/
+linux/
+.dart_tool/
