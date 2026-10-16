@@ -1,0 +1,37 @@
+# .gitignore for StudyMate AI Flutter project
+
+# Dart / Flutter build
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# Generated files (mocks only)
+*.mocks.dart
+
+# Firebase native secrets
+google-services.json
+GoogleService-Info.plist
+
+# Environment / Secrets
+.env
+.env.local
+*.key
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+coverage/
