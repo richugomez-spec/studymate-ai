@@ -134,7 +134,6 @@ class RealAIChatService {
     }
 
     // Semantic RAG when API key + embedded chunks are available
-    List<String> relevantChunks = [];
     if (apiKey != null && apiKey.isNotEmpty && activeDoc != null && activeDoc.chunks.isNotEmpty) {
       try {
         final provider = GeminiProvider(AIConfig(
@@ -144,8 +143,17 @@ class RealAIChatService {
           temperature: 0.5,
           maxTokens: 1024,
         ));
-        final retriever = EmbeddingRetriever(provider: provider, topK: 4, similarityThreshold: 0.55);
-        final topChunks = await retriever.retrieve(prompt, activeDoc.chunks);
+        final retriever = EmbeddingRetriever(
+          provider: provider,
+          initialK: 8,
+          topK: 5,
+          similarityThreshold: 0.45,
+        );
+        final topChunks = await retriever.retrieve(
+          prompt,
+          activeDoc.chunks,
+          maxContextTokens: 1600,
+        );
 
         if (topChunks.isNotEmpty) {
           final contextBuilder = ContextBuilder(maxContextTokens: 2000);
