@@ -179,7 +179,7 @@ class FirebaseUploadService {
     int? pageCount,
   }) async {
     final Map<String, dynamic> updateData = {
-      'status': 'processed',
+      'status': 'COMPLETED',
       'processedAt': FieldValue.serverTimestamp(),
       'conceptCount': conceptCount,
       'flashcardCount': flashcardCount,

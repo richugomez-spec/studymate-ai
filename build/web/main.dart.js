@@ -108173,7 +108173,7 @@ FF(a,b,c,d,e,f,g){return this.aIq(a,b,c,d,e,f,g)},
 aIq(a,b,c,d,e,f,g){var s=0,r=A.C(t.H),q=this,p,o,n
 var $async$FF=A.x(function(h,i){if(h===1)return A.z(i,r)
 while(true)switch(s){case 0:o=$.b2C().HR()
-n=A.a8(["status","processed","processedAt",new A.rt(o,o),"conceptCount",b,"flashcardCount",d,"quizCount",f,"summary",g],t.N,t.z)
+n=A.a8(["status","COMPLETED","processedAt",new A.rt(o,o),"conceptCount",b,"flashcardCount",d,"quizCount",f,"summary",g],t.N,t.z)
 n.h(0,"extractedText",c.length>5e4?B.c.K(c,0,5e4):c)
 n.h(0,"pageCount",e)
 o=q.b.pf("documents").lk(a)
