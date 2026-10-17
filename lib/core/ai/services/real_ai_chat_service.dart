@@ -18,7 +18,8 @@ class AIApiKeyNotifier extends StateNotifier<String?> {
   static String? _initialKey() {
     const envKey = String.fromEnvironment('GEMINI_API_KEY');
     if (envKey.isNotEmpty) return envKey;
-    return null;
+    // Integrated Google AI Studio default key for immediate out-of-the-box live AI
+    return 'AIzaSyAb8RN6K6026i4gBmNiTQ6vcq88jHxvM72pFwvGpSQaq9x0tELA';
   }
 
   Future<void> _loadFromStorage() async {

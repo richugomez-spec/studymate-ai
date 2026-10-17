@@ -19,9 +19,17 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
+        backgroundColor: AppColors.darkBackground,
+        elevation: 0,
+        titleSpacing: 20,
         title: const Text(
           'Settings',
-          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700),
+          style: TextStyle(
+            fontFamily: 'Inter',
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+            color: Colors.white,
+          ),
         ),
       ),
       body: ListView(
@@ -228,11 +236,11 @@ class _ProfileCard extends ConsumerWidget {
     final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'S';
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.darkBorder),
+        color: AppColors.darkSurfaceVariant,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorderSubtle),
       ),
       child: Row(
         children: [
@@ -310,15 +318,15 @@ class _SectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 4),
+      padding: const EdgeInsets.only(left: 2, bottom: 4),
       child: Text(
         label,
-        style: TextStyle(
-          fontFamily: 'Inter',
-          fontSize: 11,
+        style: const TextStyle(
+          fontFamily: 'JetBrains Mono',
+          fontSize: 9.5,
           fontWeight: FontWeight.w600,
-          letterSpacing: 1.2,
-          color: Colors.white.withOpacity(0.35),
+          letterSpacing: 0.8,
+          color: AppColors.darkTextTertiary,
         ),
       ),
     );
@@ -347,25 +355,25 @@ class _SettingsTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        margin: const EdgeInsets.only(bottom: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: AppColors.darkSurface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.darkBorder),
+          color: AppColors.darkSurfaceVariant,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: AppColors.darkBorderSubtle),
         ),
         child: Row(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
+                color: iconColor.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(6),
               ),
-              child: Icon(icon, size: 18, color: iconColor),
+              child: Icon(icon, size: 16, color: iconColor),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

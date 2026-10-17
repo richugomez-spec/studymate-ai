@@ -21,60 +21,89 @@ class LibraryScreen extends ConsumerWidget {
         slivers: [
           SliverAppBar(
             floating: true,
+            backgroundColor: AppColors.darkBackground,
+            elevation: 0,
+            titleSpacing: 20,
             title: const Text(
               'Library',
-              style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700),
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w600,
+                fontSize: 18,
+                color: Colors.white,
+              ),
             ),
             actions: [
-              IconButton(
-                onPressed: () => context.push(AppRoutes.uploadCenter),
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkSurfaceVariant,
-                    borderRadius: BorderRadius.circular(10),
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: InkWell(
+                  onTap: () => context.push(AppRoutes.uploadCenter),
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.darkSurfaceVariant,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.darkBorderSubtle),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.add_rounded, size: 14, color: Colors.white),
+                        SizedBox(width: 5),
+                        Text(
+                          'Import',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: const Icon(Icons.add_rounded, size: 20),
                 ),
               ),
-              const SizedBox(width: 8),
             ],
           ),
           SliverPadding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 // Active Semester Card
                 _ActiveSemesterCard()
                     .animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
 
                 // Section: Subjects
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'Enrolled Subjects',
+                      'SUBJECTS',
                       style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.8,
+                        color: AppColors.darkTextTertiary,
                       ),
                     ),
-                    TextButton.icon(
-                      onPressed: () => context.push(AppRoutes.uploadCenter),
-                      icon: const Icon(Icons.add, size: 16, color: AppColors.electricViolet),
-                      label: const Text(
-                        'Add Material',
-                        style: TextStyle(color: AppColors.electricViolet, fontSize: 13),
+                    InkWell(
+                      onTap: () => context.push(AppRoutes.uploadCenter),
+                      child: const Text(
+                        '+ add material',
+                        style: TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 10,
+                          color: AppColors.electricViolet,
+                        ),
                       ),
-                      style: TextButton.styleFrom(padding: const EdgeInsets.all(4)),
                     ),
                   ],
                 ).animate(delay: 100.ms).fadeIn(),
 
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
 
                 if (activeDoc != null) ...[
                   Padding(
@@ -89,11 +118,11 @@ class LibraryScreen extends ConsumerWidget {
                   ),
                 ] else ...[
                   Container(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: AppColors.darkSurface,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppColors.darkBorder),
+                      color: AppColors.darkSurfaceVariant,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.darkBorderSubtle),
                     ),
                     child: Column(
                       children: [
@@ -161,15 +190,11 @@ class _ActiveSemesterCard extends ConsumerWidget {
         : (user?.yearOfStudy != null ? 'Year ${user!.yearOfStudy}' : 'Semester 1');
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1E1535), Color(0xFF2D2060)],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.electricViolet.withOpacity(0.3)),
+        color: AppColors.darkSurfaceVariant,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -183,11 +208,11 @@ class _ActiveSemesterCard extends ConsumerWidget {
                   const Text(
                     'ACADEMIC STATUS',
                     style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 10,
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 9.5,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.electricViolet,
-                      letterSpacing: 1.2,
+                      color: AppColors.darkTextTertiary,
+                      letterSpacing: 0.7,
                     ),
                   ),
                   const SizedBox(height: 4),

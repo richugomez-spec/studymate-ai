@@ -16,19 +16,19 @@ abstract final class AppColors {
   static const emerald = Color(0xFF34D399);
 
   // ── Stitch Academic Precision Dark Theme Surfaces ─────────────────────────
-  static const darkBackground = Color(0xFF0F0F12);
-  static const darkSurface = Color(0xFF141418);
-  static const darkSurfaceVariant = Color(0xFF1B1B20);
-  static const darkSurfaceContainer = Color(0xFF22222A);
-  static const darkSurfaceContainerHigh = Color(0xFF2A2A34);
-  static const darkSurfaceContainerLowest = Color(0xFF0B0B0E);
-  static const darkBorder = Color(0xFF2E2E3C);
-  static const darkBorderSubtle = Color(0xFF232330);
+  static const darkBackground = Color(0xFF090A0D); // Deep Obsidian Canvas
+  static const darkSurface = Color(0xFF111217); // Level 1 Surface
+  static const darkSurfaceVariant = Color(0xFF16171E); // Level 2 Card Surface
+  static const darkSurfaceContainer = Color(0xFF1D1E26); // Level 3 Raised
+  static const darkSurfaceContainerHigh = Color(0xFF242630); // Level 4 Hover/Active
+  static const darkSurfaceContainerLowest = Color(0xFF0C0D11);
+  static const darkBorder = Color(0xFF232530); // Subtle 1px hairline border
+  static const darkBorderSubtle = Color(0xFF1A1B23); // Whisper border
 
   // ── Stitch Academic Precision Dark Theme Text ─────────────────────────────
-  static const darkTextPrimary = Color(0xFFEDEDF2);
-  static const darkTextSecondary = Color(0xFF9E9EAF);
-  static const darkTextTertiary = Color(0xFF6C6C82);
+  static const darkTextPrimary = Color(0xFFEEEEF0); // 95% opacity white
+  static const darkTextSecondary = Color(0xFF9496A1); // 60% opacity calm stone
+  static const darkTextTertiary = Color(0xFF5A5C66); // 35% muted caption/folio
 
   // ── Light Theme Surfaces ──────────────────────────────────────────────────
   static const lightBackground = Color(0xFFF8F9FC);

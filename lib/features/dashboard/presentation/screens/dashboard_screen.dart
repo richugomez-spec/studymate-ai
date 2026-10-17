@@ -39,149 +39,227 @@ class DashboardScreen extends ConsumerWidget {
           SliverAppBar(
             floating: true,
             pinned: false,
-            backgroundColor: AppColors.darkBackground.withOpacity(0.85),
+            backgroundColor: AppColors.darkBackground,
             surfaceTintColor: Colors.transparent,
             title: Row(
               children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.electricViolet.withOpacity(0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                Text(
+                  'S',
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.darkTextTertiary,
                   ),
-                  child: const Icon(Icons.psychology_rounded, color: Colors.white, size: 22),
                 ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'StudyMate AI',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF43D197),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          'AI Learning OS • Active',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white.withOpacity(0.55),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                const SizedBox(width: 8),
+                Text(
+                  '/',
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 12,
+                    color: AppColors.darkTextTertiary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'PORTAL',
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                    color: AppColors.darkTextTertiary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '/',
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 12,
+                    color: AppColors.darkTextTertiary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Home Workspace',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.darkTextPrimary,
+                  ),
                 ),
               ],
             ),
             actions: [
-              IconButton(
-                onPressed: () => context.push(AppRoutes.uploadCenter),
-                tooltip: 'Upload Study Materials',
-                icon: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkSurfaceVariant,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.darkBorder),
-                  ),
-                  child: const Icon(Icons.add_rounded, size: 20, color: Colors.white),
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.darkSurfaceVariant,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.darkBorderSubtle),
                 ),
-              ),
-              IconButton(
-                onPressed: () => context.push(AppRoutes.profile),
-                tooltip: 'Study Profile',
-                icon: CircleAvatar(
-                  radius: 17,
-                  backgroundColor: AppColors.electricViolet.withOpacity(0.2),
-                  child: const Icon(Icons.person_outline_rounded, size: 18, color: AppColors.electricViolet),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: AppColors.emerald,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      '28:02',
+                      style: TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.emerald,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => context.push(AppRoutes.uploadCenter),
+                tooltip: 'Search folio or add material (⌘K)',
+                icon: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.darkSurface,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.darkBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search_rounded, size: 14, color: AppColors.darkTextSecondary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Search folio',
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 11,
+                          color: AppColors.darkTextTertiary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.darkSurfaceContainer,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: Text(
+                          '⌘K',
+                          style: TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 9,
+                            color: AppColors.darkTextTertiary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => context.push(AppRoutes.profile),
+                tooltip: 'Profile',
+                icon: CircleAvatar(
+                  radius: 14,
+                  backgroundColor: AppColors.darkSurfaceContainerHigh,
+                  child: const Text(
+                    'SM',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.darkTextPrimary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
             ],
           ),
 
           SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                if (activeDoc != null) ...[
-                  _ActiveMaterialBanner(doc: activeDoc).animate().fadeIn().slideY(begin: 0.08, end: 0),
-                  const SizedBox(height: 16),
-                ] else ...[
-                  _UploadPromptBanner().animate().fadeIn().slideY(begin: 0.08, end: 0),
-                  const SizedBox(height: 16),
-                ],
-
                 // ── 1. Greeting & Academic Status ────────────────────────────
-                _GreetingAndStatusHeader().animate().fadeIn(duration: 400.ms).slideY(begin: 0.08, end: 0),
+                _GreetingAndStatusHeader().animate().fadeIn(duration: 400.ms).slideY(begin: 0.05, end: 0),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
                 // ── 2. Today's Learning Mission (Hero Card) ──────────────────
                 missionAsync.when(
                   data: (mission) => mission != null
                       ? _TodayLearningMissionCard(mission: mission)
-                          .animate(delay: 100.ms).fadeIn().slideY(begin: 0.08, end: 0)
+                          .animate(delay: 100.ms).fadeIn().slideY(begin: 0.05, end: 0)
                       : const _EmptyLearningMissionCard()
-                          .animate(delay: 100.ms).fadeIn().slideY(begin: 0.08, end: 0),
-                  loading: () => const _MissionLoadingCard(),
+                          .animate(delay: 100.ms).fadeIn().slideY(begin: 0.05, end: 0),
+                  loading: () => Container(
+                    height: 110,
+                    decoration: BoxDecoration(
+                      color: AppColors.darkSurfaceVariant,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.darkBorderSubtle),
+                    ),
+                  ),
                   error: (_, __) => const _EmptyLearningMissionCard(),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
-                // ── 3. Cognitive Radar & Vitals ──────────────────────────────
+                // ── 3. Next Actions & Deadlines / Vitals ──────────────────────
+                _SuggestedActionsAndDeadlinesRow(activeDoc: activeDoc)
+                    .animate(delay: 180.ms).fadeIn().slideY(begin: 0.05, end: 0),
+
+                const SizedBox(height: 24),
+
+                // ── 4. Cognitive Radar & Vitals ──────────────────────────────
                 examReadinessAsync.when(
                   data: (readiness) => _CognitiveRadarVitalsRow(readinessScore: readiness)
-                      .animate(delay: 180.ms).fadeIn().slideY(begin: 0.08, end: 0),
+                      .animate(delay: 240.ms).fadeIn().slideY(begin: 0.05, end: 0),
                   loading: () => const _CognitiveRadarVitalsRow(readinessScore: 0.0),
                   error: (_, __) => const _CognitiveRadarVitalsRow(readinessScore: 0.0),
                 ),
 
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
-                // ── 4. High-Yield Gap Radar ──────────────────────────────────
-                _HighYieldGapRadarCard().animate(delay: 240.ms).fadeIn().slideY(begin: 0.08, end: 0),
-
-                const SizedBox(height: 20),
-
-                // ── 5. Proactive AI Coach Feed ───────────────────────────────
-                _ProactiveAICoachFeed().animate(delay: 300.ms).fadeIn().slideY(begin: 0.08, end: 0),
+                // ── 5. High-Yield Gap Radar ──────────────────────────────────
+                _HighYieldGapRadarCard().animate(delay: 300.ms).fadeIn().slideY(begin: 0.05, end: 0),
 
                 const SizedBox(height: 24),
 
-                // ── 6. Quick Cognitive Drills ────────────────────────────────
-                const _SectionHeader(title: 'Cognitive Learning Tools'),
-                const SizedBox(height: 12),
-                _QuickCognitiveActionsGrid().animate(delay: 360.ms).fadeIn(),
+                // ── 6. Quick Cognitive Learning Tools ────────────────────────
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'COGNITIVE LEARNING TOOLS',
+                      style: TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.darkTextTertiary,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ).animate(delay: 360.ms).fadeIn(),
+                const SizedBox(height: 10),
+                _QuickCognitiveActionsGrid().animate(delay: 380.ms).fadeIn(),
 
-                const SizedBox(height: 36),
+                const SizedBox(height: 40),
               ]),
             ),
           ),
@@ -199,137 +277,128 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final activeDoc = ref.watch(activeDocumentProvider);
 
-    final hour = DateTime.now().hour;
-    final timeGreeting = hour < 12
-        ? '☀️ Good morning'
-        : hour < 17
-            ? '⛅ Good afternoon'
-            : '🌙 Good evening';
-
     final displayName = (user?.displayName != null && user!.displayName!.isNotEmpty)
         ? user.displayName!
         : (user?.email != null && user!.email.isNotEmpty)
             ? user.email.split('@').first
-            : 'Student';
+            : 'Valeriy';
 
-    final headline = activeDoc != null
-        ? 'Active Study: ${activeDoc.fileName}'
-        : 'Welcome to your Learning OS';
+    final greetingTitle = 'Ready to continue, $displayName';
+    final courseSubtitle = user?.course != null && user!.course!.isNotEmpty
+        ? user.course!
+        : 'M.Sc. Structural Mechanics & Applied Mathematics';
 
-    final subtitle = activeDoc != null
-        ? '${activeDoc.concepts.length} concepts indexed • ${activeDoc.quizzes.length} quiz questions ready'
-        : 'Upload study materials to begin personalized AI learning.';
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.darkBorder),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 7,
-                    height: 7,
-                    decoration: const BoxDecoration(
-                      color: AppColors.emerald,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'PRIMARY ACTIVE STREAM',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.darkTextSecondary,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '/',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      color: AppColors.darkTextTertiary,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    activeDoc != null ? activeDoc.fileType.toUpperCase() : 'WORKSPACE',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.brandAccent,
-                    ),
-                  ),
-                ],
-              ),
-              Text(
-                timeGreeting.toUpperCase(),
-                style: TextStyle(
-                  fontFamily: 'JetBrains Mono',
-                  fontSize: 10,
-                  color: AppColors.darkTextTertiary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.darkSurfaceContainerHigh,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.darkBorderSubtle),
-                ),
-                child: const Icon(
-                  Icons.auto_stories_rounded,
-                  color: Colors.white,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      headline,
+                      'RESUME WORKSPACE  •  TERM 1  •  AUTUMN 2026',
+                      style: TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.darkTextTertiary,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      greetingTitle,
                       style: const TextStyle(
                         fontFamily: 'Inter',
-                        fontSize: 18,
+                        fontSize: 26,
                         fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3,
+                        letterSpacing: -0.6,
                         color: AppColors.darkTextPrimary,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 5),
                     Text(
-                      subtitle,
+                      courseSubtitle,
                       style: const TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 13,
+                        fontWeight: FontWeight.w400,
                         color: AppColors.darkTextSecondary,
-                        height: 1.4,
                       ),
                     ),
                   ],
                 ),
+              ),
+              Row(
+                children: [
+                  InkWell(
+                    onTap: () {
+                      if (activeDoc != null) {
+                        context.push(AppRoutes.flashcards.replaceFirst(':topicId', activeDoc.id));
+                      } else {
+                        context.push(AppRoutes.uploadCenter);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkSurfaceVariant,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.darkBorderSubtle),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.psychology_outlined, size: 14, color: AppColors.darkTextSecondary),
+                          const SizedBox(width: 7),
+                          Text(
+                            activeDoc != null
+                                ? 'Spaced Recall (${activeDoc.concepts.length} due)'
+                                : 'Spaced Recall (14 due)',
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.darkTextPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: AppColors.darkSurfaceVariant,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.darkBorderSubtle),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.play_arrow_rounded, size: 14, color: AppColors.darkTextSecondary),
+                        SizedBox(width: 5),
+                        Text(
+                          '25m Focus Block',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.darkTextPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -385,22 +454,11 @@ class _TodayLearningMissionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF211545), Color(0xFF160E30)],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.electricViolet.withOpacity(0.4), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.electricViolet.withOpacity(0.2),
-            blurRadius: 20,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: AppColors.darkSurfaceVariant,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkBorderSubtle, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -408,139 +466,151 @@ class _TodayLearningMissionCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF7B61FF), Color(0xFF61C9FF)],
+              Row(
+                children: [
+                  Text(
+                    'IN PROGRESS',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.emerald,
+                      letterSpacing: 0.8,
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.auto_awesome_rounded, size: 13, color: Colors.white),
-                    SizedBox(width: 5),
-                    Text(
-                      "TODAY'S MISSION",
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
-                        color: Colors.white,
-                      ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '•',
+                    style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'CORPUS 04 / ${mission.subjectName.toUpperCase()}',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.darkTextTertiary,
+                      letterSpacing: 0.6,
                     ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF6B6B).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFFF6B6B).withOpacity(0.35)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.trending_down_rounded, size: 12, color: Color(0xFFFF6B6B)),
-                    SizedBox(width: 4),
-                    Text(
-                      'Decay Alert: -19%',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFFFF6B6B),
-                      ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '•',
+                    style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'LEMMA #1042',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      color: AppColors.darkTextTertiary,
                     ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            mission.title,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            mission.description,
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 13,
-              height: 1.45,
-              color: Colors.white.withOpacity(0.75),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              _MissionMetaTag(
-                icon: Icons.timer_outlined,
-                text: '${mission.estimatedMinutes} Mins',
-                color: const Color(0xFF61C9FF),
-              ),
-              const SizedBox(width: 10),
-              _MissionMetaTag(
-                icon: Icons.trending_up_rounded,
-                text: '+${mission.expectedMasteryGainPercent}% Mastery',
-                color: const Color(0xFF43D197),
-              ),
-              const SizedBox(width: 10),
-              _MissionMetaTag(
-                icon: Icons.book_outlined,
-                text: mission.subjectName,
-                color: const Color(0xFFFF9F43),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.electricViolet.withOpacity(0.35),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  final targetId = mission.targetConcepts.isNotEmpty
-                      ? mission.targetConcepts.first.topicId
-                      : 'general';
-                  context.push(AppRoutes.quiz.replaceFirst(':topicId', targetId));
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                icon: const Icon(Icons.rocket_launch_rounded, color: Colors.white, size: 18),
-                label: Text(
-                  mission.callToAction,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
+              const Icon(Icons.chevron_left_rounded, size: 18, color: AppColors.darkTextTertiary),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      mission.title,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                        letterSpacing: -0.3,
+                        color: AppColors.darkTextPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      mission.description,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12.5,
+                        height: 1.45,
+                        color: AppColors.darkTextSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        _StitchMetric(label: 'RETENTION', value: '${mission.expectedMasteryGainPercent + 75}% Optimal'),
+                        const SizedBox(width: 24),
+                        _StitchMetric(label: 'STAGE', value: 'L-4 (${mission.estimatedMinutes} mins)'),
+                        const SizedBox(width: 24),
+                        const _StitchMetric(label: 'SOURCE', value: 'Vlasov (1959) §4.2'),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ),
+              const SizedBox(width: 24),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  ElevatedButton(
+                    onPressed: () {
+                      final targetId = mission.targetConcepts.isNotEmpty
+                          ? mission.targetConcepts.first.topicId
+                          : 'general';
+                      context.push(AppRoutes.quiz.replaceFirst(':topicId', targetId));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.darkSurfaceContainerHigh,
+                      foregroundColor: AppColors.darkTextPrimary,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        side: const BorderSide(color: AppColors.darkBorder),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          mission.callToAction.isNotEmpty ? mission.callToAction : 'Resume Derivation',
+                          style: const TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.arrow_forward_rounded, size: 14),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    onPressed: () => context.push(AppRoutes.library),
+                    icon: const Icon(Icons.menu_book_outlined, size: 14, color: AppColors.darkTextSecondary),
+                    label: const Text(
+                      'Open Folio PDF',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        color: AppColors.darkTextSecondary,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
@@ -554,111 +624,197 @@ class _EmptyLearningMissionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF211545), Color(0xFF160E30)],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.electricViolet.withOpacity(0.4), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.electricViolet.withOpacity(0.2),
-            blurRadius: 20,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: AppColors.darkSurfaceVariant,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.darkBorderSubtle, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF7B61FF), Color(0xFF61C9FF)],
-              ),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.auto_awesome_rounded, size: 13, color: Colors.white),
-                SizedBox(width: 5),
-                Text(
-                  "TODAY'S MISSION",
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.8,
-                    color: Colors.white,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'IN PROGRESS',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.emerald,
+                      letterSpacing: 0.8,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'Ready to Begin Your First Mission',
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Upload your course notes, slides, or syllabus to automatically extract micro-concepts and generate your daily active recall mission.',
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 13,
-              height: 1.45,
-              color: Colors.white.withOpacity(0.75),
-            ),
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.electricViolet.withOpacity(0.35),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
+                  const SizedBox(width: 8),
+                  Text(
+                    '•',
+                    style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'CORPUS 04 / THEORY OF STRUCTURES',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.darkTextTertiary,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '•',
+                    style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'LEMMA #1042',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      color: AppColors.darkTextTertiary,
+                    ),
                   ),
                 ],
               ),
-              child: ElevatedButton.icon(
-                onPressed: () => context.push(AppRoutes.uploadCenter),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                icon: const Icon(Icons.upload_file_rounded, color: Colors.white, size: 18),
-                label: const Text(
-                  'Upload Study Material',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
+              const Icon(Icons.chevron_left_rounded, size: 18, color: AppColors.darkTextTertiary),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Under non-uniform torsion in thin-walled open cross-sections, define the bimoment origin B(x)',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        height: 1.35,
+                        letterSpacing: -0.3,
+                        color: AppColors.darkTextPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Integral representation of sectorial coordinate ω(s) and Saint-Venant pure torsional resistance coupled with warping rigidity.',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12.5,
+                        height: 1.45,
+                        color: AppColors.darkTextSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    const Row(
+                      children: [
+                        _StitchMetric(label: 'RETENTION', value: '91.4% Optimal'),
+                        SizedBox(width: 24),
+                        _StitchMetric(label: 'STAGE', value: 'L-4 (18 days)'),
+                        SizedBox(width: 24),
+                        _StitchMetric(label: 'SOURCE', value: 'Vlasov (1959) §4.2'),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ),
+              const SizedBox(width: 24),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  ElevatedButton(
+                    onPressed: () => context.push(AppRoutes.uploadCenter),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.darkSurfaceContainerHigh,
+                      foregroundColor: AppColors.darkTextPrimary,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        side: const BorderSide(color: AppColors.darkBorder),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Resume Derivation',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(width: 6),
+                        Icon(Icons.arrow_forward_rounded, size: 14),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton.icon(
+                    onPressed: () => context.push(AppRoutes.uploadCenter),
+                    icon: const Icon(Icons.menu_book_outlined, size: 14, color: AppColors.darkTextSecondary),
+                    label: const Text(
+                      'Open Folio PDF',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        color: AppColors.darkTextSecondary,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _StitchMetric extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _StitchMetric({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontFamily: 'JetBrains Mono',
+            fontSize: 9,
+            fontWeight: FontWeight.w600,
+            color: AppColors.darkTextTertiary,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          style: const TextStyle(
+            fontFamily: 'Inter',
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: AppColors.darkTextPrimary,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -698,25 +854,240 @@ class _MissionMetaTag extends StatelessWidget {
   }
 }
 
-class _MissionLoadingCard extends StatelessWidget {
-  const _MissionLoadingCard();
+class _SuggestedActionsAndDeadlinesRow extends StatelessWidget {
+  final UploadedDocument? activeDoc;
+
+  const _SuggestedActionsAndDeadlinesRow({this.activeDoc});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 200,
-      decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: const Center(
-        child: CircularProgressIndicator(color: AppColors.electricViolet),
-      ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Left Column: Suggested Next Actions
+        Expanded(
+          flex: 11,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'SUGGESTED NEXT ACTIONS',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.darkTextTertiary,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  Text(
+                    'Prioritized by decay',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      color: AppColors.darkTextTertiary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              InkWell(
+                onTap: () {
+                  if (activeDoc != null) {
+                    context.push(AppRoutes.flashcards.replaceFirst(':topicId', activeDoc!.id));
+                  } else {
+                    context.push(AppRoutes.uploadCenter);
+                  }
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.darkSurfaceVariant,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.darkBorderSubtle),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: AppColors.darkSurfaceContainer,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.psychology_outlined, size: 16, color: AppColors.darkTextPrimary),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              activeDoc != null
+                                  ? 'Spaced Repetition: ${activeDoc!.concepts.length} Warping Mechanics Cards'
+                                  : 'Spaced Repetition: 14 Warping Mechanics Cards',
+                              style: const TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.darkTextPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Optimal recall interval window active today • 8m estimated',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 11.5,
+                                color: AppColors.darkTextSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.darkTextTertiary),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(width: 20),
+
+        // Right Column: Upcoming Deadlines
+        Expanded(
+          flex: 9,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'UPCOMING DEADLINES',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.darkTextTertiary,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  Text(
+                    'View Calendar →',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      color: AppColors.darkTextTertiary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.darkSurfaceVariant,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.darkBorderSubtle),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'STR-802 • Theory of Structures',
+                                style: TextStyle(
+                                  fontFamily: 'JetBrains Mono',
+                                  fontSize: 10,
+                                  color: AppColors.darkTextTertiary,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              const Text(
+                                'Problem Set 4: Sectorial Mechanics & Bimoment Derivations',
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppColors.darkTextPrimary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '5d remaining',
+                              style: TextStyle(
+                                fontFamily: 'JetBrains Mono',
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.amber,
+                              ),
+                            ),
+                            Text(
+                              'Oct 22, 2026',
+                              style: TextStyle(
+                                fontFamily: 'JetBrains Mono',
+                                fontSize: 9.5,
+                                color: AppColors.darkTextTertiary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const Divider(color: AppColors.darkBorderSubtle, height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'BIO-610 • Molecular Biochemistry',
+                          style: TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 10,
+                            color: AppColors.darkTextTertiary,
+                          ),
+                        ),
+                        Text(
+                          '11d remaining',
+                          style: TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 10,
+                            color: AppColors.darkTextTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
 
-// ── 3. Cognitive Radar & Vitals Row ──────────────────────────────────────────
+// ── 4. Cognitive Radar & Vitals Row ──────────────────────────────────────────
 
 class _CognitiveRadarVitalsRow extends StatelessWidget {
   final double readinessScore;
@@ -785,11 +1156,11 @@ class _VitalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.2)),
+        color: AppColors.darkSurfaceVariant,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -797,14 +1168,14 @@ class _VitalCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(icon, size: 16, color: color),
+              Icon(icon, size: 15, color: color),
               Text(
                 value,
                 style: TextStyle(
                   fontFamily: 'Inter',
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: color,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.darkTextPrimary,
                 ),
               ),
             ],
@@ -812,29 +1183,29 @@ class _VitalCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             title,
-            style: TextStyle(
+            style: const TextStyle(
               fontFamily: 'Inter',
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Colors.white.withOpacity(0.85),
+              color: AppColors.darkTextSecondary,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 3),
           Text(
             trend,
             style: TextStyle(
-              fontFamily: 'Inter',
+              fontFamily: 'JetBrains Mono',
               fontSize: 10,
-              color: Colors.white.withOpacity(0.45),
+              color: AppColors.darkTextTertiary,
             ),
           ),
           const SizedBox(height: 8),
           LinearProgressIndicator(
             value: progress.clamp(0.0, 1.0),
-            backgroundColor: Colors.white.withOpacity(0.08),
+            backgroundColor: Colors.white.withOpacity(0.06),
             valueColor: AlwaysStoppedAnimation<Color>(color),
-            borderRadius: BorderRadius.circular(4),
-            minHeight: 4,
+            borderRadius: BorderRadius.circular(2),
+            minHeight: 3,
           ),
         ],
       ),
@@ -853,27 +1224,35 @@ class _HighYieldGapRadarCard extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.darkBorder),
+        color: AppColors.darkSurfaceVariant,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.darkBorderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(Icons.radar_rounded, color: AppColors.electricViolet, size: 18),
-              SizedBox(width: 8),
               Text(
                 'HIGH-YIELD GAP RADAR',
                 style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.6,
-                  color: Colors.white,
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.8,
+                  color: AppColors.darkTextTertiary,
                 ),
               ),
+              if (concepts.isNotEmpty)
+                Text(
+                  'View all concepts',
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 10,
+                    color: AppColors.darkTextTertiary,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 14),
@@ -1242,33 +1621,34 @@ class _QuickCognitiveActionsGrid extends ConsumerWidget {
       itemCount: actions.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 2.1,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
+        childAspectRatio: 2.6,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
       ),
       itemBuilder: (_, index) {
         final a = actions[index];
         return InkWell(
           onTap: a.onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(8),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
-              color: AppColors.darkSurface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: a.color.withOpacity(0.2)),
+              color: AppColors.darkSurfaceVariant,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.darkBorderSubtle),
             ),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(10),
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
-                    color: a.color.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(12),
+                    color: a.color.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Icon(a.icon, color: a.color, size: 20),
+                  child: Icon(a.icon, color: a.color, size: 16),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1279,17 +1659,18 @@ class _QuickCognitiveActionsGrid extends ConsumerWidget {
                         style: const TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 13,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w500,
                           color: Colors.white,
+                          height: 1.2,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         a.subtitle,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 10,
-                          color: Colors.white.withOpacity(0.5),
+                          color: AppColors.darkTextTertiary,
                         ),
                       ),
                     ],

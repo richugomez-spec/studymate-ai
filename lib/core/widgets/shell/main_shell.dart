@@ -112,28 +112,32 @@ class _StudyMateSidebar extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      width: 250,
+      width: 230,
       color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Logo & Workspace Header
+          // Workspace Identifier / Logo Header
           Row(
             children: [
               Container(
-                width: 32,
-                height: 32,
+                width: 24,
+                height: 24,
                 decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  borderRadius: BorderRadius.circular(6),
+                  color: isDark ? AppColors.darkSurfaceContainerHigh : AppColors.lightSurfaceVariant,
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(
+                    color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                    width: 1,
+                  ),
                 ),
                 child: const Center(
                   child: Text(
-                    'SM',
+                    'S',
                     style: TextStyle(
                       fontFamily: 'JetBrains Mono',
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
                     ),
@@ -145,23 +149,13 @@ class _StudyMateSidebar extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'StudyMate',
+                    'StudyMate AI',
                     style: TextStyle(
                       fontFamily: 'Inter',
-                      fontSize: 15,
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
                       color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  Text(
-                    'WORKSPACE',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
-                      letterSpacing: 0.5,
                     ),
                   ),
                 ],
@@ -170,7 +164,7 @@ class _StudyMateSidebar extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurfaceContainer : AppColors.lightSurfaceVariant,
+                  color: isDark ? AppColors.darkSurfaceContainerLowest : AppColors.lightSurfaceVariant,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Row(
@@ -185,11 +179,13 @@ class _StudyMateSidebar extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      'SYNC',
+                      'ONLINE',
                       style: TextStyle(
                         fontFamily: 'JetBrains Mono',
-                        fontSize: 9,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                        fontSize: 8.5,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? AppColors.emerald : AppColors.lightTextSecondary,
+                        letterSpacing: 0.5,
                       ),
                     ),
                   ],
@@ -197,16 +193,16 @@ class _StudyMateSidebar extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
           // Section label
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             child: Text(
               'WORKSPACES',
               style: TextStyle(
                 fontFamily: 'JetBrains Mono',
-                fontSize: 10,
+                fontSize: 9.5,
                 fontWeight: FontWeight.w600,
                 color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
                 letterSpacing: 0.8,
@@ -221,20 +217,20 @@ class _StudyMateSidebar extends StatelessWidget {
             final isSelected = selectedIndex == i;
 
             return Padding(
-              padding: const EdgeInsets.only(bottom: 3),
+              padding: const EdgeInsets.only(bottom: 2),
               child: InkWell(
                 onTap: () => onDestinationSelected(i),
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(5),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? (isDark ? AppColors.darkSurfaceContainerHigh : AppColors.lightSurfaceVariant)
+                        ? (isDark ? AppColors.darkSurfaceContainer : AppColors.lightSurfaceVariant)
                         : Colors.transparent,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(5),
                     border: isSelected
                         ? Border.all(
-                            color: isDark ? AppColors.brandAccent.withOpacity(0.3) : AppColors.brandAccent.withOpacity(0.2),
+                            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
                             width: 1,
                           )
                         : null,
@@ -243,17 +239,17 @@ class _StudyMateSidebar extends StatelessWidget {
                     children: [
                       Icon(
                         isSelected ? dest.selectedIcon : dest.icon,
-                        size: 18,
+                        size: 16,
                         color: isSelected
                             ? (isDark ? Colors.white : AppColors.brandAccent)
                             : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 9),
                       Text(
                         dest.label,
                         style: TextStyle(
                           fontFamily: 'Inter',
-                          fontSize: 13,
+                          fontSize: 12.5,
                           fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                           color: isSelected
                               ? (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary)
@@ -265,7 +261,7 @@ class _StudyMateSidebar extends StatelessWidget {
                         '${i + 1}',
                         style: TextStyle(
                           fontFamily: 'JetBrains Mono',
-                          fontSize: 11,
+                          fontSize: 10,
                           color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
                         ),
                       ),
@@ -280,49 +276,49 @@ class _StudyMateSidebar extends StatelessWidget {
 
           // Active session micro status
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: isDark ? AppColors.darkSurfaceContainerLowest : AppColors.lightSurfaceVariant,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(6),
               border: Border.all(
                 color: isDark ? AppColors.darkBorderSubtle : AppColors.lightBorder,
                 width: 1,
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'AI ENGINE',
                       style: TextStyle(
                         fontFamily: 'JetBrains Mono',
-                        fontSize: 9,
+                        fontSize: 8.5,
                         fontWeight: FontWeight.w600,
                         color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
                         letterSpacing: 0.5,
                       ),
                     ),
+                    const SizedBox(height: 2),
                     Text(
-                      'ONLINE',
+                      'Gemini 3.8 Flash',
                       style: TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.emerald,
+                        fontFamily: 'Inter',
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  'Gemini 3.8 Flash • RAG 2.0',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 11,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: AppColors.emerald,
+                    shape: BoxShape.circle,
                   ),
                 ),
               ],
