@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../ai/rag/chunker.dart';
+import '../ai/services/embedding_service.dart';
 
 /// Models for real extracted learning assets
 class ExtractedConcept {
@@ -127,6 +128,11 @@ final activeDocumentProvider =
 /// and AI micro-concept synthesis.
 class DocumentProcessingService {
   final DocumentChunker _chunker = const DocumentChunker();
+  final EmbeddingService? _embeddingService;
+
+  DocumentProcessingService({
+    EmbeddingService? embeddingService,
+  }) : _embeddingService = embeddingService;
 
   /// Pick a file from the user's filesystem (Web, Android, Desktop)
   Future<PlatformFile?> pickFile() async {
@@ -287,6 +293,7 @@ class DocumentProcessingService {
     required int byteSize,
     required String firestoreDocId,
     required String downloadUrl,
+    String? userId,
   }) async {
     // PlatformFile derives extension from `name` — no separate extension param needed
     final file = PlatformFile(
@@ -295,6 +302,19 @@ class DocumentProcessingService {
       bytes: bytes,
     );
     final doc = await processDocument(file);
+
+    // Generate embeddings for the created chunks using EmbeddingService
+    if (_embeddingService != null && doc.chunks.isNotEmpty) {
+      final embeddingResult = await _embeddingService!.processChunks(
+        doc.chunks,
+        documentId: firestoreDocId,
+        userId: userId ?? 'guest_user',
+      );
+      debugPrint('Embedding processing status: total=${embeddingResult.totalChunks}, '
+          'processed=${embeddingResult.processedCount}, skipped=${embeddingResult.skippedCount}, '
+          'failed=${embeddingResult.failedCount}');
+    }
+
     // Return the document with the Firebase doc ID and download URL injected
     return UploadedDocument(
       id: firestoreDocId,
@@ -479,5 +499,7 @@ class DocumentProcessingService {
 }
 
 final documentProcessingServiceProvider = Provider<DocumentProcessingService>((ref) {
-  return DocumentProcessingService();
+  return DocumentProcessingService(
+    embeddingService: ref.watch(embeddingServiceProvider),
+  );
 });

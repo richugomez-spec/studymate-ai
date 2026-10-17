@@ -5,6 +5,24 @@ import '../ai_provider.dart';
 import '../rag/chunker.dart';
 import 'ai_provider_service.dart';
 
+class EmbeddingProcessingResult {
+  final int totalChunks;
+  final int processedCount;
+  final int skippedCount;
+  final int failedCount;
+  final List<String> errors;
+
+  const EmbeddingProcessingResult({
+    required this.totalChunks,
+    required this.processedCount,
+    required this.skippedCount,
+    required this.failedCount,
+    required this.errors,
+  });
+
+  bool get isSuccess => failedCount == 0;
+}
+
 /// Service responsible for computing vector embeddings for document text chunks.
 class EmbeddingService {
   final AIProvider? _provider;
@@ -16,9 +34,87 @@ class EmbeddingService {
   })  : _provider = provider,
         _providerResolver = providerResolver;
 
+  /// Process chunks for a document:
+  /// - Skips chunks that already have embeddings.
+  /// - Associates every embedding with Document ID, Chunk ID, User ID, and Timestamp.
+  /// - Retries API failures up to [maxRetries] per chunk without stopping the pipeline.
+  /// - Returns success/failure status [EmbeddingProcessingResult] to DocumentProcessingService.
+  Future<EmbeddingProcessingResult> processChunks(
+    List<DocumentChunk> chunks, {
+    required String documentId,
+    required String userId,
+    int maxRetries = 2,
+  }) async {
+    if (chunks.isEmpty) {
+      return const EmbeddingProcessingResult(
+        totalChunks: 0,
+        processedCount: 0,
+        skippedCount: 0,
+        failedCount: 0,
+        errors: [],
+      );
+    }
+
+    int processed = 0;
+    int skipped = 0;
+    int failed = 0;
+    final errors = <String>[];
+
+    for (int i = 0; i < chunks.length; i++) {
+      final chunk = chunks[i];
+
+      // Associate metadata
+      chunk.documentId ??= documentId;
+      chunk.chunkId ??= '${documentId}_chunk_${chunk.chunkIndex}';
+      chunk.userId ??= userId;
+      chunk.timestamp ??= DateTime.now();
+
+      // Skip chunks that already have embeddings
+      if (chunk.embedding != null && chunk.embedding!.isNotEmpty) {
+        skipped++;
+        continue;
+      }
+
+      final text = chunk.content.trim();
+      if (text.isEmpty) {
+        skipped++;
+        continue;
+      }
+
+      bool success = false;
+      for (int attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          final vector = await embedChunk(text);
+          chunk.embedding = vector;
+          processed++;
+          success = true;
+          break;
+        } catch (e) {
+          if (attempt == maxRetries) {
+            failed++;
+            final err = 'Chunk ${chunk.chunkId} failed after $maxRetries retries: $e';
+            errors.add(err);
+            debugPrint(err);
+          } else {
+            await Future<void>.delayed(Duration(milliseconds: 300 * (attempt + 1)));
+          }
+        }
+      }
+      if (!success) {
+        // Continue processing remaining chunks without stopping pipeline
+      }
+    }
+
+    return EmbeddingProcessingResult(
+      totalChunks: chunks.length,
+      processedCount: processed,
+      skippedCount: skipped,
+      failedCount: failed,
+      errors: errors,
+    );
+  }
+
   /// Generates an embedding vector for a single [DocumentChunk] or raw text chunk.
-  /// Throws [ArgumentError] if the chunk text is empty.
-  /// Handles provider failures and returns the float vector [List<double>].
   Future<List<double>> embedChunk(dynamic chunk) async {
     final String text;
     if (chunk is DocumentChunk) {
@@ -46,8 +142,6 @@ class EmbeddingService {
       }
 
       final vector = embeddings.first;
-
-      // If chunk is a DocumentChunk, assign the vector to it directly
       if (chunk is DocumentChunk) {
         chunk.embedding = vector;
       }
@@ -79,7 +173,6 @@ class EmbeddingService {
 
       final vectors = await provider.embed(texts);
 
-      // Assign to DocumentChunks if matching length
       int textIdx = 0;
       for (final c in chunks) {
         if (c is DocumentChunk && c.content.trim().isNotEmpty && textIdx < vectors.length) {

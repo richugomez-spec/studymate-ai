@@ -113,5 +113,41 @@ void main() {
       expect(vectors.first, equals([0.12, 0.45, -0.67, 0.89]));
       expect(vectors.last, equals([0.12, 0.45, -0.67, 0.89]));
     });
+
+    test('6. processChunks associates metadata, skips existing embeddings, and returns status', () async {
+      final chunk1 = DocumentChunk(
+        content: 'Chunk 1 text',
+        chunkIndex: 0,
+        tokenCount: 10,
+      );
+      final chunk2 = DocumentChunk(
+        content: 'Chunk 2 text',
+        chunkIndex: 1,
+        tokenCount: 10,
+        embedding: [0.99, 0.99], // already has embedding
+      );
+
+      final result = await service.processChunks(
+        [chunk1, chunk2],
+        documentId: 'doc_123',
+        userId: 'user_456',
+      );
+
+      expect(result.totalChunks, equals(2));
+      expect(result.processedCount, equals(1));
+      expect(result.skippedCount, equals(1));
+      expect(result.failedCount, equals(0));
+      expect(result.isSuccess, isTrue);
+
+      // Check metadata association
+      expect(chunk1.documentId, equals('doc_123'));
+      expect(chunk1.chunkId, equals('doc_123_chunk_0'));
+      expect(chunk1.userId, equals('user_456'));
+      expect(chunk1.timestamp, isNotNull);
+      expect(chunk1.embedding, equals([0.12, 0.45, -0.67, 0.89]));
+
+      // Verify existing embedding was not overwritten
+      expect(chunk2.embedding, equals([0.99, 0.99]));
+    });
   });
 }

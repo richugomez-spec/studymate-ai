@@ -95,6 +95,10 @@ class DocumentChunk {
   final int chunkIndex;
   final int tokenCount;
   final String? sourceId;
+  String? documentId;
+  String? chunkId;
+  String? userId;
+  DateTime? timestamp;
   List<double>? embedding;
 
   DocumentChunk({
@@ -102,6 +106,10 @@ class DocumentChunk {
     required this.chunkIndex,
     required this.tokenCount,
     this.sourceId,
+    this.documentId,
+    this.chunkId,
+    this.userId,
+    this.timestamp,
     this.embedding,
   });
 }
