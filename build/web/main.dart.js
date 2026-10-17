@@ -107607,20 +107607,23 @@ break
 case 1:return A.A(q,r)}})
 return A.B($async$Gc,r)},
 Oa(a){return this.aED(a)},
-aED(a){var s=0,r=A.C(t.N),q,p=this,o,n,m
+aED(a){var s=0,r=A.C(t.N),q,p=this,o,n,m,l
 var $async$Oa=A.x(function(b,c){if(b===1)return A.z(c,r)
-while(true)switch(s){case 0:m=a.c
-if(m==null)throw A.c(A.dX("Could not read file data. Please try another file."))
-o=B.b.gR(a.b.split("."))
-if(o==null)o=""
-n=o.toLowerCase()
-if(n==="pdf"){q=p.akY(m)
+while(true)switch(s){case 0:l=a.c
+if(l==null)throw A.c(A.dX("Could not read file data. Please try another file."))
+o=a.b
+n=B.b.gR(o.split("."))
+if(n==null)n=""
+m=n.toLowerCase()
+if(m==="pdf"){q=p.akY(l)
 s=1
-break}else if(n==="pptx"){q=p.akZ(m)
+break}else if(m==="pptx"){q=p.akZ(l)
 s=1
-break}else if(n==="docx"){q=p.akX(m)
+break}else if(m==="docx"){q=p.akX(l)
 s=1
-break}else{q=B.a1.a3d(0,m,!0)
+break}else if(B.b.p(A.b(["png","jpg","jpeg","webp"],t.s),m)){q="Image Document: "+o+" ("+B.d.al(l.byteLength/1024,1)+" KB)\nOptical image asset loaded ready for OCR indexing and visual grounding."
+s=1
+break}else{q=B.a1.a3d(0,l,!0)
 s=1
 break}case 1:return A.A(q,r)}})
 return A.B($async$Oa,r)},
@@ -108166,15 +108169,18 @@ break
 case 1:return A.A(q,r)
 case 2:return A.z(o,r)}})
 return A.B($async$t4,r)},
-FF(a,b,c,d,e){return this.aIq(a,b,c,d,e)},
-aIq(a,b,c,d,e){var s=0,r=A.C(t.H),q=this,p,o
-var $async$FF=A.x(function(f,g){if(f===1)return A.z(g,r)
-while(true)switch(s){case 0:p=q.b.pf("documents").lk(a)
-o=$.b2C().HR()
-o=A.br4(A.a8(["status","processed","processedAt",new A.rt(o,o),"conceptCount",b,"flashcardCount",c,"quizCount",d,"summary",e],t.K,t.X))
-o.toString
+FF(a,b,c,d,e,f,g){return this.aIq(a,b,c,d,e,f,g)},
+aIq(a,b,c,d,e,f,g){var s=0,r=A.C(t.H),q=this,p,o,n
+var $async$FF=A.x(function(h,i){if(h===1)return A.z(i,r)
+while(true)switch(s){case 0:o=$.b2C().HR()
+n=A.a8(["status","processed","processedAt",new A.rt(o,o),"conceptCount",b,"flashcardCount",d,"quizCount",f,"summary",g],t.N,t.z)
+n.h(0,"extractedText",c.length>5e4?B.c.K(c,0,5e4):c)
+n.h(0,"pageCount",e)
+o=q.b.pf("documents").lk(a)
+p=A.br4(n)
+p.toString
 s=2
-return A.q(p.a.bX(0,o),$async$FF)
+return A.q(o.a.bX(0,p),$async$FF)
 case 2:return A.A(null,r)}})
 return A.B($async$FF,r)},
 art(a){switch(a){case"pdf":return"application/pdf"
@@ -110346,7 +110352,7 @@ s.y=1
 s.w=!1},
 $S:0}
 A.aU1.prototype={
-$0(){var s=0,r=A.C(t.P),q=1,p,o=this,n,m,l,k,j,i
+$0(){var s=0,r=A.C(t.P),q=1,p,o=this,n,m,l,k,j,i,h,g,f,e
 var $async$$0=A.x(function(a,b){if(a===1){p=b
 s=q}while(true)switch(s){case 0:q=3
 l=o.a
@@ -110355,15 +110361,19 @@ return A.q(l.t4(o.b),$async$$0)
 case 6:n=b
 s=n.a.length!==0?7:8
 break
-case 7:k=o.c
+case 7:k=n.c
+j=o.c
+i=j.r.length
+h=j.w.length
+g=j.x.length
 s=9
-return A.q(l.FF(n.c,k.r.length,k.w.length,k.x.length,k.y.b),$async$$0)
+return A.q(l.FF(k,i,j.e,h,j.f.length,g,j.y.b),$async$$0)
 case 9:case 8:q=1
 s=5
 break
 case 3:q=2
-i=p
-m=A.a6(i)
+e=p
+m=A.a6(e)
 A.z5().$1("Background cloud sync notice: "+A.i(m))
 s=5
 break

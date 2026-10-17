@@ -27,10 +27,10 @@ const RESOURCES = {".vercel/project.json": "59ee34d00b623dcb36a16b826d645e29",
 "canvaskit/skwasm.wasm": "9f0c0c02b82a910d12ce0543ec130e60",
 "canvaskit/skwasm.worker.js": "89990e8c92bcb123999aa81f7e203b1c",
 "flutter.js": "f393d3c16b631f36852323de8e583132",
-"flutter_bootstrap.js": "92c894f655fb295e857c8a1677fbd930",
+"flutter_bootstrap.js": "f349e60aa2cc5dac3cd123d0521cbd1b",
 "index.html": "5e687f740bd3502d9049dc32b07ca761",
 "/": "5e687f740bd3502d9049dc32b07ca761",
-"main.dart.js": "4d3b0447cee5c5680472f16c6c34db55",
+"main.dart.js": "fa58bf89e055bf2938049f564e09d0d0",
 "manifest.json": "3f49f35dba6ab6bf155b8acac5ea90be",
 "version.json": "d69bbc46f698ec80b7bee9ad4bc46251"};
 // The application shell files that are downloaded before a service worker can

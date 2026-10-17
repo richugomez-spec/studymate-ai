@@ -171,19 +171,30 @@ class FirebaseUploadService {
 
   /// Update Firestore document status after processing is complete.
   Future<void> markAsProcessed(String firestoreDocId, {
-    required int conceptCount,
-    required int flashcardCount,
-    required int quizCount,
-    required String summary,
+    int conceptCount = 0,
+    int flashcardCount = 0,
+    int quizCount = 0,
+    String summary = '',
+    String? extractedText,
+    int? pageCount,
   }) async {
-    await _firestore.collection('documents').doc(firestoreDocId).update({
+    final Map<String, dynamic> updateData = {
       'status': 'processed',
       'processedAt': FieldValue.serverTimestamp(),
       'conceptCount': conceptCount,
       'flashcardCount': flashcardCount,
       'quizCount': quizCount,
       'summary': summary,
-    });
+    };
+    if (extractedText != null) {
+      updateData['extractedText'] = extractedText.length > 50000 
+          ? extractedText.substring(0, 50000) 
+          : extractedText;
+    }
+    if (pageCount != null) {
+      updateData['pageCount'] = pageCount;
+    }
+    await _firestore.collection('documents').doc(firestoreDocId).update(updateData);
   }
 
   /// MIME type resolver

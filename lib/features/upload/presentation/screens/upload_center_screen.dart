@@ -96,6 +96,8 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
               flashcardCount: processedDoc.flashcards.length,
               quizCount: processedDoc.quizzes.length,
               summary: processedDoc.summary.overview,
+              extractedText: processedDoc.fullText,
+              pageCount: processedDoc.chunks.length,
             );
           }
         } catch (e) {
