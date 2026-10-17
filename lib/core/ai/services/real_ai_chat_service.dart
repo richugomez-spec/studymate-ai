@@ -115,7 +115,7 @@ class RealAIChatService {
           final provider = GeminiProvider(AIConfig(
             providerType: AIProviderType.gemini,
             apiKey: apiKey,
-            model: 'gemini-2.0-flash',
+            model: 'gemini-1.5-flash-latest',
             temperature: 0.7,
             maxTokens: 256,
           ));
@@ -140,7 +140,7 @@ class RealAIChatService {
         final provider = GeminiProvider(AIConfig(
           providerType: AIProviderType.gemini,
           apiKey: apiKey,
-          model: 'gemini-2.0-flash',
+          model: 'gemini-1.5-flash-latest',
           temperature: 0.5,
           maxTokens: 1024,
         ));
