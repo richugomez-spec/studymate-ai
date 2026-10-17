@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,58 +61,47 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
         return;
       }
 
-      // 3. Upload to Firebase Storage (with graceful degradation for processing)
-      setState(() => _statusMessage = 'Uploading ${file.name}...');
-      UploadResult? uploadResult;
-      try {
-        uploadResult = await uploadService.uploadFile(
-          file,
-          onProgress: (p) => setState(() {
-            _uploadProgress = p;
-            _statusMessage = 'Uploading... ${(p * 100).toStringAsFixed(0)}%';
-          }),
-        );
-      } catch (uploadErr) {
-        debugPrint('Firebase upload notice: $uploadErr');
-        // If Firebase Storage is blocked by CORS/network, proceed with local extraction
-        uploadResult = UploadResult(
-          downloadUrl: '',
-          storagePath: 'local/${file.name}',
-          firestoreDocId: 'doc_${DateTime.now().millisecondsSinceEpoch}',
-        );
-      }
-
-      // 4. Process document (extract text, generate flashcards/quizzes etc.)
+      // 3. Process document immediately (sub-second local extraction)
       setState(() {
-        _uploadProgress = 1.0;
+        _uploadProgress = 0.5;
         _statusMessage = 'Analysing ${file.name}...';
       });
 
+      final docId = 'doc_${DateTime.now().millisecondsSinceEpoch}';
       final processedDoc = await processingService.processFromBytes(
         bytes: file.bytes!,
         fileName: file.name,
         byteSize: file.size,
-        firestoreDocId: uploadResult.firestoreDocId,
-        downloadUrl: uploadResult.downloadUrl,
+        firestoreDocId: docId,
+        downloadUrl: '',
       );
 
-      // 5. Update Firestore with processing results if available
-      try {
-        await uploadService.markAsProcessed(
-          uploadResult.firestoreDocId,
-          conceptCount: processedDoc.concepts.length,
-          flashcardCount: processedDoc.flashcards.length,
-          quizCount: processedDoc.quizzes.length,
-          summary: processedDoc.summary.overview,
-        );
-      } catch (_) {}
-
-      // 6. Set as active document in Riverpod state
+      // 4. Set as active document immediately so student is never stuck
       ref.read(activeDocumentProvider.notifier).setDocument(processedDoc);
-
-      setState(() => _isProcessing = false);
+      setState(() {
+        _uploadProgress = 1.0;
+        _isProcessing = false;
+      });
 
       if (mounted) _showSuccessSheet(processedDoc);
+
+      // 5. Fire-and-forget: Upload to Firebase Storage & Firestore in background
+      unawaited(() async {
+        try {
+          final uploadResult = await uploadService.uploadFile(file);
+          if (uploadResult.downloadUrl.isNotEmpty) {
+            await uploadService.markAsProcessed(
+              uploadResult.firestoreDocId,
+              conceptCount: processedDoc.concepts.length,
+              flashcardCount: processedDoc.flashcards.length,
+              quizCount: processedDoc.quizzes.length,
+              summary: processedDoc.summary.overview,
+            );
+          }
+        } catch (e) {
+          debugPrint('Background cloud sync notice: $e');
+        }
+      }());
 
     } catch (e) {
       setState(() => _isProcessing = false);
