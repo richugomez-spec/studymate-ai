@@ -18,8 +18,9 @@ class AIApiKeyNotifier extends StateNotifier<String?> {
   static String? _initialKey() {
     const envKey = String.fromEnvironment('GEMINI_API_KEY');
     if (envKey.isNotEmpty) return envKey;
-    // Integrated Google AI Studio default key for immediate out-of-the-box live AI
-    return 'AIzaSyAb8RN6K6026i4gBmNiTQ6vcq88jHxvM72pFwvGpSQaq9x0tELA';
+    // API key must be provided via --dart-define=GEMINI_API_KEY=... at build time
+    // or entered by the user in Settings → AI Engine
+    return null;
   }
 
   Future<void> _loadFromStorage() async {
