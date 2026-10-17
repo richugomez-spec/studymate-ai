@@ -205,7 +205,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Enter your Google Gemini API key to enable live generative streaming responses with Gemini 1.5 Flash. Keys are free on Google AI Studio.',
+              'Enter your Google Gemini API key to enable live generative streaming responses with Gemini 3.8 Flash. Keys are free on Google AI Studio.',
               style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: Colors.white.withOpacity(0.7), height: 1.4),
             ),
             const SizedBox(height: 16),
