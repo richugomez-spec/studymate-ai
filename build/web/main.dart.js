@@ -31841,7 +31841,7 @@ if(q==null)q="gemini-1.5-flash-latest"
 s=a.b
 s.toString
 r.b=A.b2b(s,A.b8W(a.f,a.e),q,null)
-r.c=A.b2b(s,null,"text-embedding-004",null)
+r.c=A.b2b(s,null,"gemini-embedding-001",null)
 return r},
 XQ:function XQ(a){this.a=a
 this.c=this.b=$},

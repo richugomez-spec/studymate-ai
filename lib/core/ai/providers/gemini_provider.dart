@@ -20,7 +20,7 @@ class GeminiProvider implements AIProvider {
       ),
     );
     _embeddingModel = genai.GenerativeModel(
-      model: 'text-embedding-004',
+      model: 'gemini-embedding-001',
       apiKey: config.apiKey!,
     );
   }
