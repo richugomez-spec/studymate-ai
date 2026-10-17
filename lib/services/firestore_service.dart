@@ -10,6 +10,21 @@ final firestoreServiceProvider = Provider<FirestoreService>((ref) {
   return FirestoreService();
 });
 
+/// Reactive stream of the current user's profile from Firestore
+final userProfileStreamProvider = StreamProvider.family<FirestoreUserModel?, String>((ref, uid) {
+  return ref.watch(firestoreServiceProvider).streamUser(uid);
+});
+
+/// Reactive stream of the current user's study progress from Firestore
+final userStudyProgressStreamProvider = StreamProvider.family<FirestoreStudyProgressModel?, String>((ref, uid) {
+  return ref.watch(firestoreServiceProvider).streamStudyProgress(uid);
+});
+
+/// Reactive stream of all documents uploaded by the user to Firestore
+final userDocumentsStreamProvider = StreamProvider.family<List<FirestoreDocumentModel>, String>((ref, uid) {
+  return ref.watch(firestoreServiceProvider).streamUserDocuments(uid);
+});
+
 /// Production Firestore Service Layer
 ///
 /// Encapsulates all Firestore CRUD operations and data synchronization:

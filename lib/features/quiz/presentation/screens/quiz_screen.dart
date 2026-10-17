@@ -2,8 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -25,37 +27,6 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   // ignore: unused_field
   bool _isSavingToBrain = false;
 
-  static const _defaultQuestions = [
-    _QuizQuestion(
-      question: 'Which scheduling algorithm gives the shortest average waiting time for a given set of processes?',
-      options: ['FCFS', 'Round Robin', 'SJF (Shortest Job First)', 'Priority Scheduling'],
-      correctIndex: 2,
-      explanation: 'SJF minimizes the average waiting time by always selecting the process with the shortest burst time next. This is optimal but requires knowing burst times in advance.',
-    ),
-    _QuizQuestion(
-      question: 'What does the term "Convoy Effect" refer to in OS scheduling?',
-      options: [
-        'Multiple short processes waiting behind one long process',
-        'Processes forming a convoy to share CPU',
-        'CPU scheduling based on process priority',
-        'Memory fragmentation pattern',
-      ],
-      correctIndex: 0,
-      explanation: 'The Convoy Effect occurs in FCFS scheduling when multiple short processes are stuck waiting behind one long CPU-bound process, leading to poor CPU and I/O utilization.',
-    ),
-    _QuizQuestion(
-      question: 'In Round Robin scheduling, what happens when a process does not complete within its time quantum?',
-      options: [
-        'It is terminated',
-        'It gets highest priority in next cycle',
-        'It is preempted and moved to end of ready queue',
-        'Its priority is reduced',
-      ],
-      correctIndex: 2,
-      explanation: 'In Round Robin, when a process exhausts its time quantum without completing, the CPU is preempted and the process is placed at the back of the ready queue to wait for its next turn.',
-    ),
-  ];
-
   List<_QuizQuestion> get _questions {
     final doc = ref.read(activeDocumentProvider);
     if (doc != null && doc.quizzes.isNotEmpty) {
@@ -66,7 +37,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
         explanation: q.explanation,
       )).toList();
     }
-    return _defaultQuestions;
+    return const [];
   }
 
   void _selectAnswer(int index) {
@@ -106,11 +77,64 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final activeDoc = ref.watch(activeDocumentProvider);
     final questions = _questions;
+
+    if (questions.isEmpty) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text('Active Quiz Drill', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 16)),
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 480),
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurfaceVariant,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.darkBorderSubtle),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.quiz_rounded, size: 40, color: AppColors.electricViolet),
+                const SizedBox(height: 14),
+                const Text(
+                  'No Quizzes Available',
+                  style: TextStyle(fontFamily: 'Inter', fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Upload study notes or slides to automatically generate personalized adaptive quiz questions and diagnostic tests.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: Colors.white.withOpacity(0.6), height: 1.4),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () => context.push(AppRoutes.uploadCenter),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.electricViolet,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  ),
+                  icon: const Icon(Icons.upload_file_rounded, size: 16),
+                  label: const Text('Upload Study Material'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     if (_quizComplete) return _QuizResultScreen(score: _score, total: questions.length);
 

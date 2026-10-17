@@ -8,6 +8,9 @@ import '../../../../core/services/document_processing_service.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
+import '../../../../core/routing/app_routes.dart';
+import 'package:go_router/go_router.dart';
+
 class FlashcardScreen extends ConsumerStatefulWidget {
   final String topicId;
   const FlashcardScreen({super.key, required this.topicId});
@@ -27,29 +30,6 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   int _hardCount = 0;
   int _againCount = 0;
 
-  static const _defaultCards = [
-    _Flashcard(
-      front: 'What is a Semaphore?',
-      back:
-          'A semaphore is a synchronization primitive used to control access to shared resources. It\'s an integer variable that can only be accessed through two atomic operations:\n\n• **wait (P)**: Decrements the semaphore value\n• **signal (V)**: Increments the semaphore value\n\nUsed to prevent race conditions in concurrent programming.',
-    ),
-    _Flashcard(
-      front: 'Explain Deadlock and its four conditions',
-      back:
-          'Deadlock occurs when two or more processes are waiting for each other indefinitely.\n\n**Four Necessary Conditions (Coffman\'s):**\n1. **Mutual Exclusion** — Resource held exclusively\n2. **Hold & Wait** — Process holds one resource, waits for others\n3. **No Preemption** — Resources cannot be forcefully taken\n4. **Circular Wait** — Circular chain of waiting processes',
-    ),
-    _Flashcard(
-      front: 'What is Thrashing?',
-      back:
-          'Thrashing occurs when a process spends more time in paging (swapping pages) than executing actual instructions.\n\n**Cause:** Too many processes compete for limited memory frames, causing continuous page faults.\n\n**Solution:** Working Set Model — allocate frames based on the process\'s actual working set size.',
-    ),
-    _Flashcard(
-      front: 'Difference between Process and Thread?',
-      back:
-          '**Process:**\n• Independent execution unit\n• Separate memory space\n• Heavyweight — context switch is expensive\n• Communication via IPC\n\n**Thread:**\n• Lightweight subprocess within a process\n• Shares memory with parent process\n• Faster context switch\n• Communication via shared memory',
-    ),
-  ];
-
   List<_Flashcard> get _cards {
     final doc = ref.watch(activeDocumentProvider);
     if (doc != null && doc.flashcards.isNotEmpty) {
@@ -58,7 +38,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         back: f.back,
       )).toList();
     }
-    return _defaultCards;
+    return const [];
   }
 
   @override
@@ -138,7 +118,59 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final progress = (_currentIndex + 1) / _cards.length;
+    if (_cards.isEmpty) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text('Flashcards', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700)),
+          leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.of(context).pop()),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: AppColors.electricViolet.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.style_outlined, size: 64, color: AppColors.electricViolet),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'No Flashcards Yet',
+                  style: TextStyle(fontFamily: 'Inter', fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Upload study materials to automatically generate interactive 3D flashcards with Spaced Repetition tracking.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontFamily: 'Inter', fontSize: 14, color: AppColors.darkTextSecondary, height: 1.5),
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  onPressed: () => context.push(AppRoutes.uploadCenter),
+                  icon: const Icon(Icons.cloud_upload_outlined),
+                  label: const Text('Go to Upload Center'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.electricViolet,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final safeIndex = _currentIndex.clamp(0, _cards.length - 1);
+    final progress = (_cards.isEmpty) ? 0.0 : (safeIndex + 1) / _cards.length;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -149,7 +181,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Center(
-              child: Text('${_currentIndex + 1}/${_cards.length}',
+              child: Text('${safeIndex + 1}/${_cards.length}',
                   style: const TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.darkTextSecondary)),
             ),
           ),

@@ -5,6 +5,8 @@ import 'package:fl_chart/fl_chart.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/services/document_processing_service.dart';
+import '../../../../services/firestore_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -12,8 +14,20 @@ class AnalyticsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final activeDoc = ref.watch(activeDocumentProvider);
-    final quizCount = activeDoc?.quizzes.length ?? 0;
-    final cardCount = activeDoc?.flashcards.length ?? 0;
+    final user = ref.watch(currentUserProvider);
+    final userId = user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
+    final progressAsync = userId.isNotEmpty
+        ? ref.watch(userStudyProgressStreamProvider(userId))
+        : null;
+    final progress = progressAsync?.asData?.value;
+
+    final studyHours = ((progress?.totalMinutes ?? 0) / 60.0).toStringAsFixed(1);
+    final quizCount = (progress?.quizzesCompleted ?? 0) > 0
+        ? progress!.quizzesCompleted
+        : (activeDoc?.quizzes.length ?? 0);
+    final cardCount = (progress?.flashcardsReviewed ?? 0) > 0
+        ? progress!.flashcardsReviewed
+        : (activeDoc?.flashcards.length ?? 0);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -22,7 +36,7 @@ class AnalyticsScreen extends ConsumerWidget {
           SliverAppBar(
             floating: true,
             title: const Text(
-              'Progress',
+              'Progress & Analytics',
               style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700),
             ),
           ),
@@ -32,14 +46,29 @@ class AnalyticsScreen extends ConsumerWidget {
               delegate: SliverChildListDelegate([
 
                 // ── Stats Row ─────────────────────────────────────────────
-                Row(
-                  children: [
-                    const _StatCard(label: 'Study Hours', value: '0.0', icon: '⏱️', color: AppColors.electricViolet),
-                    const SizedBox(width: 12),
-                    _StatCard(label: 'Quizzes', value: '$quizCount', icon: '✅', color: AppColors.teal),
-                    const SizedBox(width: 12),
-                    _StatCard(label: 'Flashcards', value: '$cardCount', icon: '🃏', color: AppColors.skyBlue),
-                  ],
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isMobile = constraints.maxWidth < 500;
+                    final cards = [
+                      _StatCard(label: 'Study Hours', value: studyHours, icon: '⏱️', color: AppColors.electricViolet),
+                      _StatCard(label: 'Quizzes Done', value: '$quizCount', icon: '✅', color: AppColors.teal),
+                      _StatCard(label: 'Cards Mastered', value: '$cardCount', icon: '🃏', color: AppColors.skyBlue),
+                    ];
+                    if (isMobile) {
+                      return Column(
+                        children: cards.map((c) => Padding(padding: const EdgeInsets.only(bottom: 10), child: c)).toList(),
+                      );
+                    }
+                    return Row(
+                      children: [
+                        cards[0],
+                        const SizedBox(width: 12),
+                        cards[1],
+                        const SizedBox(width: 12),
+                        cards[2],
+                      ],
+                    );
+                  },
                 ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0),
 
                 const SizedBox(height: 24),
@@ -47,7 +76,7 @@ class AnalyticsScreen extends ConsumerWidget {
                 // ── Study Time Chart ───────────────────────────────────────
                 const _SectionTitle(title: 'Daily Study Time'),
                 const SizedBox(height: 12),
-                const _StudyTimeChart().animate(delay: 100.ms).fadeIn().slideY(begin: 0.1, end: 0),
+                _StudyTimeChart(totalMinutes: progress?.totalMinutes ?? 0).animate(delay: 100.ms).fadeIn().slideY(begin: 0.1, end: 0),
 
                 const SizedBox(height: 24),
 
@@ -150,13 +179,15 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-// Study Time Chart — shows empty bars until real session tracking is implemented
 class _StudyTimeChart extends StatelessWidget {
-  const _StudyTimeChart();
+  final int totalMinutes;
+  const _StudyTimeChart({this.totalMinutes = 0});
 
   @override
   Widget build(BuildContext context) {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final todayWeekday = DateTime.now().weekday - 1; // 0 = Mon, 6 = Sun
+    final studyHours = totalMinutes / 60.0;
 
     return Container(
       height: 180,
@@ -169,7 +200,7 @@ class _StudyTimeChart extends StatelessWidget {
       child: BarChart(
         BarChartData(
           alignment: BarChartAlignment.spaceAround,
-          maxY: 4,
+          maxY: (studyHours > 3.0 ? studyHours + 1 : 4.0),
           barTouchData: BarTouchData(enabled: false),
           titlesData: FlTitlesData(
             show: true,
@@ -181,7 +212,8 @@ class _StudyTimeChart extends StatelessWidget {
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 10,
-                    color: Colors.white.withOpacity(0.4),
+                    fontWeight: value.toInt() == todayWeekday ? FontWeight.w700 : FontWeight.w400,
+                    color: value.toInt() == todayWeekday ? AppColors.electricViolet : Colors.white.withOpacity(0.4),
                   ),
                 ),
               ),
@@ -200,17 +232,23 @@ class _StudyTimeChart extends StatelessWidget {
             drawVerticalLine: false,
           ),
           borderData: FlBorderData(show: false),
-          barGroups: List.generate(7, (i) => BarChartGroupData(
-            x: i,
-            barRods: [
-              BarChartRodData(
-                toY: 0,
-                width: 22,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
-                color: AppColors.electricViolet.withOpacity(0.2),
-              ),
-            ],
-          )),
+          barGroups: List.generate(7, (i) {
+            final isToday = i == todayWeekday;
+            final barVal = isToday ? studyHours : 0.0;
+            return BarChartGroupData(
+              x: i,
+              barRods: [
+                BarChartRodData(
+                  toY: barVal,
+                  width: 22,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                  color: isToday
+                      ? AppColors.electricViolet
+                      : AppColors.electricViolet.withOpacity(0.15),
+                ),
+              ],
+            );
+          }),
         ),
       ),
     );

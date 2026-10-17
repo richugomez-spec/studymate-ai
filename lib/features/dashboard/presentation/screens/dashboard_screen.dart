@@ -278,16 +278,23 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
     final activeDoc = ref.watch(activeDocumentProvider);
 
-    final displayName = (user?.displayName != null && user!.displayName!.isNotEmpty)
-        ? user.displayName!
-        : (user?.email != null && user!.email.isNotEmpty)
-            ? user.email.split('@').first
-            : 'Valeriy';
+    final firestoreUserAsync = user != null
+        ? ref.watch(userProfileStreamProvider(user.id))
+        : null;
+    final firestoreUser = firestoreUserAsync?.asData?.value;
+
+    final displayName = firestoreUser?.name.isNotEmpty == true
+        ? firestoreUser!.name
+        : (user?.displayName != null && user!.displayName!.isNotEmpty)
+            ? user.displayName!
+            : (user?.email != null && user!.email.isNotEmpty)
+                ? user.email.split('@').first
+                : 'Student';
 
     final greetingTitle = 'Ready to continue, $displayName';
     final courseSubtitle = user?.course != null && user!.course!.isNotEmpty
         ? user.course!
-        : 'M.Sc. Structural Mechanics & Applied Mathematics';
+        : (activeDoc != null ? 'Active Folio: ${activeDoc.fileName}' : 'Academic Course Workspace');
 
     return Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 6),
@@ -362,7 +369,7 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
                           Text(
                             activeDoc != null
                                 ? 'Spaced Recall (${activeDoc.concepts.length} due)'
-                                : 'Spaced Recall (14 due)',
+                                : 'Spaced Recall (0 due)',
                             style: const TextStyle(
                               fontFamily: 'Inter',
                               fontSize: 12,
@@ -637,11 +644,24 @@ class _TodayLearningMissionCard extends StatelessWidget {
   }
 }
 
-class _EmptyLearningMissionCard extends StatelessWidget {
+class _EmptyLearningMissionCard extends ConsumerWidget {
   const _EmptyLearningMissionCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activeDoc = ref.watch(activeDocumentProvider);
+
+    final title = activeDoc != null
+        ? 'Continue mastering ${activeDoc.fileName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '')}'
+        : 'Welcome to StudyMate AI — Ready for your next study session';
+
+    final description = activeDoc != null
+        ? '${activeDoc.concepts.length} concepts extracted. Complete an active recall drill to reinforce your memory retention.'
+        : 'Upload lecture slides, syllabus, or notes (PDF, DOCX, TXT) to generate personalized adaptive quizzes, flashcards, and concept maps.';
+
+    final tagText = activeDoc != null ? 'ACTIVE FOLIO / ${activeDoc.fileType}' : 'ACADEMIC OS / STANDBY';
+    final lemmaText = activeDoc != null ? '${activeDoc.concepts.length} CONCEPTS' : 'NO MATERIAL';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
@@ -659,12 +679,12 @@ class _EmptyLearningMissionCard extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    'IN PROGRESS',
+                    activeDoc != null ? 'IN PROGRESS' : 'GET STARTED',
                     style: TextStyle(
                       fontFamily: 'JetBrains Mono',
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.emerald,
+                      color: activeDoc != null ? AppColors.emerald : AppColors.electricViolet,
                       letterSpacing: 0.8,
                     ),
                   ),
@@ -675,7 +695,7 @@ class _EmptyLearningMissionCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'CORPUS 04 / THEORY OF STRUCTURES',
+                    tagText,
                     style: TextStyle(
                       fontFamily: 'JetBrains Mono',
                       fontSize: 10,
@@ -691,7 +711,7 @@ class _EmptyLearningMissionCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'LEMMA #1042',
+                    lemmaText,
                     style: TextStyle(
                       fontFamily: 'JetBrains Mono',
                       fontSize: 10,
@@ -700,7 +720,6 @@ class _EmptyLearningMissionCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const Icon(Icons.chevron_left_rounded, size: 18, color: AppColors.darkTextTertiary),
             ],
           ),
           const SizedBox(height: 14),
@@ -711,9 +730,9 @@ class _EmptyLearningMissionCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Under non-uniform torsion in thin-walled open cross-sections, define the bimoment origin B(x)',
-                      style: TextStyle(
+                    Text(
+                      title,
+                      style: const TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -723,9 +742,9 @@ class _EmptyLearningMissionCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Integral representation of sectorial coordinate ω(s) and Saint-Venant pure torsional resistance coupled with warping rigidity.',
-                      style: TextStyle(
+                    Text(
+                      description,
+                      style: const TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 12.5,
                         height: 1.45,
@@ -733,13 +752,22 @@ class _EmptyLearningMissionCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 18),
-                    const Row(
+                    Row(
                       children: [
-                        _StitchMetric(label: 'RETENTION', value: '91.4% Optimal'),
-                        SizedBox(width: 24),
-                        _StitchMetric(label: 'STAGE', value: 'L-4 (18 days)'),
-                        SizedBox(width: 24),
-                        _StitchMetric(label: 'SOURCE', value: 'Vlasov (1959) §4.2'),
+                        _StitchMetric(
+                          label: 'DOCUMENTS',
+                          value: activeDoc != null ? '1 Active' : '0 Indexed',
+                        ),
+                        const SizedBox(width: 24),
+                        _StitchMetric(
+                          label: 'CONCEPTS',
+                          value: '${activeDoc?.concepts.length ?? 0} Extracted',
+                        ),
+                        const SizedBox(width: 24),
+                        _StitchMetric(
+                          label: 'STATUS',
+                          value: activeDoc != null ? 'Ready for drill' : 'Awaiting upload',
+                        ),
                       ],
                     ),
                   ],
@@ -750,7 +778,13 @@ class _EmptyLearningMissionCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   ElevatedButton(
-                    onPressed: () => context.push(AppRoutes.uploadCenter),
+                    onPressed: () {
+                      if (activeDoc != null) {
+                        context.push(AppRoutes.quiz.replaceFirst(':topicId', activeDoc.id));
+                      } else {
+                        context.push(AppRoutes.uploadCenter);
+                      }
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.darkSurfaceContainerHigh,
                       foregroundColor: AppColors.darkTextPrimary,
@@ -761,29 +795,33 @@ class _EmptyLearningMissionCard extends StatelessWidget {
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'Resume Derivation',
-                          style: TextStyle(
+                          activeDoc != null ? 'Start Quiz Drill' : 'Upload Notes',
+                          style: const TextStyle(
                             fontFamily: 'Inter',
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        SizedBox(width: 6),
-                        Icon(Icons.arrow_forward_rounded, size: 14),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.arrow_forward_rounded, size: 14),
                       ],
                     ),
                   ),
                   const SizedBox(height: 10),
                   TextButton.icon(
-                    onPressed: () => context.push(AppRoutes.uploadCenter),
-                    icon: const Icon(Icons.menu_book_outlined, size: 14, color: AppColors.darkTextSecondary),
-                    label: const Text(
-                      'Open Folio PDF',
-                      style: TextStyle(
+                    onPressed: () => context.push(activeDoc != null ? AppRoutes.library : AppRoutes.uploadCenter),
+                    icon: Icon(
+                      activeDoc != null ? Icons.menu_book_outlined : Icons.upload_file_rounded,
+                      size: 14,
+                      color: AppColors.darkTextSecondary,
+                    ),
+                    label: Text(
+                      activeDoc != null ? 'View in Library' : 'Upload Folio',
+                      style: const TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 12,
                         color: AppColors.darkTextSecondary,
@@ -881,277 +919,345 @@ class _SuggestedActionsAndDeadlinesRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Left Column: Suggested Next Actions
-        Expanded(
-          flex: 11,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'SUGGESTED NEXT ACTIONS',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.darkTextTertiary,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  Text(
-                    'Prioritized by decay',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      color: AppColors.darkTextTertiary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              InkWell(
-                onTap: () {
-                  if (activeDoc != null) {
-                    context.push(AppRoutes.flashcards.replaceFirst(':topicId', activeDoc!.id));
-                  } else {
-                    context.push(AppRoutes.uploadCenter);
-                  }
-                },
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkSurfaceVariant,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.darkBorderSubtle),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(7),
-                        decoration: BoxDecoration(
-                          color: AppColors.darkSurfaceContainer,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(Icons.psychology_outlined, size: 16, color: AppColors.darkTextPrimary),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              activeDoc != null
-                                  ? 'Spaced Repetition: ${activeDoc!.concepts.length} Warping Mechanics Cards'
-                                  : 'Spaced Repetition: 14 Warping Mechanics Cards',
-                              style: const TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.darkTextPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              'Optimal recall interval window active today • 8m estimated',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: 11.5,
-                                color: AppColors.darkTextSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.darkTextTertiary),
-                    ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 650;
+
+        final leftAction = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'SUGGESTED NEXT ACTIONS',
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.darkTextTertiary,
+                    letterSpacing: 0.8,
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(width: 20),
-
-        // Right Column: Upcoming Deadlines
-        Expanded(
-          flex: 9,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'UPCOMING DEADLINES',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.darkTextTertiary,
-                      letterSpacing: 0.8,
-                    ),
+                Text(
+                  activeDoc != null ? 'Prioritized by active material' : 'Awaiting material',
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 10,
+                    color: AppColors.darkTextTertiary,
                   ),
-                  Text(
-                    'View Calendar →',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      color: AppColors.darkTextTertiary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            InkWell(
+              onTap: () {
+                if (activeDoc != null) {
+                  context.push(AppRoutes.flashcards.replaceFirst(':topicId', activeDoc!.id));
+                } else {
+                  context.push(AppRoutes.uploadCenter);
+                }
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   color: AppColors.darkSurfaceVariant,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppColors.darkBorderSubtle),
                 ),
-                child: Column(
+                child: Row(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'STR-802 • Theory of Structures',
-                                style: TextStyle(
-                                  fontFamily: 'JetBrains Mono',
-                                  fontSize: 10,
-                                  color: AppColors.darkTextTertiary,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              const Text(
-                                'Problem Set 4: Sectorial Mechanics & Bimoment Derivations',
-                                style: TextStyle(
-                                  fontFamily: 'Inter',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.darkTextPrimary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkSurfaceContainer,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Icon(Icons.psychology_outlined, size: 16, color: AppColors.darkTextPrimary),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            activeDoc != null
+                                ? 'Spaced Repetition: ${activeDoc!.concepts.length} Concept Cards'
+                                : 'Spaced Repetition: Start First Active Drill',
+                            style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.darkTextPrimary,
+                            ),
                           ),
+                          const SizedBox(height: 3),
+                          Text(
+                            activeDoc != null
+                                ? 'Active recall window open • ${activeDoc!.fileName}'
+                                : 'Upload material to generate flashcard review queue',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 11.5,
+                              color: AppColors.darkTextSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.darkTextTertiary),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+
+        final rightDeadlines = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'UPCOMING DEADLINES',
+                  style: TextStyle(
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.darkTextTertiary,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                InkWell(
+                  onTap: () => context.push(AppRoutes.studyPlanner),
+                  child: Text(
+                    'Study Planner →',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      color: AppColors.electricViolet,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurfaceVariant,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.darkBorderSubtle),
+              ),
+              child: activeDoc != null
+                  ? Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'ACTIVE STUDY TARGET',
+                                    style: TextStyle(
+                                      fontFamily: 'JetBrains Mono',
+                                      fontSize: 10,
+                                      color: AppColors.darkTextTertiary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    activeDoc!.fileName,
+                                    style: const TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppColors.darkTextPrimary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '${activeDoc!.concepts.length} concepts',
+                                  style: TextStyle(
+                                    fontFamily: 'JetBrains Mono',
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.emerald,
+                                  ),
+                                ),
+                                Text(
+                                  'Ready',
+                                  style: TextStyle(
+                                    fontFamily: 'JetBrains Mono',
+                                    fontSize: 9.5,
+                                    color: AppColors.darkTextTertiary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
+                        const Divider(color: AppColors.darkBorderSubtle, height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              '5d remaining',
+                              'Quiz status: ${activeDoc!.quizzes.length} generated',
                               style: TextStyle(
                                 fontFamily: 'JetBrains Mono',
                                 fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.amber,
+                                color: AppColors.darkTextTertiary,
                               ),
                             ),
                             Text(
-                              'Oct 22, 2026',
+                              '${activeDoc!.flashcards.length} cards',
                               style: TextStyle(
                                 fontFamily: 'JetBrains Mono',
-                                fontSize: 9.5,
+                                fontSize: 10,
                                 color: AppColors.darkTextTertiary,
                               ),
                             ),
                           ],
                         ),
                       ],
-                    ),
-                    const Divider(color: AppColors.darkBorderSubtle, height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'BIO-610 • Molecular Biochemistry',
-                          style: TextStyle(
-                            fontFamily: 'JetBrains Mono',
-                            fontSize: 10,
-                            color: AppColors.darkTextTertiary,
+                    )
+                  : InkWell(
+                      onTap: () => context.push(AppRoutes.uploadCenter),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_today_outlined, size: 16, color: AppColors.darkTextTertiary),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'No study targets set. Upload material to begin.',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 12,
+                                color: AppColors.darkTextSecondary,
+                              ),
+                            ),
                           ),
-                        ),
-                        Text(
-                          '11d remaining',
-                          style: TextStyle(
-                            fontFamily: 'JetBrains Mono',
-                            fontSize: 10,
-                            color: AppColors.darkTextTertiary,
-                          ),
-                        ),
-                      ],
+                          const Icon(Icons.arrow_forward_rounded, size: 14, color: AppColors.darkTextTertiary),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              ),
+            ),
+          ],
+        );
+
+        if (isMobile) {
+          return Column(
+            children: [
+              leftAction,
+              const SizedBox(height: 16),
+              rightDeadlines,
             ],
-          ),
-        ),
-      ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 11, child: leftAction),
+            const SizedBox(width: 20),
+            Expanded(flex: 9, child: rightDeadlines),
+          ],
+        );
+      },
     );
   }
 }
 
 // ── 4. Cognitive Radar & Vitals Row ──────────────────────────────────────────
 
-class _CognitiveRadarVitalsRow extends StatelessWidget {
+class _CognitiveRadarVitalsRow extends ConsumerWidget {
   final double readinessScore;
 
   const _CognitiveRadarVitalsRow({required this.readinessScore});
 
   @override
-  Widget build(BuildContext context) {
-    final hasReadiness = readinessScore > 0;
-    return Row(
-      children: [
-        Expanded(
-          child: _VitalCard(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final userId = user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
+    final progressAsync = userId.isNotEmpty
+        ? ref.watch(userStudyProgressStreamProvider(userId))
+        : null;
+    final progress = progressAsync?.asData?.value;
+
+    final focusMinutes = progress?.totalMinutes ?? 0;
+    final quizzesDone = progress?.quizzesCompleted ?? 0;
+    final conceptsKnown = progress?.conceptsLearned ?? 0;
+
+    final computedReadiness = readinessScore > 0
+        ? readinessScore.toInt()
+        : (quizzesDone > 0 ? (quizzesDone * 20).clamp(15, 100) : 0);
+
+    final computedStability = conceptsKnown > 0
+        ? (conceptsKnown * 15).clamp(20, 95)
+        : (computedReadiness > 0 ? (computedReadiness * 0.9).toInt() : 0);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+
+        final items = [
+          _VitalCard(
             title: 'Exam Readiness',
-            value: hasReadiness ? '${readinessScore.toInt()}%' : '0%',
-            trend: hasReadiness ? 'Calculated' : 'No data yet',
+            value: computedReadiness > 0 ? '$computedReadiness%' : '0%',
+            trend: computedReadiness > 0 ? 'Live Metric' : 'No quiz data yet',
             color: const Color(0xFF43D197),
             icon: Icons.military_tech_rounded,
-            progress: readinessScore / 100.0,
+            progress: computedReadiness / 100.0,
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _VitalCard(
+          _VitalCard(
             title: 'Memory Stability',
-            value: hasReadiness ? '${(readinessScore * 0.9).toInt()}%' : '0%',
-            trend: hasReadiness ? 'Active Decay' : 'No data yet',
+            value: computedStability > 0 ? '$computedStability%' : '0%',
+            trend: computedStability > 0 ? 'Active Decay Model' : 'No review data',
             color: const Color(0xFF61C9FF),
             icon: Icons.shield_rounded,
-            progress: hasReadiness ? (readinessScore * 0.9) / 100.0 : 0.0,
+            progress: computedStability / 100.0,
           ),
-        ),
-        const SizedBox(width: 12),
-        const Expanded(
-          child: _VitalCard(
-            title: 'Focus Today',
-            value: '0m',
-            trend: 'Target: 60m',
+          _VitalCard(
+            title: 'Focus Total',
+            value: '${focusMinutes}m',
+            trend: 'Firestore tracked',
             color: AppColors.electricViolet,
             icon: Icons.timelapse_rounded,
-            progress: 0.0,
+            progress: (focusMinutes / 60.0).clamp(0.0, 1.0),
           ),
-        ),
-      ],
+        ];
+
+        if (isMobile) {
+          return Column(
+            children: items
+                .map((w) => Padding(padding: const EdgeInsets.only(bottom: 10), child: w))
+                .toList(),
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: items[0]),
+            const SizedBox(width: 12),
+            Expanded(child: items[1]),
+            const SizedBox(width: 12),
+            Expanded(child: items[2]),
+          ],
+        );
+      },
     );
   }
 }

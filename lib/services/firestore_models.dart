@@ -127,6 +127,9 @@ class FirestoreDocumentModel {
     );
   }
 
+  String get fileType =>
+      fileName.contains('.') ? fileName.split('.').last.toUpperCase() : 'DOC';
+
   Map<String, dynamic> toMap() {
     return {
       'ownerId': ownerId,

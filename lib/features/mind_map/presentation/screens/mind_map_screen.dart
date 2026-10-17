@@ -21,50 +21,60 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
   Widget build(BuildContext context) {
     final activeDoc = ref.watch(activeDocumentProvider);
 
-    final concepts = activeDoc != null && activeDoc.concepts.isNotEmpty
-        ? activeDoc.concepts
-        : [
-            const ExtractedConcept(
-              id: 'c1',
-              title: 'Processes & Threads',
-              description: 'Independent execution units sharing memory spaces with IPC primitives.',
-              initialMastery: 0.85,
-              importanceScore: 5,
-              keyPoints: ['Process isolation', 'Thread concurrency', 'Kernel vs User threads'],
+    final concepts = activeDoc?.concepts ?? [];
+
+    if (concepts.isEmpty) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text(
+            'Semantic Knowledge Graph',
+            style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 15),
+          ),
+        ),
+        body: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 480),
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurfaceVariant,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.darkBorderSubtle),
             ),
-            const ExtractedConcept(
-              id: 'c2',
-              title: 'CPU Scheduling Algorithms',
-              description: 'Policies governing which ready process executes next (FCFS, SJF, RR).',
-              initialMastery: 0.72,
-              importanceScore: 5,
-              keyPoints: ['Preemption', 'Waiting time minimization', 'Convoy effect'],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.hub_rounded, size: 40, color: AppColors.electricViolet),
+                const SizedBox(height: 14),
+                const Text(
+                  'No Concepts to Map',
+                  style: TextStyle(fontFamily: 'Inter', fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Upload lecture slides, chapters, or notes to automatically extract concepts and construct an interactive semantic graph.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: Colors.white.withOpacity(0.6), height: 1.4),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () => context.push(AppRoutes.uploadCenter),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.electricViolet,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  ),
+                  icon: const Icon(Icons.upload_file_rounded, size: 16),
+                  label: const Text('Upload Study Material'),
+                ),
+              ],
             ),
-            const ExtractedConcept(
-              id: 'c3',
-              title: 'Race Conditions & Locks',
-              description: 'Concurrent access leading to non-deterministic program behavior.',
-              initialMastery: 0.64,
-              importanceScore: 4,
-              keyPoints: ['Critical section problem', 'Atomic operations', 'Spinlocks'],
-            ),
-            const ExtractedConcept(
-              id: 'c4',
-              title: 'Semaphores & Mutexes',
-              description: 'Counting and binary synchronization primitives with wait/signal semantics.',
-              initialMastery: 0.58,
-              importanceScore: 5,
-              keyPoints: ['Atomic wait/signal', 'Producer-Consumer problem', 'Priority inversion'],
-            ),
-            const ExtractedConcept(
-              id: 'c5',
-              title: 'Deadlock Avoidance',
-              description: 'Handling resource graphs to prevent Coffman condition fulfillment.',
-              initialMastery: 0.41,
-              importanceScore: 5,
-              keyPoints: ['Banker\'s Algorithm', 'Resource allocation graphs', 'Safe states'],
-            ),
-          ];
+          ),
+        ),
+      );
+    }
 
     final selected = _selectedNodeIndex != null && _selectedNodeIndex! < concepts.length
         ? concepts[_selectedNodeIndex!]

@@ -15,30 +15,70 @@ class SummaryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final activeDoc = ref.watch(activeDocumentProvider);
 
-    final title = activeDoc?.summary.title ?? 'Operating Systems: Process Management & Synchronization';
-    final overview = activeDoc?.summary.overview ??
-        'Process synchronization and CPU scheduling form the foundational backbone of modern multi-tasking operating systems. Key guarantees include deadlock freedom, starvation prevention, and mutual exclusion across shared critical regions.';
-    final takeaways = activeDoc?.summary.keyTakeaways ?? [
-      'Preemptive algorithms ensure fairness at the expense of context-switching overhead.',
-      'SJF minimizes average waiting time but requires a priori knowledge of burst durations.',
-      'Semaphores (wait/signal) provide atomic guarantees against race conditions.',
-      'Deadlocks require four concurrent conditions: Mutual Exclusion, Hold & Wait, No Preemption, Circular Wait.',
-    ];
-    final theorems = activeDoc?.summary.coreTheorems ?? [
-      'Coffman Conditions: A system is in deadlock if and only if all four conditions hold simultaneously.',
-      'Banker\'s Algorithm: Avoids deadlocks by verifying if granting a resource request leaves the system in a safe state.',
-    ];
-    final traps = activeDoc?.summary.examTraps ?? [
-      'Assuming FCFS is starvation-free: while true, convoy effect drastically inflates average wait times.',
-      'Confusing deadlock with starvation: starvation is indefinite delay for one process, whereas deadlock halts all involved processes.',
-      'Neglecting context-switch latency in Round Robin time quantum calculations.',
-    ];
+    if (activeDoc == null) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: AppBar(
+          title: const Text(
+            'Smart Summary',
+            style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 16),
+          ),
+        ),
+        body: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 480),
+            margin: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(28),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurfaceVariant,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.darkBorderSubtle),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.auto_stories_rounded, size: 40, color: AppColors.electricViolet),
+                const SizedBox(height: 14),
+                const Text(
+                  'No Summary Available',
+                  style: TextStyle(fontFamily: 'Inter', fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Upload lecture slides, chapters, or notes to automatically synthesize executive summaries, key takeaways, and exam traps.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: Colors.white.withOpacity(0.6), height: 1.4),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton.icon(
+                  onPressed: () => context.push(AppRoutes.uploadCenter),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.electricViolet,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  ),
+                  icon: const Icon(Icons.upload_file_rounded, size: 16),
+                  label: const Text('Upload Study Material'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final title = activeDoc.summary.title.isNotEmpty ? activeDoc.summary.title : activeDoc.fileName;
+    final overview = activeDoc.summary.overview.isNotEmpty ? activeDoc.summary.overview : 'Summary overview extracted from ${activeDoc.fileName}.';
+    final takeaways = activeDoc.summary.keyTakeaways;
+    final theorems = activeDoc.summary.coreTheorems;
+    final traps = activeDoc.summary.examTraps;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          activeDoc != null ? 'Summary: ${activeDoc.fileName}' : 'Executive Summary',
+          'Summary: ${activeDoc.fileName}',
           style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 16),
           overflow: TextOverflow.ellipsis,
         ),
@@ -77,7 +117,7 @@ class SummaryScreen extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        activeDoc != null ? 'SOURCE: ${activeDoc.fileType}' : 'EXECUTIVE SYNTHESIS',
+                        'SOURCE: ${activeDoc.fileType}',
                         style: const TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 10,
@@ -158,7 +198,7 @@ class SummaryScreen extends ConsumerWidget {
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => context.push('/topic/quiz/${activeDoc?.id ?? "topic_1"}'),
+                  onPressed: () => context.push('/topic/quiz/${activeDoc.id}'),
                   icon: const Icon(Icons.quiz_outlined, size: 18),
                   label: const Text('Practice Quiz'),
                   style: ElevatedButton.styleFrom(

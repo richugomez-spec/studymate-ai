@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
+import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class LibraryScreen extends ConsumerWidget {
@@ -14,6 +15,12 @@ class LibraryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final activeDoc = ref.watch(activeDocumentProvider);
+    final user = ref.watch(currentUserProvider);
+    final userId = user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
+    final firestoreDocsAsync = userId.isNotEmpty
+        ? ref.watch(userDocumentsStreamProvider(userId))
+        : null;
+    final firestoreDocs = firestoreDocsAsync?.asData?.value ?? [];
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -71,7 +78,7 @@ class LibraryScreen extends ConsumerWidget {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 // Active Semester Card
-                _ActiveSemesterCard()
+                _ActiveSemesterCard(persistedDocsCount: firestoreDocs.length)
                     .animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0),
                 const SizedBox(height: 12),
 
@@ -80,7 +87,7 @@ class LibraryScreen extends ConsumerWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text(
-                      'SUBJECTS',
+                      'SUBJECTS & MATERIALS',
                       style: TextStyle(
                         fontFamily: 'JetBrains Mono',
                         fontSize: 10,
@@ -105,15 +112,38 @@ class LibraryScreen extends ConsumerWidget {
 
                 const SizedBox(height: 10),
 
-                if (activeDoc != null) ...[
+                if (firestoreDocs.isNotEmpty) ...[
+                  ...firestoreDocs.asMap().entries.map((entry) {
+                    final idx = entry.key;
+                    final doc = entry.value;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _SubjectCard(
+                        name: doc.title.isNotEmpty
+                            ? doc.title
+                            : doc.fileName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), ''),
+                        code: doc.fileType.toUpperCase(),
+                        colorIndex: idx % AppColors.subjectColors.length,
+                        topicCount: doc.conceptCount,
+                        progress: (doc.quizCount > 0 ? 0.6 : 0.25),
+                        onTap: () {
+                          context.push(AppRoutes.summary.replaceFirst(':topicId', doc.id));
+                        },
+                      ).animate(delay: (150 + idx * 50).ms).fadeIn().slideY(begin: 0.1, end: 0),
+                    );
+                  }),
+                ] else if (activeDoc != null) ...[
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: _SubjectCard(
                       name: activeDoc.fileName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), ''),
-                      code: 'CURRENT',
+                      code: activeDoc.fileType.toUpperCase(),
                       colorIndex: 0,
                       topicCount: activeDoc.concepts.length,
                       progress: 0.25,
+                      onTap: () {
+                        context.push(AppRoutes.summary.replaceFirst(':topicId', activeDoc.id));
+                      },
                     ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.1, end: 0),
                   ),
                 ] else ...[
@@ -146,7 +176,7 @@ class LibraryScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Upload lecture slides, notes, or chapters to automatically create and organize your course library.',
+                          'Upload lecture slides, notes, or chapters to automatically create and organize your course library in Firestore.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontFamily: 'Inter',
@@ -180,14 +210,19 @@ class LibraryScreen extends ConsumerWidget {
 }
 
 class _ActiveSemesterCard extends ConsumerWidget {
+  final int persistedDocsCount;
+
+  const _ActiveSemesterCard({this.persistedDocsCount = 0});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
     final activeDoc = ref.watch(activeDocumentProvider);
+    final hasMaterials = persistedDocsCount > 0 || activeDoc != null;
 
     final semesterTitle = user?.course != null
         ? user!.course!
-        : (user?.yearOfStudy != null ? 'Year ${user!.yearOfStudy}' : 'Semester 1');
+        : (user?.yearOfStudy != null ? 'Year ${user!.yearOfStudy}' : 'Academic Course Folio');
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -226,7 +261,9 @@ class _ActiveSemesterCard extends ConsumerWidget {
                     ),
                   ),
                   Text(
-                    activeDoc != null ? 'Active Study Material Indexed' : 'No Study Materials Loaded',
+                    hasMaterials
+                        ? '${persistedDocsCount > 0 ? persistedDocsCount : 1} Study Materials Indexed'
+                        : 'No Study Materials Loaded',
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 13,
@@ -239,7 +276,7 @@ class _ActiveSemesterCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    activeDoc != null ? 'Active' : '0%',
+                    hasMaterials ? 'Active' : '0%',
                     style: const TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 24,
@@ -263,7 +300,7 @@ class _ActiveSemesterCard extends ConsumerWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
-              value: activeDoc != null ? 0.25 : 0.0,
+              value: hasMaterials ? 0.35 : 0.0,
               minHeight: 6,
               backgroundColor: Colors.white.withOpacity(0.1),
               valueColor: const AlwaysStoppedAnimation<Color>(AppColors.electricViolet),
@@ -281,6 +318,7 @@ class _SubjectCard extends StatelessWidget {
   final int colorIndex;
   final int topicCount;
   final double progress;
+  final VoidCallback? onTap;
 
   const _SubjectCard({
     required this.name,
@@ -288,6 +326,7 @@ class _SubjectCard extends StatelessWidget {
     required this.colorIndex,
     required this.topicCount,
     required this.progress,
+    this.onTap,
   });
 
   @override
@@ -295,7 +334,7 @@ class _SubjectCard extends StatelessWidget {
     final color = AppColors.subjectColors[colorIndex];
 
     return GestureDetector(
-      onTap: () {},
+      onTap: onTap ?? () {},
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
