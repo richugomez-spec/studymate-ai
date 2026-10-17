@@ -393,12 +393,12 @@ class _PromptChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(6),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: AppColors.darkSurfaceVariant,
-          borderRadius: BorderRadius.circular(20),
+          color: AppColors.darkSurfaceContainer,
+          borderRadius: BorderRadius.circular(6),
           border: Border.all(color: AppColors.darkBorder),
         ),
         child: Row(
@@ -406,7 +406,15 @@ class _PromptChip extends StatelessWidget {
           children: [
             Text(icon, style: const TextStyle(fontSize: 12)),
             const SizedBox(width: 6),
-            Text(label, style: const TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w500, color: Colors.white70)),
+            Text(
+              label,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: AppColors.darkTextSecondary,
+              ),
+            ),
           ],
         ),
       ),
@@ -426,8 +434,8 @@ class _RealMessageBubble extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(
         bottom: 16,
-        left: isUser ? 48 : 0,
-        right: isUser ? 0 : 48,
+        left: isUser ? 56 : 0,
+        right: isUser ? 0 : 56,
       ),
       child: Column(
         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -437,22 +445,27 @@ class _RealMessageBubble extends StatelessWidget {
             children: [
               if (!isUser) ...[
                 Container(
-                  padding: const EdgeInsets.all(4),
+                  width: 18,
+                  height: 18,
                   decoration: BoxDecoration(
-                    gradient: AppColors.primaryGradient,
-                    shape: BoxShape.circle,
+                    color: AppColors.brandAccent.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: AppColors.brandAccent.withOpacity(0.4)),
                   ),
-                  child: const Icon(Icons.auto_awesome, size: 10, color: Colors.white),
+                  child: const Center(
+                    child: Icon(Icons.psychology, size: 12, color: AppColors.electricVioletLight),
+                  ),
                 ),
                 const SizedBox(width: 6),
               ],
               Text(
-                isUser ? 'You' : 'StudyMate AI',
+                isUser ? 'YOU' : 'STUDYMATE AI',
                 style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 11,
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 10,
                   fontWeight: FontWeight.w600,
-                  color: isUser ? AppColors.electricViolet : AppColors.teal,
+                  letterSpacing: 0.5,
+                  color: isUser ? AppColors.electricVioletLight : AppColors.darkTextSecondary,
                 ),
               ),
             ],
@@ -461,22 +474,20 @@ class _RealMessageBubble extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: isUser ? AppColors.electricViolet.withOpacity(0.18) : AppColors.darkSurface,
-              borderRadius: BorderRadius.circular(16).copyWith(
-                topLeft: isUser ? const Radius.circular(16) : const Radius.circular(4),
-                topRight: isUser ? const Radius.circular(4) : const Radius.circular(16),
-              ),
+              color: isUser ? AppColors.darkSurfaceContainerHigh : AppColors.darkSurfaceVariant,
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: isUser ? AppColors.electricViolet.withOpacity(0.4) : AppColors.darkBorder,
+                color: isUser ? AppColors.brandAccent.withOpacity(0.35) : AppColors.darkBorder,
+                width: 1,
               ),
             ),
             child: message.isThinking
                 ? const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.teal)),
+                      SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brandAccent)),
                       SizedBox(width: 10),
-                      Text('Synthesizing...', style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white70)),
+                      Text('Synthesizing...', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12, color: AppColors.darkTextSecondary)),
                     ],
                   )
                 : SelectableText(
@@ -484,7 +495,7 @@ class _RealMessageBubble extends StatelessWidget {
                     style: const TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 13,
-                      color: Colors.white,
+                      color: AppColors.darkTextPrimary,
                       height: 1.5,
                     ),
                   ),

@@ -7,6 +7,21 @@ import 'app_colors.dart';
 abstract final class AppTypography {
   static TextTheme get _textTheme => GoogleFonts.interTextTheme();
 
+  /// Academic monospaced font for metadata, formulas, citations & tags
+  static TextStyle mono({
+    double fontSize = 12,
+    FontWeight fontWeight = FontWeight.w400,
+    Color? color,
+    double? letterSpacing,
+  }) {
+    return GoogleFonts.jetBrainsMono(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color ?? AppColors.darkTextSecondary,
+      letterSpacing: letterSpacing ?? 0.02,
+    );
+  }
+
   static TextTheme darkTextTheme() {
     return _textTheme.copyWith(
       // Display

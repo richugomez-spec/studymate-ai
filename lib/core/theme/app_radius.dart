@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 
 /// Border radius design tokens
 abstract final class AppRadius {
-  static const double xs = 4.0;
-  static const double sm = 8.0;
-  static const double md = 12.0;
-  static const double lg = 16.0;
-  static const double xl = 20.0;
-  static const double xxl = 24.0;
-  static const double full = 100.0;
+  static const double xs = 2.0;   // hairline / micro
+  static const double sm = 4.0;   // tags / badges / chips
+  static const double md = 8.0;   // buttons / cards / inputs
+  static const double lg = 12.0;  // modal containers / panels
+  static const double xl = 16.0;  // hero modules
+  static const double xxl = 20.0;
+  static const double full = 999.0; // pills / avatar
 
   // Pre-built BorderRadius objects
   static final xsAll = BorderRadius.circular(xs);
@@ -20,8 +20,8 @@ abstract final class AppRadius {
   static final fullAll = BorderRadius.circular(full);
 
   // Bottom sheets (top corners only)
-  static final bottomSheet = const BorderRadius.only(
-    topLeft: Radius.circular(xxl),
-    topRight: Radius.circular(xxl),
+  static const bottomSheet = BorderRadius.only(
+    topLeft: Radius.circular(lg),
+    topRight: Radius.circular(lg),
   );
 }

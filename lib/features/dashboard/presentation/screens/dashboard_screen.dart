@@ -223,20 +223,9 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF16102C), Color(0xFF1F173D)],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.electricViolet.withOpacity(0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: AppColors.darkSurfaceVariant,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.darkBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,79 +233,103 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '$timeGreeting, $displayName',
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white.withOpacity(0.65),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF9F43).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFFF9F43).withOpacity(0.4)),
-                ),
-                child: const Row(
-                  children: [
-                    Text('🔥 ', style: TextStyle(fontSize: 12)),
-                    Text(
-                      'Day 1 Streak',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFFFF9F43),
-                      ),
+              Row(
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: const BoxDecoration(
+                      color: AppColors.emerald,
+                      shape: BoxShape.circle,
                     ),
-                  ],
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'PRIMARY ACTIVE STREAM',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.darkTextSecondary,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    '/',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      color: AppColors.darkTextTertiary,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    activeDoc != null ? activeDoc.fileType.toUpperCase() : 'WORKSPACE',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.brandAccent,
+                    ),
+                  ),
+                ],
+              ),
+              Text(
+                timeGreeting.toUpperCase(),
+                style: TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 10,
+                  color: AppColors.darkTextTertiary,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            headline,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 13,
-              fontWeight: FontWeight.w400,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
           const SizedBox(height: 14),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _StatusPill(
-                icon: Icons.bolt_rounded,
-                label: '0 C-XP',
-                color: AppColors.electricViolet,
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.darkSurfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.darkBorderSubtle),
+                ),
+                child: const Icon(
+                  Icons.auto_stories_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
               ),
-              const SizedBox(width: 8),
-              _StatusPill(
-                icon: Icons.school_rounded,
-                label: user?.course ?? (user?.yearOfStudy != null ? 'Year ${user!.yearOfStudy}' : 'Semester 1'),
-                color: AppColors.teal,
-              ),
-              const SizedBox(width: 8),
-              const _StatusPill(
-                icon: Icons.timer_outlined,
-                label: '0m studied',
-                color: Color(0xFF5F85DB),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      headline,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
+                        color: AppColors.darkTextPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 13,
+                        color: AppColors.darkTextSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

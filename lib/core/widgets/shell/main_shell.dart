@@ -60,12 +60,275 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth >= 900;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (isDesktop) {
+      return Scaffold(
+        backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        body: Row(
+          children: [
+            _StudyMateSidebar(
+              selectedIndex: _selectedIndex,
+              destinations: _destinations,
+              onDestinationSelected: _onDestinationSelected,
+            ),
+            VerticalDivider(
+              width: 1,
+              thickness: 1,
+              color: isDark ? AppColors.darkBorderSubtle : AppColors.lightBorder,
+            ),
+            Expanded(child: widget.child),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       body: widget.child,
       bottomNavigationBar: _StudyMateBottomNav(
         selectedIndex: _selectedIndex,
         destinations: _destinations,
         onDestinationSelected: _onDestinationSelected,
+      ),
+    );
+  }
+}
+
+class _StudyMateSidebar extends StatelessWidget {
+  final int selectedIndex;
+  final List<_NavDestination> destinations;
+  final ValueChanged<int> onDestinationSelected;
+
+  const _StudyMateSidebar({
+    required this.selectedIndex,
+    required this.destinations,
+    required this.onDestinationSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      width: 250,
+      color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Logo & Workspace Header
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  gradient: AppColors.primaryGradient,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Center(
+                  child: Text(
+                    'SM',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'StudyMate',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  Text(
+                    'WORKSPACE',
+                    style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isDark ? AppColors.darkSurfaceContainer : AppColors.lightSurfaceVariant,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: const BoxDecoration(
+                        color: AppColors.emerald,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'SYNC',
+                      style: TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 9,
+                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Section label
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Text(
+              'WORKSPACES',
+              style: TextStyle(
+                fontFamily: 'JetBrains Mono',
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+
+          // Navigation list
+          ...List.generate(destinations.length, (i) {
+            final dest = destinations[i];
+            final isSelected = selectedIndex == i;
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: InkWell(
+                onTap: () => onDestinationSelected(i),
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? (isDark ? AppColors.darkSurfaceContainerHigh : AppColors.lightSurfaceVariant)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                    border: isSelected
+                        ? Border.all(
+                            color: isDark ? AppColors.brandAccent.withOpacity(0.3) : AppColors.brandAccent.withOpacity(0.2),
+                            width: 1,
+                          )
+                        : null,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        isSelected ? dest.selectedIcon : dest.icon,
+                        size: 18,
+                        color: isSelected
+                            ? (isDark ? Colors.white : AppColors.brandAccent)
+                            : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        dest.label,
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                          color: isSelected
+                              ? (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary)
+                              : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${i + 1}',
+                        style: TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 11,
+                          color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+
+          const Spacer(),
+
+          // Active session micro status
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkSurfaceContainerLowest : AppColors.lightSurfaceVariant,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isDark ? AppColors.darkBorderSubtle : AppColors.lightBorder,
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'AI ENGINE',
+                      style: TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    Text(
+                      'ONLINE',
+                      style: TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 9,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.emerald,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Gemini 3.8 Flash • RAG 2.0',
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 11,
+                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
