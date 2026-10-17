@@ -12,7 +12,7 @@ class GeminiProvider implements AIProvider {
 
   GeminiProvider(this.config) {
     _model = genai.GenerativeModel(
-      model: config.model ?? 'gemini-1.5-flash-latest',
+      model: config.model ?? 'gemini-2.5-flash',
       apiKey: config.apiKey!,
       generationConfig: genai.GenerationConfig(
         temperature: config.temperature,
@@ -59,7 +59,7 @@ class GeminiProvider implements AIProvider {
 
     final model = systemPrompt != null
         ? genai.GenerativeModel(
-            model: config.model ?? 'gemini-1.5-flash-latest',
+            model: config.model ?? 'gemini-2.5-flash',
             apiKey: config.apiKey!,
             systemInstruction: genai.Content.system(systemPrompt),
             generationConfig: genai.GenerationConfig(
@@ -75,7 +75,7 @@ class GeminiProvider implements AIProvider {
 
     return AIResponse(
       content: response.text ?? '',
-      model: config.model ?? 'gemini-1.5-flash-latest',
+      model: config.model ?? 'gemini-2.5-flash',
       promptTokens: response.usageMetadata?.promptTokenCount ?? 0,
       completionTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
     );
@@ -88,7 +88,7 @@ class GeminiProvider implements AIProvider {
 
     final model = systemPrompt != null
         ? genai.GenerativeModel(
-            model: config.model ?? 'gemini-1.5-flash-latest',
+            model: config.model ?? 'gemini-2.5-flash',
             apiKey: config.apiKey!,
             systemInstruction: genai.Content.system(systemPrompt),
           )

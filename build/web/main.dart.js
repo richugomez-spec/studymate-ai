@@ -31837,7 +31837,7 @@ ah_:function ah_(){},
 ah0:function ah0(){},
 rp:function rp(){},
 arP(a){var s,r=new A.XQ(a),q=a.c
-if(q==null)q="gemini-1.5-flash-latest"
+if(q==null)q="gemini-2.5-flash"
 s=a.b
 s.toString
 r.b=A.b2c(s,A.b8X(a.f,a.e),q,null)
@@ -107920,7 +107920,7 @@ while(true)switch(s){case 0:h=p.amj(b.gQa())
 g=p.ayz(b.gQa())
 if(h!=null){o=p.a
 n=o.c
-if(n==null)n="gemini-1.5-flash-latest"
+if(n==null)n="gemini-2.5-flash"
 m=o.b
 m.toString
 l=A.b([new A.kR(h)],t.Uz)
@@ -107932,7 +107932,7 @@ case 3:j=d
 o=j.gcI(0)
 if(o==null)o=""
 n=p.a.c
-if(n==null)n="gemini-1.5-flash-latest"
+if(n==null)n="gemini-2.5-flash"
 m=j.c
 l=m==null
 i=l?null:m.a
@@ -108519,7 +108519,7 @@ break
 case 3:s=a7!=null&&J.as(a7)!==0?5:6
 break
 case 5:p=8
-m=A.arP(new A.kZ(B.fn,a7,"gemini-1.5-flash-latest",null,0.7,256,!1))
+m=A.arP(new A.kZ(B.fn,a7,"gemini-2.5-flash",null,0.7,256,!1))
 l=A.b([new A.l_(B.dy,"You are StudyMate AI, a friendly academic assistant. Reply naturally and concisely.",B.bi),new A.l_(B.ep,b3,B.bi)],t.Pw)
 s=11
 return A.p(J.agT(m,new A.DZ(l,null,0.7,2048,!1,null)),$async$r4)
@@ -108543,7 +108543,7 @@ break
 case 4:s=a7!=null&&J.as(a7)!==0&&a8!=null&&a8.f.length!==0?12:13
 break
 case 12:p=15
-j=A.arP(new A.kZ(B.fn,a7,"gemini-1.5-flash-latest",null,0.5,1024,!1))
+j=A.arP(new A.kZ(B.fn,a7,"gemini-2.5-flash",null,0.5,1024,!1))
 i=new A.aow(j,4,0.55)
 s=18
 return A.p(i.Av(b3,a8.f),$async$r4)
@@ -108585,7 +108585,7 @@ case 15:p=14
 b0=o
 c=A.a1(b0)
 p=24
-b=A.arP(new A.kZ(B.fn,a7,"gemini-1.5-flash-latest",null,0.5,1024,!1))
+b=A.arP(new A.kZ(B.fn,a7,"gemini-2.5-flash",null,0.5,1024,!1))
 if(a8.e.length!==0)a5=a8.e.length>4000?B.c.K(a8.e,0,4000):a8.e
 else{a6=a8.f
 a6=A.dp(a6,0,A.d9(4,"count",t.S),A.S(a6).c)
@@ -135113,7 +135113,7 @@ B.a8g=new A.NG(2,"center")
 B.a8h=new A.eC("'",0,"SINGLE_QUOTE")
 B.a8i=new A.kY(5,"DOCUMENT")
 B.oc=new A.kY(6,"DOCUMENT_FRAGMENT")
-B.a8j=new A.kZ(B.fn,null,"gemini-1.5-flash-latest",null,0.7,2048,!1)
+B.a8j=new A.kZ(B.fn,null,"gemini-2.5-flash",null,0.7,2048,!1)
 B.a8k=new A.eu("Google Sign-In is not enabled yet in your Firebase Console. Make sure you clicked Save in the Google provider setup.","operation-not-allowed")
 B.a8l=new A.eu("No account found with this email address.","user-not-found")
 B.a8m=new A.eu("Invalid email or password. Please verify your credentials.","invalid-credential")
