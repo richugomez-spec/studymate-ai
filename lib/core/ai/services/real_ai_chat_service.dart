@@ -169,7 +169,30 @@ class RealAIChatService {
               'Try rephrasing your question or ask about a specific topic from the document.';
         }
       } catch (e) {
-        return _buildContextualRagAnswer(prompt, [], activeDoc, error: e.toString());
+        // If embedding retrieval fails, don't drop to keyword notice — directly answer with document content using Gemini!
+        try {
+          final provider = GeminiProvider(AIConfig(
+            providerType: AIProviderType.gemini,
+            apiKey: apiKey,
+            model: 'gemini-1.5-flash-latest',
+            temperature: 0.5,
+            maxTokens: 1024,
+          ));
+          final docExcerpt = activeDoc.fullText.isNotEmpty 
+              ? (activeDoc.fullText.length > 4000 ? activeDoc.fullText.substring(0, 4000) : activeDoc.fullText)
+              : activeDoc.chunks.take(4).map((c) => c.content).join('\n\n');
+          final messages = <AIMessage>[
+            AIMessage(
+              role: AIRole.system,
+              content: 'You are StudyMate AI, an academic mentor. Answer the student question based on this study material:\n\n$docExcerpt',
+            ),
+            AIMessage(role: AIRole.user, content: prompt),
+          ];
+          final response = await provider.complete(AIRequest(messages: messages));
+          return response.content.trim();
+        } catch (_) {
+          return _buildContextualRagAnswer(prompt, [], activeDoc, error: e.toString());
+        }
       }
     }
 
