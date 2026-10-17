@@ -8,6 +8,7 @@ import '../../../../core/routing/app_routes.dart';
 import '../../../../core/ai/engines/ai_engine_providers.dart';
 import '../../../../core/ai/engines/ai_learning_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
+import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 /// Living Mission Control Dashboard
@@ -374,28 +375,45 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: AppColors.darkSurfaceVariant,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: AppColors.darkBorderSubtle),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.play_arrow_rounded, size: 14, color: AppColors.darkTextSecondary),
-                        SizedBox(width: 5),
-                        Text(
-                          '25m Focus Block',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.darkTextPrimary,
+                  InkWell(
+                    onTap: () async {
+                      final uid = user?.id ?? ref.read(firestoreServiceProvider).currentUserId;
+                      if (uid != null && uid.isNotEmpty) {
+                        await ref.read(firestoreServiceProvider).recordStudySessionTime(uid, 25);
+                      }
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Focus Block recorded! +25 study minutes added to Firestore.'),
+                            duration: Duration(seconds: 3),
                           ),
-                        ),
-                      ],
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkSurfaceVariant,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.darkBorderSubtle),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.play_arrow_rounded, size: 14, color: AppColors.darkTextSecondary),
+                          SizedBox(width: 5),
+                          Text(
+                            '25m Focus Block',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.darkTextPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],

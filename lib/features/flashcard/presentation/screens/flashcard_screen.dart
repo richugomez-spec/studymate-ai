@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/services/document_processing_service.dart';
+import '../../../../services/firestore_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class FlashcardScreen extends ConsumerStatefulWidget {
   final String topicId;
@@ -90,6 +92,14 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     if (rating == 'easy') _easyCount++;
     if (rating == 'hard') _hardCount++;
     if (rating == 'again') _againCount++;
+
+    // Increment flashcards reviewed in Firestore
+    final user = ref.read(currentUserProvider);
+    final firestoreService = ref.read(firestoreServiceProvider);
+    final uid = user?.id ?? firestoreService.currentUserId;
+    if (uid != null && uid.isNotEmpty) {
+      firestoreService.incrementFlashcardsReviewed(uid);
+    }
 
     if (_currentIndex < _cards.length - 1) {
       setState(() {

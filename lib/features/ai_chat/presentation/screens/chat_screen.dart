@@ -6,6 +6,8 @@ import '../../../../core/ai/services/real_ai_chat_service.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../services/firestore_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -20,6 +22,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isSending = false;
 
   final List<RealChatMessage> _messages = [];
+  String? _currentSessionId;
 
   @override
   void initState() {
@@ -98,12 +101,52 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _inputController.clear();
     _scrollToBottom();
 
+    // Firestore session persistence helper
+    final firestoreService = ref.read(firestoreServiceProvider);
+    final user = ref.read(currentUserProvider);
+    final ownerId = user?.id ?? firestoreService.currentUserId;
+    final activeDoc = ref.read(activeDocumentProvider);
+
+    if (ownerId != null && ownerId.isNotEmpty) {
+      try {
+        if (_currentSessionId == null) {
+          final session = await firestoreService.getOrCreateChatSession(
+            ownerId: ownerId,
+            documentId: activeDoc?.id,
+          );
+          _currentSessionId = session.id;
+        }
+        await firestoreService.saveChatMessage(
+          sessionId: _currentSessionId!,
+          role: 'user',
+          content: clean,
+          timestamp: userMsg.timestamp,
+        );
+      } catch (e) {
+        debugPrint('Firestore chat user message save notice: $e');
+      }
+    }
+
     try {
       final chatService = ref.read(realAIChatServiceProvider);
       final responseText = await chatService.askAI(
         prompt: clean,
         conversationHistory: _messages.where((m) => !m.isThinking).toList(),
       );
+
+      final aiTimestamp = DateTime.now();
+      if (_currentSessionId != null) {
+        try {
+          await firestoreService.saveChatMessage(
+            sessionId: _currentSessionId!,
+            role: 'assistant',
+            content: responseText,
+            timestamp: aiTimestamp,
+          );
+        } catch (e) {
+          debugPrint('Firestore chat AI message save notice: $e');
+        }
+      }
 
       if (mounted) {
         setState(() {
@@ -113,7 +156,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               id: placeholderMsg.id,
               role: 'assistant',
               content: responseText,
-              timestamp: DateTime.now(),
+              timestamp: aiTimestamp,
               isThinking: false,
             ),
           );

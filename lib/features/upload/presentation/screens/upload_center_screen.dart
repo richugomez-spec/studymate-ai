@@ -8,6 +8,8 @@ import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/services/firebase_upload_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../services/firestore_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class UploadCenterScreen extends ConsumerStatefulWidget {
   const UploadCenterScreen({super.key});
@@ -89,6 +91,23 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
       unawaited(() async {
         try {
           final uploadResult = await uploadService.uploadFile(file);
+          final firestoreService = ref.read(firestoreServiceProvider);
+          final currentUser = ref.read(currentUserProvider);
+          final ownerId = currentUser?.id ?? uploadService.currentUserId;
+
+          if (ownerId != null && ownerId.isNotEmpty) {
+            await firestoreService.createDocument(
+              ownerId: ownerId,
+              title: processedDoc.fileName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), ''),
+              subject: 'General',
+              fileName: file.name,
+              fileUrl: uploadResult.downloadUrl,
+              conceptCount: processedDoc.concepts.length,
+              quizCount: processedDoc.quizzes.length,
+              flashcardCount: processedDoc.flashcards.length,
+            );
+          }
+
           if (uploadResult.downloadUrl.isNotEmpty) {
             await uploadService.markAsProcessed(
               uploadResult.firestoreDocId,

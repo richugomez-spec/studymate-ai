@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../../core/storage/secure_storage.dart';
+import '../../../../services/firestore_service.dart';
 import '../../data/repositories/firebase_auth_repository_impl.dart';
 import '../../data/services/firebase_auth_service.dart';
 import '../../data/services/session_service.dart';
@@ -65,6 +66,14 @@ class AuthNotifier extends _$AuthNotifier {
       },
       (user) {
         state = AsyncValue.data(user);
+        // Persist/sync user document to Firestore
+        final firestoreService = ref.read(firestoreServiceProvider);
+        firestoreService.syncUserOnAuth(
+          uid: user.id,
+          email: user.email,
+          name: user.displayName,
+          photoUrl: user.photoUrl,
+        );
         return null;
       },
     );
@@ -90,6 +99,14 @@ class AuthNotifier extends _$AuthNotifier {
       },
       (user) {
         state = AsyncValue.data(user);
+        // Sync user document to Firestore
+        final firestoreService = ref.read(firestoreServiceProvider);
+        firestoreService.syncUserOnAuth(
+          uid: user.id,
+          email: user.email,
+          name: user.displayName,
+          photoUrl: user.photoUrl,
+        );
         return null;
       },
     );
@@ -117,6 +134,14 @@ class AuthNotifier extends _$AuthNotifier {
       },
       (user) {
         state = AsyncValue.data(user);
+        // Sync user document to Firestore
+        final firestoreService = ref.read(firestoreServiceProvider);
+        firestoreService.syncUserOnAuth(
+          uid: user.id,
+          email: user.email,
+          name: user.displayName,
+          photoUrl: user.photoUrl,
+        );
         return null;
       },
     );

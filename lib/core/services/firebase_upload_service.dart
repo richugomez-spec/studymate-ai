@@ -62,6 +62,8 @@ class FirebaseUploadService {
         _firestore = firestore ?? FirebaseFirestore.instance,
         _auth = auth ?? FirebaseAuth.instance;
 
+  String? get currentUserId => _auth.currentUser?.uid;
+
   /// Validate file type and size before uploading.
   /// Throws [ArgumentError] if validation fails.
   void validateFile(PlatformFile file) {

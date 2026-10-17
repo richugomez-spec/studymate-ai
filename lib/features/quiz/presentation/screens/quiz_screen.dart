@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/services/document_processing_service.dart';
+import '../../../../services/firestore_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
 
 class QuizScreen extends ConsumerStatefulWidget {
   final String topicId;
@@ -86,7 +89,13 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       });
     } else {
       setState(() => _isSavingToBrain = true);
-      // Record completion locally
+      // Record completion to Firestore and locally
+      final user = ref.read(currentUserProvider);
+      final firestoreService = ref.read(firestoreServiceProvider);
+      final uid = user?.id ?? firestoreService.currentUserId;
+      if (uid != null && uid.isNotEmpty) {
+        unawaited(firestoreService.incrementQuizzesCompleted(uid));
+      }
       await Future.delayed(const Duration(milliseconds: 200));
       if (mounted) {
         setState(() {
