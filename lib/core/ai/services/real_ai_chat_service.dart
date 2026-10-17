@@ -4,6 +4,8 @@ import '../../storage/secure_storage.dart';
 import '../ai_config.dart';
 import '../ai_message.dart';
 import '../providers/gemini_provider.dart';
+import '../rag/context_builder.dart';
+import '../rag/retriever.dart';
 
 /// Notifier to manage Gemini API Key across the app
 class AIApiKeyNotifier extends StateNotifier<String?> {
@@ -88,38 +90,14 @@ class RealAIChatService {
 
   RealAIChatService(this._ref);
 
-  /// Find top matching chunks from uploaded document
-  List<String> _findRelevantChunks(String query, UploadedDocument? doc) {
-    if (doc == null || doc.chunks.isEmpty) return [];
-
-    final terms = query
-        .toLowerCase()
-        .split(RegExp(r'[^a-zA-Z0-9]+'))
-        .where((t) => t.length > 2)
-        .toList();
-
-    if (terms.isEmpty) {
-      return doc.chunks.take(3).map((c) => c.content).toList();
-    }
-
-    // Score chunks by keyword term frequency
-    final scored = doc.chunks.map((chunk) {
-      final text = chunk.content.toLowerCase();
-      int matchCount = 0;
-      for (final term in terms) {
-        if (text.contains(term)) {
-          matchCount += 1;
-        }
-      }
-      return (chunk: chunk, score: matchCount);
-    }).toList();
-
-    scored.sort((a, b) => b.score.compareTo(a.score));
-
-    final top = scored.where((s) => s.score > 0).take(3).map((s) => s.chunk.content).toList();
-    if (top.isNotEmpty) return top;
-
-    return doc.chunks.take(2).map((c) => c.content).toList();
+  /// Returns true if the query is conversational / off-topic (no doc lookup needed)
+  bool _isConversational(String query) {
+    final q = query.trim().toLowerCase();
+    const greetings = [
+      'hi', 'hello', 'hey', 'how are you', 'good morning', 'good evening',
+      'thanks', 'thank you', 'bye', 'goodbye', 'ok', 'okay',
+    ];
+    return greetings.any((g) => q == g || q.startsWith('$g ') || q.startsWith('$g,'));
   }
 
   /// Send prompt and get real answer
@@ -130,53 +108,92 @@ class RealAIChatService {
     final apiKey = _ref.read(aiApiKeyProvider);
     final activeDoc = _ref.read(activeDocumentProvider);
 
-    final relevantChunks = _findRelevantChunks(prompt, activeDoc);
-    final contextBlock = relevantChunks.isNotEmpty
-        ? '\n\n--- DOCUMENT CONTEXT FROM ${activeDoc?.fileName ?? "STUDY MATERIAL"} ---\n${relevantChunks.join("\n\n")}\n--- END CONTEXT ---'
-        : (activeDoc != null ? '\n\n--- UPLOADED DOCUMENT CONTENT ---\n${activeDoc.fullText.substring(0, activeDoc.fullText.length.clamp(0, 1500))}\n--- END ---' : '');
-
-    // If Gemini API Key is available, invoke real Gemini 1.5 Flash!
-    if (apiKey != null && apiKey.isNotEmpty) {
-      try {
-        final provider = GeminiProvider(
-          AIConfig(
+    // Conversational queries — no document retrieval
+    if (_isConversational(prompt)) {
+      if (apiKey != null && apiKey.isNotEmpty) {
+        try {
+          final provider = GeminiProvider(AIConfig(
             providerType: AIProviderType.gemini,
             apiKey: apiKey,
             model: 'gemini-1.5-flash',
-            temperature: 0.6,
-            maxTokens: 2048,
-          ),
-        );
-
-        final systemPrompt = '''You are StudyMate AI, an elite Socratic learning OS and academic mentor.
-You have direct access to the student's study materials.
-Your goal is not just to give dry summaries, but to actively help the student master the concepts through intuitive explanations, clear examples, and check-in questions.
-When answering, prioritize the uploaded document context below whenever relevant.
-
-$contextBlock
-''';
-
-        final messages = <AIMessage>[
-          AIMessage(role: AIRole.system, content: systemPrompt),
-          ...conversationHistory.take(8).map((m) =>
-              m.role == 'user'
-                  ? AIMessage(role: AIRole.user, content: m.content)
-                  : AIMessage(role: AIRole.assistant, content: m.content)),
-          AIMessage(role: AIRole.user, content: prompt),
-        ];
-
-        final response = await provider.complete(AIRequest(messages: messages));
-        if (response.content.trim().isNotEmpty) {
+            temperature: 0.7,
+            maxTokens: 256,
+          ));
+          final messages = <AIMessage>[
+            AIMessage(
+              role: AIRole.system,
+              content: 'You are StudyMate AI, a friendly academic assistant. Reply naturally and concisely.',
+            ),
+            AIMessage(role: AIRole.user, content: prompt),
+          ];
+          final response = await provider.complete(AIRequest(messages: messages));
           return response.content.trim();
+        } catch (_) {}
+      }
+      return 'Hello! How can I help you with your studies today? 😊';
+    }
+
+    // Semantic RAG when API key + embedded chunks are available
+    List<String> relevantChunks = [];
+    if (apiKey != null && apiKey.isNotEmpty && activeDoc != null && activeDoc.chunks.isNotEmpty) {
+      try {
+        final provider = GeminiProvider(AIConfig(
+          providerType: AIProviderType.gemini,
+          apiKey: apiKey,
+          model: 'gemini-1.5-flash',
+          temperature: 0.5,
+          maxTokens: 1024,
+        ));
+        final retriever = EmbeddingRetriever(provider: provider, topK: 4, similarityThreshold: 0.55);
+        final topChunks = await retriever.retrieve(prompt, activeDoc.chunks);
+
+        if (topChunks.isNotEmpty) {
+          final contextBuilder = ContextBuilder(maxContextTokens: 2000);
+          final history = conversationHistory.take(6).map((m) =>
+            m.role == 'user'
+              ? AIMessage(role: AIRole.user, content: m.content)
+              : AIMessage(role: AIRole.assistant, content: m.content),
+          ).toList();
+
+          final messages = contextBuilder.build(
+            userQuery: prompt,
+            retrievedChunks: topChunks,
+            conversationHistory: history,
+          );
+
+          final response = await provider.complete(AIRequest(messages: messages));
+          return response.content.trim();
+        } else {
+          // No relevant chunks found
+          return 'I could not find an answer to that in your uploaded notes for **${activeDoc.fileName}**. '
+              'Try rephrasing your question or ask about a specific topic from the document.';
         }
       } catch (e) {
-        // Fall back to contextual RAG synthesis if API fails or quota exceeded
-        return _buildContextualRagAnswer(prompt, relevantChunks, activeDoc, error: e.toString());
+        return _buildContextualRagAnswer(prompt, [], activeDoc, error: e.toString());
       }
     }
 
-    // Extractive RAG when no Gemini API key is configured yet
-    return _buildContextualRagAnswer(prompt, relevantChunks, activeDoc);
+    // Keyword fallback (no API key or no embeddings yet)
+    final keywordChunks = _keywordRelevantChunks(prompt, activeDoc);
+    return _buildContextualRagAnswer(prompt, keywordChunks, activeDoc);
+  }
+
+  /// Keyword-only fallback retrieval (used when no API key is set)
+  List<String> _keywordRelevantChunks(String query, UploadedDocument? doc) {
+    if (doc == null || doc.chunks.isEmpty) return [];
+    final terms = query
+        .toLowerCase()
+        .split(RegExp(r'[^a-zA-Z0-9]+'))
+        .where((t) => t.length > 2)
+        .toList();
+    if (terms.isEmpty) return doc.chunks.take(2).map((c) => c.content).toList();
+    final scored = doc.chunks.map((chunk) {
+      final text = chunk.content.toLowerCase();
+      final score = terms.where((t) => text.contains(t)).length;
+      return (chunk: chunk, score: score);
+    }).toList()
+      ..sort((a, b) => b.score.compareTo(a.score));
+    return scored.where((s) => s.score > 0).take(3).map((s) => s.chunk.content).toList();
   }
 
   String _buildContextualRagAnswer(

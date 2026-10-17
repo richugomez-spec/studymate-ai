@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../ai_provider.dart';
 import '../rag/chunker.dart';
+import '../rag/chroma_storage_service.dart';
 import 'ai_provider_service.dart';
 
 class EmbeddingProcessingResult {
@@ -10,6 +11,7 @@ class EmbeddingProcessingResult {
   final int processedCount;
   final int skippedCount;
   final int failedCount;
+  final bool chromaStored;
   final List<String> errors;
 
   const EmbeddingProcessingResult({
@@ -17,22 +19,26 @@ class EmbeddingProcessingResult {
     required this.processedCount,
     required this.skippedCount,
     required this.failedCount,
+    required this.chromaStored,
     required this.errors,
   });
 
-  bool get isSuccess => failedCount == 0;
+  bool get isSuccess => failedCount == 0 && chromaStored;
 }
 
 /// Service responsible for computing vector embeddings for document text chunks.
 class EmbeddingService {
   final AIProvider? _provider;
   final Future<AIProvider> Function()? _providerResolver;
+  final ChromaStorageService _chroma;
 
   EmbeddingService({
     AIProvider? provider,
     Future<AIProvider> Function()? providerResolver,
+    ChromaStorageService? chromaStorageService,
   })  : _provider = provider,
-        _providerResolver = providerResolver;
+        _providerResolver = providerResolver,
+        _chroma = chromaStorageService ?? ChromaStorageService();
 
   /// Process chunks for a document:
   /// - Skips chunks that already have embeddings.
@@ -51,6 +57,7 @@ class EmbeddingService {
         processedCount: 0,
         skippedCount: 0,
         failedCount: 0,
+        chromaStored: true,
         errors: [],
       );
     }
@@ -105,11 +112,25 @@ class EmbeddingService {
       }
     }
 
+    // Store all embedded chunks in ChromaDB
+    bool chromaStored = true;
+    if (processed > 0) {
+      chromaStored = await _chroma.storeChunks(
+        chunks: chunks,
+        documentId: documentId,
+        userId: userId,
+      );
+      if (!chromaStored) {
+        errors.add('ChromaDB storage failed for document $documentId');
+      }
+    }
+
     return EmbeddingProcessingResult(
       totalChunks: chunks.length,
       processedCount: processed,
       skippedCount: skipped,
       failedCount: failed,
+      chromaStored: chromaStored,
       errors: errors,
     );
   }
