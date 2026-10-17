@@ -454,6 +454,7 @@ class _TodayLearningMissionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       decoration: BoxDecoration(
         color: AppColors.darkSurfaceVariant,
@@ -624,6 +625,7 @@ class _EmptyLearningMissionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       decoration: BoxDecoration(
         color: AppColors.darkSurfaceVariant,
