@@ -23,7 +23,7 @@ class AIConfig with _$AIConfig {
   // Default configs per provider
   factory AIConfig.defaultGemini() => const AIConfig(
     providerType: AIProviderType.gemini,
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3.8-flash',
   );
 
   factory AIConfig.defaultOpenAI() => const AIConfig(
