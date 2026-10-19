@@ -10,6 +10,7 @@ import '../ai/models/hierarchical_document_model.dart';
 import '../ai/rag/chunker.dart';
 import '../ai/services/embedding_service.dart';
 import '../storage/hive_storage.dart';
+import '../../features/auth/presentation/providers/auth_provider.dart';
 
 /// Models for real extracted learning assets
 class ExtractedConcept {
@@ -214,28 +215,18 @@ class UploadedDocument {
   }
 }
 
-/// State notifier holding the active uploaded document with persistent disk cache
+/// State notifier holding the active uploaded document with persistent per-user disk cache.
+/// Keyed by userId so documents persist across logout/login and app restarts.
 class ActiveDocumentNotifier extends StateNotifier<UploadedDocument?> {
-  static const _storageKey = 'active_document_cache';
+  final String _userId;
 
-  ActiveDocumentNotifier() : super(_restoreInitial()) {
-    if (state == null) {
-      _loadAsync();
-    }
+  ActiveDocumentNotifier(this._userId) : super(null) {
+    _restoreFromCache();
   }
 
-  static UploadedDocument? _restoreInitial() {
-    try {
-      final cachedJson = HiveStorage.get<String>(_storageKey);
-      if (cachedJson != null && cachedJson.isNotEmpty) {
-        final map = jsonDecode(cachedJson) as Map<String, dynamic>;
-        return UploadedDocument.fromJson(map);
-      }
-    } catch (_) {}
-    return null;
-  }
+  String get _storageKey => _userId.isNotEmpty ? 'active_doc_$_userId' : 'active_doc_guest';
 
-  Future<void> _loadAsync() async {
+  void _restoreFromCache() {
     try {
       final cachedJson = HiveStorage.get<String>(_storageKey);
       if (cachedJson != null && cachedJson.isNotEmpty) {
@@ -260,10 +251,20 @@ class ActiveDocumentNotifier extends StateNotifier<UploadedDocument?> {
   }
 }
 
+/// User-scoped active document provider. Changes user → restores their last opened document.
 final activeDocumentProvider =
     StateNotifierProvider<ActiveDocumentNotifier, UploadedDocument?>((ref) {
-  return ActiveDocumentNotifier();
+  final user = ref.watch(currentUserProvider);
+  final userId = user?.id ?? '';
+  return ActiveDocumentNotifier(userId);
 });
+
+/// Family variant keyed by userId — use this everywhere auth is available.
+final activeDocumentFamilyProvider =
+    StateNotifierProvider.family<ActiveDocumentNotifier, UploadedDocument?, String>(
+  (ref, userId) => ActiveDocumentNotifier(userId),
+);
+
 
 /// Service responsible for real file parsing, text extraction,
 /// and AI micro-concept synthesis.

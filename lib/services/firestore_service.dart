@@ -206,6 +206,50 @@ class FirestoreService {
     }
   }
 
+  /// Permanently delete a document from Firestore and decrement user's count
+  Future<void> deleteDocument({
+    required String documentId,
+    required String ownerId,
+  }) async {
+    try {
+      final batch = _firestore.batch();
+      batch.delete(_docsCol.doc(documentId));
+      batch.set(
+        _usersCol.doc(ownerId),
+        {'documentsUploaded': FieldValue.increment(-1)},
+        SetOptions(merge: true),
+      );
+      await batch.commit();
+    } catch (e) {
+      debugPrint('FirestoreService.deleteDocument error: $e');
+    }
+  }
+
+  /// Update the lastOpened timestamp on a document
+  Future<void> updateLastOpened(String documentId) async {
+    try {
+      await _docsCol.doc(documentId).update({
+        'lastOpened': Timestamp.fromDate(DateTime.now()),
+      });
+    } catch (e) {
+      debugPrint('FirestoreService.updateLastOpened error: $e');
+    }
+  }
+
+  /// Fetch a single document snapshot by ID
+  Future<FirestoreDocumentModel?> getDocumentById(String documentId) async {
+    try {
+      final doc = await _docsCol.doc(documentId).get();
+      if (!doc.exists || doc.data() == null) return null;
+      return FirestoreDocumentModel.fromMap(doc.data()!, doc.id);
+    } catch (e) {
+      debugPrint('FirestoreService.getDocumentById error: $e');
+      return null;
+    }
+  }
+
+
+
   /// Update document metadata (e.g. concept/quiz/flashcard count)
   Future<void> updateDocumentMetadata(
     String documentId, {

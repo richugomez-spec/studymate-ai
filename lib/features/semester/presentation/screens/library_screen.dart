@@ -29,13 +29,26 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeDoc = ref.watch(activeDocumentProvider);
     final user = ref.watch(currentUserProvider);
     final userId = user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
+    final activeDoc = ref.watch(activeDocumentProvider);
     final firestoreDocsAsync = userId.isNotEmpty
         ? ref.watch(userDocumentsStreamProvider(userId))
         : null;
     final firestoreDocs = firestoreDocsAsync?.asData?.value ?? [];
+
+    // Automatically restore last opened document from Firestore if none is active
+    if (activeDoc == null && firestoreDocs.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final current = ref.read(activeDocumentProvider);
+        if (current == null && firestoreDocs.isNotEmpty) {
+          final sorted = List<FirestoreDocumentModel>.from(firestoreDocs);
+          sorted.sort((a, b) => b.lastOpened.compareTo(a.lastOpened));
+          _onDocTap(sorted.first);
+        }
+      });
+    }
 
     final isDesktop = MediaQuery.of(context).size.width >= 1100;
 
@@ -78,6 +91,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           onDocTap: _onDocTap,
                           onDocSelect: _onDocSelect,
                           onQuickAction: _onQuickAction,
+                          onDocDelete: (doc) => _onDocDelete(doc, userId),
                         ),
                 ),
               ],
@@ -113,6 +127,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       active = _buildFallback(doc);
     }
     ref.read(activeDocumentProvider.notifier).setDocument(active);
+    // Update lastOpened in Firestore (fire-and-forget)
+    ref.read(firestoreServiceProvider).updateLastOpened(doc.id);
   }
 
   void _onDocSelect(String docId) {
@@ -132,6 +148,35 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       context.go(route);
     } else {
       context.push(route.replaceFirst(':topicId', doc.id));
+    }
+  }
+
+  Future<void> _onDocDelete(FirestoreDocumentModel doc, String userId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF111217),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text('Delete Document', style: TextStyle(fontFamily: 'Inter', color: AppColors.darkTextPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
+        content: Text('Remove "${doc.title.isNotEmpty ? doc.title : doc.fileName}" permanently? This cannot be undone.', style: const TextStyle(fontFamily: 'Inter', color: AppColors.darkTextSecondary, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: AppColors.darkTextSecondary))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await ref.read(firestoreServiceProvider).deleteDocument(
+      documentId: doc.id,
+      ownerId: userId.isNotEmpty ? userId : doc.ownerId,
+    );
+    // Clear active doc if it was the deleted one
+    final activeDoc = ref.read(activeDocumentProvider);
+    if (activeDoc?.id == doc.id) {
+      ref.read(activeDocumentProvider.notifier).clearDocument();
     }
   }
 
@@ -467,6 +512,7 @@ class _LibraryDocumentFolio extends StatelessWidget {
   final ValueChanged<FirestoreDocumentModel> onDocTap;
   final ValueChanged<String> onDocSelect;
   final void Function(FirestoreDocumentModel, String) onQuickAction;
+  final ValueChanged<FirestoreDocumentModel> onDocDelete;
 
   const _LibraryDocumentFolio({
     required this.docs,
@@ -476,6 +522,7 @@ class _LibraryDocumentFolio extends StatelessWidget {
     required this.onDocTap,
     required this.onDocSelect,
     required this.onQuickAction,
+    required this.onDocDelete,
   });
 
   @override
@@ -560,6 +607,7 @@ class _LibraryDocumentFolio extends StatelessWidget {
                     onTap: () => onDocTap(d),
                     onSelect: () => onDocSelect(d.id),
                     onQuickAction: (route) => onQuickAction(d, route),
+                    onDelete: () => onDocDelete(d),
                   );
                 },
               );
@@ -579,6 +627,7 @@ class _LibraryDocumentFolio extends StatelessWidget {
                   onTap: () => onDocTap(d),
                   onSelect: () => onDocSelect(d.id),
                   onQuickAction: (route) => onQuickAction(d, route),
+                  onDelete: () => onDocDelete(d),
                 ),
               );
             }).toList(),
@@ -598,6 +647,7 @@ class _DocumentCard extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onSelect;
   final ValueChanged<String> onQuickAction;
+  final VoidCallback onDelete;
 
   const _DocumentCard({
     required this.doc,
@@ -607,6 +657,7 @@ class _DocumentCard extends StatefulWidget {
     required this.onTap,
     required this.onSelect,
     required this.onQuickAction,
+    required this.onDelete,
   });
 
   @override
@@ -760,6 +811,8 @@ class _DocumentCardState extends State<_DocumentCard> {
                             onTap: () => widget.onQuickAction(AppRoutes.quiz)),
                         _HoverAction(icon: Icons.summarize_outlined, tooltip: 'Summary', color: AppColors.skyBlue,
                             onTap: () => widget.onQuickAction(AppRoutes.summary)),
+                        _HoverAction(icon: Icons.delete_outline_rounded, tooltip: 'Delete', color: AppColors.error,
+                            onTap: widget.onDelete),
                       ],
                     )
                   else if (widget.isActive)
@@ -784,6 +837,7 @@ class _DocumentListRow extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback onSelect;
   final ValueChanged<String> onQuickAction;
+  final VoidCallback onDelete;
 
   const _DocumentListRow({
     required this.doc,
@@ -793,6 +847,7 @@ class _DocumentListRow extends StatefulWidget {
     required this.onTap,
     required this.onSelect,
     required this.onQuickAction,
+    required this.onDelete,
   });
 
   @override
@@ -875,6 +930,8 @@ class _DocumentListRowState extends State<_DocumentListRow> {
                     onTap: () => widget.onQuickAction(AppRoutes.quiz)),
                 _HoverAction(icon: Icons.summarize_outlined, tooltip: 'Summary', color: AppColors.skyBlue,
                     onTap: () => widget.onQuickAction(AppRoutes.summary)),
+                _HoverAction(icon: Icons.delete_outline_rounded, tooltip: 'Delete', color: AppColors.error,
+                    onTap: widget.onDelete),
                 const SizedBox(width: 4),
               ],
               const Icon(Icons.chevron_right_rounded, size: 16, color: AppColors.darkTextTertiary),
@@ -1050,15 +1107,7 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
           _progress = (base * 0.3).clamp(0.0, 1.0);
         });
 
-        final docId = 'doc_${DateTime.now().millisecondsSinceEpoch}_$i';
-        final processedDoc = await processingService.processFromBytes(
-          bytes: f.bytes!,
-          fileName: f.name,
-          byteSize: f.size,
-          firestoreDocId: docId,
-          downloadUrl: '',
-          userId: ownerId,
-        );
+        final processedDoc = await processingService.processDocument(f);
 
         setState(() {
           _currentStep = 'Extracting concepts from ${f.name}...';

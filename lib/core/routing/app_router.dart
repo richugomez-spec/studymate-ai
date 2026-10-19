@@ -107,6 +107,42 @@ GoRouter appRouter(AppRouterRef ref) {
             pageBuilder: (_, __) => const NoTransitionPage(child: StudyToolsScreen()),
           ),
           GoRoute(
+            path: AppRoutes.flashcards,
+            pageBuilder: (_, state) => NoTransitionPage(
+              child: FlashcardScreen(topicId: state.pathParameters['topicId']),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.quiz,
+            pageBuilder: (_, state) => NoTransitionPage(
+              child: QuizScreen(topicId: state.pathParameters['topicId'] ?? 'current'),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.summary,
+            pageBuilder: (_, state) => NoTransitionPage(
+              child: SummaryScreen(topicId: state.pathParameters['topicId'] ?? 'current'),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.mindMap,
+            pageBuilder: (_, state) => NoTransitionPage(
+              child: MindMapScreen(topicId: state.pathParameters['topicId'] ?? 'current'),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.questionPaperAnalyzer,
+            pageBuilder: (_, state) => NoTransitionPage(
+              child: QuestionPaperAnalyzerScreen(topicId: state.pathParameters['topicId'] ?? 'current'),
+            ),
+          ),
+          GoRoute(
+            path: AppRoutes.examGenerator,
+            pageBuilder: (_, state) => NoTransitionPage(
+              child: ExamGeneratorScreen(topicId: state.pathParameters['topicId'] ?? 'current'),
+            ),
+          ),
+          GoRoute(
             path: AppRoutes.progress,
             pageBuilder: (_, __) => const NoTransitionPage(child: AnalyticsScreen()),
           ),
@@ -133,44 +169,6 @@ GoRouter appRouter(AppRouterRef ref) {
       GoRoute(
         path: AppRoutes.topic,
         builder: (_, state) => TopicScreen(
-          topicId: state.pathParameters['topicId']!,
-        ),
-      ),
-
-      // ── AI Feature Routes ─────────────────────────────────────────────────
-      GoRoute(
-        path: AppRoutes.quiz,
-        builder: (_, state) => QuizScreen(
-          topicId: state.pathParameters['topicId']!,
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.flashcards,
-        builder: (_, state) => FlashcardScreen(
-          topicId: state.pathParameters['topicId']!,
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.summary,
-        builder: (_, state) => SummaryScreen(
-          topicId: state.pathParameters['topicId']!,
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.mindMap,
-        builder: (_, state) => MindMapScreen(
-          topicId: state.pathParameters['topicId']!,
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.questionPaperAnalyzer,
-        builder: (_, state) => QuestionPaperAnalyzerScreen(
-          topicId: state.pathParameters['topicId']!,
-        ),
-      ),
-      GoRoute(
-        path: AppRoutes.examGenerator,
-        builder: (_, state) => ExamGeneratorScreen(
           topicId: state.pathParameters['topicId']!,
         ),
       ),
