@@ -378,6 +378,71 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
             ),
           )),
 
+          if (activeDoc.hierarchicalModel?.memoryTricks.isNotEmpty == true) ...[
+            const SizedBox(height: 18),
+            _buildSectionHeader('Memory Tricks & Mnemonics', Icons.psychology_rounded, AppColors.teal),
+            const SizedBox(height: 10),
+            ...activeDoc.hierarchicalModel!.memoryTricks.map((trick) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.teal.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.teal.withOpacity(0.25)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.lightbulb_rounded, size: 16, color: AppColors.teal),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(trick, style: const TextStyle(fontFamily: 'Inter', fontSize: 12.5, fontWeight: FontWeight.w500, color: Colors.white)),
+                  ),
+                ],
+              ),
+            )),
+          ],
+
+          if (activeDoc.hierarchicalModel?.longAnswerTopics.isNotEmpty == true) ...[
+            const SizedBox(height: 18),
+            _buildSectionHeader('Likely Long, Short & Viva Questions', Icons.school_rounded, AppColors.electricVioletLight),
+            const SizedBox(height: 10),
+            ...activeDoc.hierarchicalModel!.longAnswerTopics.take(2).map((q) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurfaceVariant,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.darkBorderSubtle),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('LONG ANSWER QUESTION (10 Marks)', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 9.5, fontWeight: FontWeight.w700, color: AppColors.electricVioletLight)),
+                  const SizedBox(height: 4),
+                  Text(q, style: const TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: Colors.white)),
+                ],
+              ),
+            )),
+            ...activeDoc.hierarchicalModel!.vivaQuestions.take(2).map((viva) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurfaceVariant,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.darkBorderSubtle),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('VIVA / ORAL EXAMINATION QUESTION', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 9.5, fontWeight: FontWeight.w700, color: AppColors.teal)),
+                  const SizedBox(height: 4),
+                  Text(viva, style: const TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: Colors.white)),
+                ],
+              ),
+            )),
+          ],
+
           const SizedBox(height: 24),
 
           // ── Bottom Action Shortcuts ───────────────────────────────────────

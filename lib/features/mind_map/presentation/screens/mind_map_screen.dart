@@ -216,6 +216,38 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
 
                 const Text('RELATIONSHIPS & SUB-POINTS', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.darkTextTertiary)),
                 const SizedBox(height: 8),
+                if (activeDoc.hierarchicalModel?.mindMapNodes.isNotEmpty == true) ...[
+                  ...activeDoc.hierarchicalModel!.mindMapNodes
+                      .where((n) => n.label == selected.title || n.parentId == selected.title)
+                      .map((n) => Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.darkSurfaceVariant,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.darkBorderSubtle),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${n.category.toUpperCase()}: ${n.label}',
+                              style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.teal),
+                            ),
+                            if (n.dependencies.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text('Dependencies: ${n.dependencies.join(", ")}', style: TextStyle(fontFamily: 'Inter', fontSize: 10.5, color: Colors.white.withOpacity(0.6))),
+                              ),
+                            if (n.applications.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text('Applications: ${n.applications.join(", ")}', style: TextStyle(fontFamily: 'Inter', fontSize: 10.5, color: Colors.white.withOpacity(0.6))),
+                              ),
+                          ],
+                        ),
+                      )),
+                ],
                 if (activeDoc.hierarchicalModel?.relationships.isNotEmpty == true) ...[
                   ...activeDoc.hierarchicalModel!.relationships
                       .where((r) => r.sourceConcept == selected.title || r.targetConcept == selected.title)
@@ -229,7 +261,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
                         ),
                         child: Text(
                           '${r.sourceConcept} [${r.relationshipType}] ${r.targetConcept}',
-                          style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: AppColors.teal),
+                          style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: AppColors.electricVioletLight),
                         ),
                       )),
                 ],

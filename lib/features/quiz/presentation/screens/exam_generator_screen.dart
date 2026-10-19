@@ -252,66 +252,123 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
 
           const SizedBox(height: 24),
 
-          // Section A: Short Conceptual Questions (20% Marks)
-          const Text('SECTION A: SHORT CONCEPTS & DEFINITIONS (10 Marks)', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.teal)),
+          // Section A: Short Conceptual Questions (20% Marks - Recall & Understanding)
+          const Text('SECTION A: BLOOM L1/L2 RECALL & UNDERSTANDING (10 Marks)', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.teal)),
           const SizedBox(height: 10),
-          ...concepts.take(3).map((c) {
-            final idx = concepts.indexOf(c) + 1;
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.darkBorder)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Q$idx. Define ${c.title} and state its core premise.', style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
-                      const Text('[3 Marks]', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: Colors.white60)),
+          if (activeDoc.hierarchicalModel?.shortAnswerTopics.isNotEmpty == true) ...[
+            ...activeDoc.hierarchicalModel!.shortAnswerTopics.take(3).map((sa) {
+              final idx = activeDoc.hierarchicalModel!.shortAnswerTopics.indexOf(sa) + 1;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.darkBorder)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(child: Text('Q$idx. $sa', style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white))),
+                        const Text('[3-4 Marks]', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: Colors.white60)),
+                      ],
+                    ),
+                    if (_includeAnswerKey) ...[
+                      const SizedBox(height: 8),
+                      Text('Marking Scheme & Key: Accurate definition [2M], Invariants and constraints [1-2M]. Grounded directly in course syllabus.', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.teal.withOpacity(0.9))),
                     ],
-                  ),
-                  if (_includeAnswerKey) ...[
-                    const SizedBox(height: 8),
-                    Text('Answer Key: ${c.description}', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.teal.withOpacity(0.9))),
                   ],
-                ],
-              ),
-            );
-          }),
+                ),
+              );
+            }),
+          ] else ...[
+            ...concepts.take(3).map((c) {
+              final idx = concepts.indexOf(c) + 1;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.darkBorder)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Q$idx. Define ${c.title} and state its core premise.', style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                        const Text('[3 Marks]', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: Colors.white60)),
+                      ],
+                    ),
+                    if (_includeAnswerKey) ...[
+                      const SizedBox(height: 8),
+                      Text('Answer Key: ${c.description}', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.teal.withOpacity(0.9))),
+                    ],
+                  ],
+                ),
+              );
+            }),
+          ],
 
           const SizedBox(height: 20),
 
-          // Section B: Analytical & Long Answers
-          const Text('SECTION B: ANALYTICAL EXPLANATIONS & DERIVATIONS (40 Marks)', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.electricVioletLight)),
+          // Section B: Analytical & Long Answers (Bloom L4/L5 Analyze & Evaluate)
+          const Text('SECTION B: BLOOM L4/L5 ANALYSIS & SYSTEM DESIGN (40 Marks)', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.electricVioletLight)),
           const SizedBox(height: 10),
-          ...concepts.skip(1).take(2).map((c) {
-            final idx = concepts.indexOf(c) + 3;
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.darkBorder)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text('Q$idx. Detail the operational mechanics of ${c.title} with a practical example and analyze potential edge cases.', style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text('[10 Marks]', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: Colors.white60)),
+          if (activeDoc.hierarchicalModel?.longAnswerTopics.isNotEmpty == true) ...[
+            ...activeDoc.hierarchicalModel!.longAnswerTopics.take(2).map((la) {
+              final idx = activeDoc.hierarchicalModel!.longAnswerTopics.indexOf(la) + 4;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.darkBorder)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text('Q$idx. $la', style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('[10 Marks]', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: Colors.white60)),
+                      ],
+                    ),
+                    if (_includeAnswerKey) ...[
+                      const SizedBox(height: 8),
+                      Text('Marking Scheme & Solution:\n• Architectural derivation and proof [4M]\n• Operational invariants & boundary condition analysis [3M]\n• Implementation trade-offs & failure handling [3M]', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.teal.withOpacity(0.9), height: 1.4)),
                     ],
-                  ),
-                  if (_includeAnswerKey) ...[
-                    const SizedBox(height: 8),
-                    Text('Answer Key:\n• Primary mechanism and definitions: ${c.description}\n• Core exam focus: Pay attention to edge cases and boundary conditions.', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.teal.withOpacity(0.9), height: 1.4)),
                   ],
-                ],
-              ),
-            );
-          }),
+                ),
+              );
+            }),
+          ] else ...[
+            ...concepts.skip(1).take(2).map((c) {
+              final idx = concepts.indexOf(c) + 3;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.darkBorder)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text('Q$idx. Detail the operational mechanics of ${c.title} with a practical example and analyze potential edge cases.', style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('[10 Marks]', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: Colors.white60)),
+                      ],
+                    ),
+                    if (_includeAnswerKey) ...[
+                      const SizedBox(height: 8),
+                      Text('Answer Key:\n• Primary mechanism and definitions: ${c.description}\n• Core exam focus: Pay attention to edge cases and boundary conditions.', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.teal.withOpacity(0.9), height: 1.4)),
+                    ],
+                  ],
+                ),
+              );
+            }),
+          ],
 
           const SizedBox(height: 24),
 

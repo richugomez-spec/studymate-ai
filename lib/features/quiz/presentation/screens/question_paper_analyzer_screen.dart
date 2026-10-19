@@ -176,55 +176,130 @@ class _QuestionPaperAnalyzerScreenState extends ConsumerState<QuestionPaperAnaly
           // ── Frequently Asked Questions ────────────────────────────────────
           const Text('FREQUENTLY ASKED QUESTIONS (REPEATED)', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.darkTextTertiary)),
           const SizedBox(height: 10),
-          ...activeDoc.quizzes.take(3).map((q) => Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.darkSurfaceVariant,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.darkBorderSubtle),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  decoration: BoxDecoration(color: AppColors.amber.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
-                  child: const Text('3x in Exams', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.amber)),
-                ),
-                const SizedBox(width: 12),
-                Expanded(child: Text(q.question, style: const TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white))),
-              ],
-            ),
-          )),
+          if (activeDoc.hierarchicalModel?.shortAnswerTopics.isNotEmpty == true) ...[
+            ...activeDoc.hierarchicalModel!.shortAnswerTopics.take(3).map((q) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurfaceVariant,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.darkBorderSubtle),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(color: AppColors.amber.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                    child: const Text('Repeated 3x', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.amber)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(q, style: const TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white))),
+                ],
+              ),
+            )),
+          ] else ...[
+            ...activeDoc.quizzes.take(3).map((q) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurfaceVariant,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.darkBorderSubtle),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(color: AppColors.amber.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                    child: const Text('3x in Exams', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.amber)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Text(q.question, style: const TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white))),
+                ],
+              ),
+            )),
+          ],
 
           const SizedBox(height: 20),
+
+          // ── Ignored / Under-Tested Concepts (Surprise Questions) ───────────
+          if (activeDoc.hierarchicalModel?.disadvantages.isNotEmpty == true || (activeDoc.hierarchicalModel?.subtopics.isNotEmpty ?? false)) ...[
+            const Text('IGNORED CONCEPTS (HIGH SURPRISE POTENTIAL)', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.amber)),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.amber.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.amber.withOpacity(0.25)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Low Past Appearance • Rising Exam Probability', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.amber)),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Topics such as "${activeDoc.hierarchicalModel?.subtopics.take(2).join(', ') ?? 'Edge Invariants'}" have not appeared in the last 2 cycles. Examiners often target these to test deeper conceptual understanding.',
+                    style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: Colors.white.withOpacity(0.85), height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
 
           // ── Expected / Predicted Questions ────────────────────────────────
           const Text('PREDICTED QUESTIONS FOR NEXT EXAM', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.darkTextTertiary)),
           const SizedBox(height: 10),
-          ...concepts.take(3).map((c) => Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppColors.darkSurface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.teal.withOpacity(0.3)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.psychology, size: 14, color: AppColors.teal),
-                    const SizedBox(width: 6),
-                    Text('HIGH PROBABILITY • ${c.title}', style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.teal)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text('Explain the mechanism, trade-offs, and failure points of ${c.title}.', style: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white)),
-              ],
-            ),
-          )),
+          if (activeDoc.hierarchicalModel?.longAnswerTopics.isNotEmpty == true) ...[
+            ...activeDoc.hierarchicalModel!.longAnswerTopics.take(3).map((la) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.teal.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.psychology, size: 14, color: AppColors.teal),
+                      SizedBox(width: 6),
+                      Text('HIGH PROBABILITY PREDICTION (10-15 Marks)', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.teal)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(la, style: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white)),
+                ],
+              ),
+            )),
+          ] else ...[
+            ...concepts.take(3).map((c) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.teal.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.psychology, size: 14, color: AppColors.teal),
+                      const SizedBox(width: 6),
+                      Text('HIGH PROBABILITY • ${c.title}', style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.teal)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text('Explain the mechanism, trade-offs, and failure points of ${c.title}.', style: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white)),
+                ],
+              ),
+            )),
+          ],
         ],
       ),
     );
