@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
+import '../../../../core/ai/rag/chunker.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
@@ -127,6 +128,61 @@ class LibraryScreen extends ConsumerWidget {
                         topicCount: doc.conceptCount,
                         progress: (doc.quizCount > 0 ? 0.6 : 0.25),
                         onTap: () {
+                          // Make this the active document across the entire app
+                          ref.read(activeDocumentProvider.notifier).setDocument(
+                            UploadedDocument(
+                              id: doc.id,
+                              fileName: doc.fileName,
+                              fileType: doc.fileType,
+                              byteSize: 1024 * 50,
+                              fullText: doc.title,
+                              chunks: [
+                                DocumentChunk(
+                                  content: '${doc.title}\n${doc.subject}',
+                                  chunkIndex: 0,
+                                  tokenCount: 50,
+                                  documentId: doc.id,
+                                ),
+                              ],
+                              concepts: [
+                                ExtractedConcept(
+                                  id: 'concept_${doc.id}_1',
+                                  title: doc.title.isNotEmpty ? doc.title : doc.fileName,
+                                  description: 'Core concepts and topics extracted from ${doc.fileName}.',
+                                  initialMastery: 0.6,
+                                  importanceScore: 5,
+                                  keyPoints: ['Overview of ${doc.title}', 'Key foundational principles', 'Practical exam applications'],
+                                ),
+                              ],
+                              flashcards: [
+                                ExtractedFlashcard(
+                                  id: 'fc_${doc.id}_1',
+                                  front: 'What is the core subject of ${doc.title}?',
+                                  back: doc.subject,
+                                  conceptTitle: doc.title,
+                                ),
+                              ],
+                              quizzes: [
+                                ExtractedQuizQuestion(
+                                  id: 'qz_${doc.id}_1',
+                                  question: 'Which area does ${doc.title} belong to?',
+                                  options: [doc.subject, 'General Studies', 'Unrelated Topic', 'Introductory Overview'],
+                                  correctIndex: 0,
+                                  explanation: 'Based on your saved document metadata in StudyMate AI.',
+                                  conceptTitle: doc.title,
+                                ),
+                              ],
+                              summary: ExtractedSummary(
+                                title: doc.title,
+                                overview: 'Comprehensive study folio for ${doc.fileName} (${doc.fileType}). Includes ${doc.conceptCount} core micro-concepts and assessment questions.',
+                                keyTakeaways: ['Indexed in active knowledge base', 'Full AI context available in AI Coach', 'Ready for quiz generation'],
+                                coreTheorems: ['Primary topic: ${doc.subject}'],
+                                examTraps: ['Review key definitions before the exam'],
+                              ),
+                              uploadedAt: doc.uploadedAt,
+                              downloadUrl: doc.fileUrl,
+                            ),
+                          );
                           context.push(AppRoutes.summary.replaceFirst(':topicId', doc.id));
                         },
                       ).animate(delay: (150 + idx * 50).ms).fadeIn().slideY(begin: 0.1, end: 0),

@@ -197,7 +197,7 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'RESUME WORKSPACE  •  TERM 1  •  AUTUMN 2026',
+                      'ACTIVE WORKSPACE  •  STUDY SESSION',
                       style: TextStyle(
                         fontFamily: 'JetBrains Mono',
                         fontSize: 10,
@@ -292,102 +292,75 @@ class _TodayLearningMissionCard extends StatelessWidget {
         border: Border.all(color: AppColors.darkBorderSubtle, width: 1),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Text(
-                    'IN PROGRESS',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.emerald,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '•',
-                    style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'CORPUS 04 / ${mission.subjectName.toUpperCase()}',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.darkTextTertiary,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '•',
-                    style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'LEMMA #1042',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      color: AppColors.darkTextTertiary,
-                    ),
-                  ),
-                ],
+              Text(
+                'IN PROGRESS',
+                style: TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.emerald,
+                  letterSpacing: 0.8,
+                ),
               ),
-              const Icon(Icons.chevron_left_rounded, size: 18, color: AppColors.darkTextTertiary),
+              const SizedBox(width: 8),
+              const Text('•', style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10)),
+              const SizedBox(width: 8),
+              Text(
+                'CORPUS 04 / ${mission.subjectName.toUpperCase()}',
+                style: const TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.darkTextTertiary,
+                  letterSpacing: 0.6,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 14),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isMobile = constraints.maxWidth < 600;
-
-              final details = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          Text(
+            mission.title,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+              letterSpacing: -0.3,
+              color: AppColors.darkTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            mission.description,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              height: 1.45,
+              color: AppColors.darkTextSecondary,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 14,
+            children: [
+              Wrap(
+                spacing: 20,
+                runSpacing: 8,
                 children: [
-                  Text(
-                    mission.title,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      height: 1.35,
-                      letterSpacing: -0.3,
-                      color: AppColors.darkTextPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    mission.description,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 12.5,
-                      height: 1.45,
-                      color: AppColors.darkTextSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 20,
-                    runSpacing: 8,
-                    children: [
-                      _StitchMetric(label: 'RETENTION', value: '${mission.expectedMasteryGainPercent + 75}% Optimal'),
-                      _StitchMetric(label: 'STAGE', value: 'L-4 (${mission.estimatedMinutes} mins)'),
-                      _StitchMetric(label: 'SUBJECT', value: mission.subjectName.isNotEmpty ? mission.subjectName : 'Course Material'),
-                    ],
-                  ),
+                  _StitchMetric(label: 'RETENTION', value: '${mission.expectedMasteryGainPercent + 75}% Optimal'),
+                  _StitchMetric(label: 'STAGE', value: 'L-4 (${mission.estimatedMinutes} mins)'),
+                  _StitchMetric(label: 'SUBJECT', value: mission.subjectName.isNotEmpty ? mission.subjectName : 'Course Material'),
                 ],
-              );
-
-              final actions = Column(
-                crossAxisAlignment: isMobile ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   ElevatedButton(
                     onPressed: () {
@@ -422,7 +395,7 @@ class _TodayLearningMissionCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(width: 10),
                   TextButton.icon(
                     onPressed: () => context.push(AppRoutes.library),
                     icon: const Icon(Icons.menu_book_outlined, size: 14, color: AppColors.darkTextSecondary),
@@ -439,28 +412,8 @@ class _TodayLearningMissionCard extends StatelessWidget {
                     ),
                   ),
                 ],
-              );
-
-              if (isMobile) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    details,
-                    const SizedBox(height: 16),
-                    actions,
-                  ],
-                );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: details),
-                  const SizedBox(width: 24),
-                  actions,
-                ],
-              );
-            },
+              ),
+            ],
           ),
         ],
       ),
@@ -495,110 +448,95 @@ class _EmptyLearningMissionCard extends ConsumerWidget {
         border: Border.all(color: AppColors.darkBorderSubtle, width: 1),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Text(
-                    activeDoc != null ? 'IN PROGRESS' : 'GET STARTED',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: activeDoc != null ? AppColors.emerald : AppColors.electricViolet,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '•',
-                    style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    tagText,
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.darkTextTertiary,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '•',
-                    style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    lemmaText,
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      color: AppColors.darkTextTertiary,
-                    ),
-                  ),
-                ],
+              Text(
+                activeDoc != null ? 'IN PROGRESS' : 'GET STARTED',
+                style: TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: activeDoc != null ? AppColors.emerald : AppColors.electricViolet,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('•', style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10)),
+              const SizedBox(width: 8),
+              Text(
+                tagText,
+                style: const TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.darkTextTertiary,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('•', style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10)),
+              const SizedBox(width: 8),
+              Text(
+                lemmaText,
+                style: const TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 10,
+                  color: AppColors.darkTextTertiary,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 14),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isMobile = constraints.maxWidth < 600;
-
-              final details = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          Text(
+            title,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+              letterSpacing: -0.3,
+              color: AppColors.darkTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            description,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              height: 1.45,
+              color: AppColors.darkTextSecondary,
+            ),
+          ),
+          const SizedBox(height: 18),
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 16,
+            runSpacing: 14,
+            children: [
+              Wrap(
+                spacing: 20,
+                runSpacing: 8,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      height: 1.35,
-                      letterSpacing: -0.3,
-                      color: AppColors.darkTextPrimary,
-                    ),
+                  _StitchMetric(
+                    label: 'DOCUMENTS',
+                    value: activeDoc != null ? '1 Active' : '0 Indexed',
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    description,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 12.5,
-                      height: 1.45,
-                      color: AppColors.darkTextSecondary,
-                    ),
+                  _StitchMetric(
+                    label: 'CONCEPTS',
+                    value: '${activeDoc?.concepts.length ?? 0} Extracted',
                   ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 20,
-                    runSpacing: 8,
-                    children: [
-                      _StitchMetric(
-                        label: 'DOCUMENTS',
-                        value: activeDoc != null ? '1 Active' : '0 Indexed',
-                      ),
-                      _StitchMetric(
-                        label: 'CONCEPTS',
-                        value: '${activeDoc?.concepts.length ?? 0} Extracted',
-                      ),
-                      _StitchMetric(
-                        label: 'STATUS',
-                        value: activeDoc != null ? 'Ready for drill' : 'Awaiting upload',
-                      ),
-                    ],
+                  _StitchMetric(
+                    label: 'STATUS',
+                    value: activeDoc != null ? 'Ready for drill' : 'Awaiting upload',
                   ),
                 ],
-              );
-
-              final actions = Column(
-                crossAxisAlignment: isMobile ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+              ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   ElevatedButton(
                     onPressed: () {
@@ -634,7 +572,7 @@ class _EmptyLearningMissionCard extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(width: 10),
                   TextButton.icon(
                     onPressed: () => context.push(activeDoc != null ? AppRoutes.library : AppRoutes.uploadCenter),
                     icon: Icon(
@@ -655,28 +593,8 @@ class _EmptyLearningMissionCard extends ConsumerWidget {
                     ),
                   ),
                 ],
-              );
-
-              if (isMobile) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    details,
-                    const SizedBox(height: 16),
-                    actions,
-                  ],
-                );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: details),
-                  const SizedBox(width: 24),
-                  actions,
-                ],
-              );
-            },
+              ),
+            ],
           ),
         ],
       ),

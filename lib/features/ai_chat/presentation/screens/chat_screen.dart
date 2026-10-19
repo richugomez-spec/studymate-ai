@@ -21,6 +21,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
   bool _isSending = false;
+  bool _isLoadingHistory = false;
 
   final List<RealChatMessage> _messages = [];
   String? _currentSessionId;
@@ -28,7 +29,64 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _initializeGreeting();
+    _loadPersistedChatHistory();
+  }
+
+  /// Automatically restore conversation history from Firestore
+  Future<void> _loadPersistedChatHistory() async {
+    setState(() => _isLoadingHistory = true);
+    try {
+      final firestoreService = ref.read(firestoreServiceProvider);
+      final user = ref.read(currentUserProvider);
+      final ownerId = user?.id ?? firestoreService.currentUserId;
+      final activeDoc = ref.read(activeDocumentProvider);
+
+      if (ownerId != null && ownerId.isNotEmpty) {
+        final session = await firestoreService.getOrCreateChatSession(
+          ownerId: ownerId,
+          documentId: activeDoc?.id,
+        );
+        _currentSessionId = session.id;
+
+        // Fetch existing messages from the session
+        final messagesStream = firestoreService.streamSessionMessages(session.id);
+        final initialMessages = await messagesStream.first.timeout(
+          const Duration(seconds: 4),
+          onTimeout: () => [],
+        );
+
+        if (initialMessages.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _messages.clear();
+              for (final m in initialMessages) {
+                _messages.add(RealChatMessage(
+                  id: m.id,
+                  role: m.role,
+                  content: m.content,
+                  timestamp: m.timestamp,
+                  isThinking: false,
+                ));
+              }
+              _isLoadingHistory = false;
+            });
+            _scrollToBottom();
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Chat history restoration notice: $e');
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoadingHistory = false;
+        if (_messages.isEmpty) {
+          _initializeGreeting();
+        }
+      });
+    }
   }
 
   void _initializeGreeting() {
@@ -73,6 +131,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       }
     });
+  }
+
+  /// Progressively streams words to the screen for a smooth ChatGPT typing effect
+  Future<void> _streamWords(String fullResponse, String placeholderId, DateTime timestamp) async {
+    final words = fullResponse.split(' ');
+    final buffer = StringBuffer();
+    const batchSize = 3;
+
+    for (int i = 0; i < words.length; i += batchSize) {
+      if (!mounted) return;
+      final chunk = words.skip(i).take(batchSize).join(' ');
+      if (buffer.isNotEmpty) buffer.write(' ');
+      buffer.write(chunk);
+
+      setState(() {
+        final idx = _messages.indexWhere((m) => m.id == placeholderId);
+        if (idx != -1) {
+          _messages[idx] = RealChatMessage(
+            id: placeholderId,
+            role: 'assistant',
+            content: buffer.toString(),
+            timestamp: timestamp,
+            isThinking: false,
+          );
+        }
+      });
+      _scrollToBottom();
+      await Future.delayed(const Duration(milliseconds: 16));
+    }
   }
 
   Future<void> _sendMessage(String text) async {
@@ -150,17 +237,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
 
       if (mounted) {
+        // Stream response smoothly
+        await _streamWords(responseText, placeholderMsg.id, aiTimestamp);
         setState(() {
-          _messages.removeWhere((m) => m.id == placeholderMsg.id);
-          _messages.add(
-            RealChatMessage(
-              id: placeholderMsg.id,
-              role: 'assistant',
-              content: responseText,
-              timestamp: aiTimestamp,
-              isThinking: false,
-            ),
-          );
           _isSending = false;
         });
         _scrollToBottom();
@@ -365,12 +444,34 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
           // Messages list
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: _messages.length,
-              itemBuilder: (_, i) => _RealMessageBubble(message: _messages[i]),
-            ),
+            child: _isLoadingHistory
+                ? const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.electricViolet),
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          'Restoring conversation...',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            color: AppColors.darkTextSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: _messages.length,
+                    itemBuilder: (_, i) => _RealMessageBubble(message: _messages[i]),
+                  ),
           ),
 
           // Input Bar

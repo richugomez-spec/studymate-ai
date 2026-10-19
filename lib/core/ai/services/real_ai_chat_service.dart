@@ -95,7 +95,20 @@ class RealChatMessage {
 class RealAIChatService {
   final Ref _ref;
 
+  // In-memory cache to reduce duplicate network round-trips for the same prompt & document
+  static final Map<String, String> _responseCache = {};
+
   RealAIChatService(this._ref);
+
+  /// Cleans redundant markdown artifacts like dangling asterisks and raw divider bars
+  static String cleanMarkdownArtifacts(String text) {
+    var cleaned = text;
+    // Replace raw dividers '---' on their own lines with neat empty spacing
+    cleaned = cleaned.replaceAll(RegExp(r'^\s*[-*_]{3,}\s*$', multiLine: true), '');
+    // Clean orphan '**' or '***' without enclosing text
+    cleaned = cleaned.replaceAll(RegExp(r'(?<!\S)\*{2,3}(?!\S)'), '');
+    return cleaned.trim();
+  }
 
   /// Returns true if the query is conversational / off-topic (no doc lookup needed)
   bool _isConversational(String query) {
@@ -114,6 +127,12 @@ class RealAIChatService {
   }) async {
     final apiKey = _ref.read(aiApiKeyProvider);
     final activeDoc = _ref.read(activeDocumentProvider);
+
+    // Cache lookup key based on prompt and active document id
+    final cacheKey = '${activeDoc?.id ?? "none"}:${prompt.trim().toLowerCase()}';
+    if (_responseCache.containsKey(cacheKey)) {
+      return _responseCache[cacheKey]!;
+    }
 
     // Conversational queries — no document retrieval
     if (_isConversational(prompt)) {
@@ -134,10 +153,14 @@ class RealAIChatService {
             AIMessage(role: AIRole.user, content: prompt),
           ];
           final response = await provider.complete(AIRequest(messages: messages));
-          return response.content.trim();
+          final answer = cleanMarkdownArtifacts(response.content);
+          _responseCache[cacheKey] = answer;
+          return answer;
         } catch (_) {}
       }
-      return 'Hello! How can I help you with your studies today? 😊';
+      const defaultGreeting = 'Hello! How can I help you with your studies today? 😊';
+      _responseCache[cacheKey] = defaultGreeting;
+      return defaultGreeting;
     }
 
     // If API key is available, synthesize with Gemini 3.8 Flash
@@ -193,17 +216,21 @@ class RealAIChatService {
         );
 
         final response = await provider.complete(AIRequest(messages: messages));
-        return response.content.trim();
+        final answer = cleanMarkdownArtifacts(response.content);
+        _responseCache[cacheKey] = answer;
+        return answer;
       } catch (e) {
         // Fallback to local semantic engine if API network error occurs
         final keywordChunks = _keywordRelevantChunks(prompt, activeDoc);
-        return _buildContextualRagAnswer(prompt, keywordChunks, activeDoc, error: e.toString());
+        final fallback = _buildContextualRagAnswer(prompt, keywordChunks, activeDoc, error: e.toString());
+        return cleanMarkdownArtifacts(fallback);
       }
     }
 
     // Keyword fallback (if no API key configured)
     final keywordChunks = _keywordRelevantChunks(prompt, activeDoc);
-    return _buildContextualRagAnswer(prompt, keywordChunks, activeDoc);
+    final fallback = _buildContextualRagAnswer(prompt, keywordChunks, activeDoc);
+    return cleanMarkdownArtifacts(fallback);
   }
 
   /// Keyword-only fallback retrieval (used when no API key is set)
