@@ -36,6 +36,11 @@ class FirestoreService {
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;
 
+  // In-memory cache to prevent duplicate Firestore reads across page navigations
+  static final Map<String, (FirestoreUserModel?, DateTime)> _userCache = {};
+  static final Map<String, (FirestoreStudyProgressModel?, DateTime)> _progressCache = {};
+  static const Duration _cacheTtl = Duration(minutes: 5);
+
   FirestoreService({
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
@@ -60,12 +65,21 @@ class FirestoreService {
 
   // ── 1. Users Collection (/users/{uid}) ──────────────────────────────────────
 
-  /// Get user document from Firestore by UID
+  /// Get user document from Firestore by UID with memory caching
   Future<FirestoreUserModel?> getUser(String uid) async {
+    final cached = _userCache[uid];
+    if (cached != null && DateTime.now().difference(cached.$2) < _cacheTtl) {
+      return cached.$1;
+    }
     try {
       final doc = await _usersCol.doc(uid).get();
-      if (!doc.exists || doc.data() == null) return null;
-      return FirestoreUserModel.fromMap(doc.data()!, doc.id);
+      if (!doc.exists || doc.data() == null) {
+        _userCache[uid] = (null, DateTime.now());
+        return null;
+      }
+      final user = FirestoreUserModel.fromMap(doc.data()!, doc.id);
+      _userCache[uid] = (user, DateTime.now());
+      return user;
     } catch (e) {
       debugPrint('FirestoreService.getUser error: $e');
       return null;
@@ -318,12 +332,21 @@ class FirestoreService {
 
   // ── 4. Study Progress Collection (/study_progress/{uid}) ───────────────────
 
-  /// Get study progress by UID
+  /// Get study progress by UID with memory caching
   Future<FirestoreStudyProgressModel?> getStudyProgress(String uid) async {
+    final cached = _progressCache[uid];
+    if (cached != null && DateTime.now().difference(cached.$2) < _cacheTtl) {
+      return cached.$1;
+    }
     try {
       final doc = await _studyProgressCol.doc(uid).get();
-      if (!doc.exists || doc.data() == null) return null;
-      return FirestoreStudyProgressModel.fromMap(doc.data()!, doc.id);
+      if (!doc.exists || doc.data() == null) {
+        _progressCache[uid] = (null, DateTime.now());
+        return null;
+      }
+      final progress = FirestoreStudyProgressModel.fromMap(doc.data()!, doc.id);
+      _progressCache[uid] = (progress, DateTime.now());
+      return progress;
     } catch (e) {
       debugPrint('FirestoreService.getStudyProgress error: $e');
       return null;
