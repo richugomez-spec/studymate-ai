@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/ai/engines/knowledge_engine.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/services/firebase_upload_service.dart';
@@ -81,13 +82,14 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
       });
 
       final docId = 'doc_${DateTime.now().millisecondsSinceEpoch}';
-      final processedDoc = await processingService.processFromBytes(
+      var processedDoc = await processingService.processFromBytes(
         bytes: file.bytes!,
         fileName: file.name,
         byteSize: file.size,
         firestoreDocId: docId,
         downloadUrl: '',
       );
+      processedDoc = await ref.read(knowledgeEngineProvider).enrichDocument(processedDoc);
 
       // 4. Set as active document immediately so student is never stuck
       ref.read(activeDocumentProvider.notifier).setDocument(processedDoc);

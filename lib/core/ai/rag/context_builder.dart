@@ -25,10 +25,10 @@ class ContextBuilder {
     String? subjectName,
     String? explanationStyle,
     List<String>? weakConcepts,
+    String? webContext,
   }) {
     final messages = <AIMessage>[];
 
-    // ── System Prompt ─────────────────────────────────────────────────────────
     messages.add(AIMessage(
       role: AIRole.system,
       content: _buildSystemPrompt(
@@ -36,6 +36,8 @@ class ContextBuilder {
         subjectName: subjectName,
         explanationStyle: explanationStyle ?? 'intermediate',
         weakConcepts: weakConcepts ?? [],
+        hasNotes: hierarchicalModel != null,
+        hasWeb: webContext != null && webContext.isNotEmpty,
       ),
     ));
 
@@ -47,20 +49,21 @@ class ContextBuilder {
       ));
     }
 
-    // ── Context from notes (30% RAG / 70% Gemini Reasoning) ───────────────────
+    if (webContext != null && webContext.isNotEmpty) {
+      messages.add(AIMessage(
+        role: AIRole.system,
+        content: 'LIVE WEB (use when notes are incomplete or recency is required):\n$webContext',
+      ));
+    }
+
     if (retrievedChunks.isNotEmpty) {
-      // Limit to top 3 most relevant chunks to optimize tokens and prevent prompt stuffing
-      final topChunks = retrievedChunks.take(3).toList();
+      final topChunks = retrievedChunks.take(2).toList();
       final contextText = _buildContextBlock(topChunks);
       messages.add(AIMessage(
         role: AIRole.system,
         content:
-            'REFERENCE MATERIAL (30% ANCHOR / 70% MODEL REASONING):\n\n$contextText\n\n'
-            'INSTRUCTIONS:\n'
-            '- Anchor your response to the student\'s notes where applicable.\n'
-            '- Use model reasoning, general knowledge, real-world examples, and analogies to fill in any missing concepts.\n'
-            '- NEVER say "I don\'t have enough information", "Not covered in your notes", or "Please upload more notes". Teach naturally like ChatGPT and an engaging professor.\n'
-            '- Understand typos, shorthand, and one-word prompts ("cpu?", "why", "1", "expalin", "simple", "exam") effortlessly.',
+            'CITATION EXCERPTS (supporting retrieval only, not the primary reasoning engine):\n\n$contextText\n\n'
+            'Synthesize a tutor answer. Prefer structured knowledge + your own teaching knowledge. Cite excerpts only when quoting the student\'s notes.',
       ));
     }
 
@@ -95,6 +98,8 @@ class ContextBuilder {
     String? subjectName,
     required String explanationStyle,
     required List<String> weakConcepts,
+    bool hasNotes = false,
+    bool hasWeb = false,
   }) {
     final contextSection = [
       if (subjectName != null && subjectName.isNotEmpty) 'Subject: $subjectName',
@@ -105,8 +110,11 @@ class ContextBuilder {
         ? '\nStudent weak areas: ${weakConcepts.join(', ')}. Pay special attention to intuitive clarity on these topics.'
         : '';
 
-    return '''You are StudyMate AI, an elite educational tutor, academic mentor, and personal professor (designed like ChatGPT / NotebookLM).
-Your primary mission is to help students truly UNDERSTAND, REASON ABOUT, and MASTER concepts.
+    return '''You are StudyMate AI, an elite educational tutor and personal professor.
+Teach any topic. Notes personalize you; if notes are missing, teach from your own knowledge.
+Sources in priority order: (1) uploaded notes (2) your knowledge (3) live web if provided (4) conversation (5) course structure.
+${hasNotes ? 'Personal notes are attached — synthesize them; do not copy chunks.' : 'No notes attached — teach fully from built-in knowledge.'}
+${hasWeb ? 'Live web results are attached for current information.' : ''}
 
 $contextSection$weakSection
 

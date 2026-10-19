@@ -36,12 +36,16 @@ class ExtractedFlashcard {
   final String front;
   final String back;
   final String conceptTitle;
+  final String cardType;
+  final String difficulty;
 
   const ExtractedFlashcard({
     required this.id,
     required this.front,
     required this.back,
     required this.conceptTitle,
+    this.cardType = 'definition',
+    this.difficulty = 'Medium',
   });
 }
 
@@ -52,6 +56,7 @@ class ExtractedQuizQuestion {
   final int correctIndex;
   final String explanation;
   final String conceptTitle;
+  final String questionType;
 
   const ExtractedQuizQuestion({
     required this.id,
@@ -60,6 +65,7 @@ class ExtractedQuizQuestion {
     required this.correctIndex,
     required this.explanation,
     required this.conceptTitle,
+    this.questionType = 'mcq',
   });
 }
 
@@ -112,6 +118,38 @@ class UploadedDocument {
     this.hierarchicalModel,
   });
 
+  UploadedDocument copyWith({
+    String? id,
+    String? fileName,
+    String? fileType,
+    int? byteSize,
+    String? fullText,
+    List<DocumentChunk>? chunks,
+    List<ExtractedConcept>? concepts,
+    List<ExtractedFlashcard>? flashcards,
+    List<ExtractedQuizQuestion>? quizzes,
+    ExtractedSummary? summary,
+    DateTime? uploadedAt,
+    String? downloadUrl,
+    HierarchicalDocumentModel? hierarchicalModel,
+  }) {
+    return UploadedDocument(
+      id: id ?? this.id,
+      fileName: fileName ?? this.fileName,
+      fileType: fileType ?? this.fileType,
+      byteSize: byteSize ?? this.byteSize,
+      fullText: fullText ?? this.fullText,
+      chunks: chunks ?? this.chunks,
+      concepts: concepts ?? this.concepts,
+      flashcards: flashcards ?? this.flashcards,
+      quizzes: quizzes ?? this.quizzes,
+      summary: summary ?? this.summary,
+      uploadedAt: uploadedAt ?? this.uploadedAt,
+      downloadUrl: downloadUrl ?? this.downloadUrl,
+      hierarchicalModel: hierarchicalModel ?? this.hierarchicalModel,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'fileName': fileName,
@@ -131,6 +169,8 @@ class UploadedDocument {
       'front': f.front,
       'back': f.back,
       'conceptTitle': f.conceptTitle,
+      'cardType': f.cardType,
+      'difficulty': f.difficulty,
     }).toList(),
     'quizzes': quizzes.map((q) => {
       'id': q.id,
@@ -139,6 +179,7 @@ class UploadedDocument {
       'correctIndex': q.correctIndex,
       'explanation': q.explanation,
       'conceptTitle': q.conceptTitle,
+      'questionType': q.questionType,
     }).toList(),
     'summary': {
       'title': summary.title,
@@ -168,6 +209,8 @@ class UploadedDocument {
       front: f['front'] ?? '',
       back: f['back'] ?? '',
       conceptTitle: f['conceptTitle'] ?? '',
+      cardType: f['cardType'] ?? f['type'] ?? 'definition',
+      difficulty: f['difficulty'] ?? 'Medium',
     )).toList();
 
     final quizzesList = (json['quizzes'] as List? ?? []).map((q) => ExtractedQuizQuestion(
@@ -177,6 +220,7 @@ class UploadedDocument {
       correctIndex: (q['correctIndex'] as num?)?.toInt() ?? 0,
       explanation: q['explanation'] ?? '',
       conceptTitle: q['conceptTitle'] ?? '',
+      questionType: q['questionType'] ?? 'mcq',
     )).toList();
 
     final summaryMap = json['summary'] as Map<String, dynamic>? ?? {};
@@ -509,6 +553,26 @@ class DocumentProcessingService {
       sections.add(buffer.toString().trim());
     }
     return sections.isNotEmpty ? sections : [text];
+  }
+
+  Future<UploadedDocument> processFromBytes({
+    required Uint8List bytes,
+    required String fileName,
+    required int byteSize,
+    String? firestoreDocId,
+    String? downloadUrl,
+  }) async {
+    final ext = fileName.contains('.') ? fileName.split('.').last : 'txt';
+    final processed = await processDocument(PlatformFile(
+      name: fileName,
+      size: byteSize,
+      bytes: bytes,
+      extension: ext,
+    ));
+    return processed.copyWith(
+      id: firestoreDocId ?? processed.id,
+      downloadUrl: downloadUrl ?? processed.downloadUrl,
+    );
   }
 
   /// Process an uploaded file into a complete AI-first structured knowledge base

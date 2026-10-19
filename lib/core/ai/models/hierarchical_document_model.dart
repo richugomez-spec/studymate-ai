@@ -1,3 +1,4 @@
+import 'course_knowledge.dart';
 
 /// Represents a detected chapter / major unit across a document
 class DocumentChapter {
@@ -325,6 +326,10 @@ class HierarchicalDocumentModel {
   final List<String> vivaQuestions;
   final List<String> memoryTricks;
   final List<MindMapNode> mindMapNodes;
+  final CourseOutline? courseOutline;
+  final List<String> examTips;
+  final List<Map<String, dynamic>> knowledgeFlashcards;
+  final List<Map<String, dynamic>> knowledgeMcqs;
 
   const HierarchicalDocumentModel({
     required this.documentId,
@@ -360,6 +365,10 @@ class HierarchicalDocumentModel {
     this.vivaQuestions = const [],
     this.memoryTricks = const [],
     this.mindMapNodes = const [],
+    this.courseOutline,
+    this.examTips = const [],
+    this.knowledgeFlashcards = const [],
+    this.knowledgeMcqs = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -396,6 +405,10 @@ class HierarchicalDocumentModel {
     'vivaQuestions': vivaQuestions,
     'memoryTricks': memoryTricks,
     'mindMapNodes': mindMapNodes.map((n) => n.toJson()).toList(),
+    if (courseOutline != null) 'courseOutline': courseOutline!.toJson(),
+    'examTips': examTips,
+    'knowledgeFlashcards': knowledgeFlashcards,
+    'knowledgeMcqs': knowledgeMcqs,
   };
 
   factory HierarchicalDocumentModel.fromJson(Map<String, dynamic> json) => HierarchicalDocumentModel(
@@ -432,6 +445,16 @@ class HierarchicalDocumentModel {
     vivaQuestions: List<String>.from(json['vivaQuestions'] ?? []),
     memoryTricks: List<String>.from(json['memoryTricks'] ?? []),
     mindMapNodes: (json['mindMapNodes'] as List? ?? []).map((n) => MindMapNode.fromJson(Map<String, dynamic>.from(n))).toList(),
+    courseOutline: json['courseOutline'] != null
+        ? CourseOutline.fromJson(Map<String, dynamic>.from(json['courseOutline'] as Map))
+        : null,
+    examTips: List<String>.from(json['examTips'] ?? []),
+    knowledgeFlashcards: (json['knowledgeFlashcards'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList(),
+    knowledgeMcqs: (json['knowledgeMcqs'] as List? ?? [])
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList(),
   );
 
   /// Generate a concise yet holistic semantic outline for reasoning prompts
@@ -440,6 +463,10 @@ class HierarchicalDocumentModel {
     buffer.writeln('DOCUMENT HIERARCHICAL KNOWLEDGE BASE: "$fileName" ($totalPages Pages)');
     buffer.writeln('GLOBAL OVERVIEW: $documentOverview');
     buffer.writeln();
+    if (courseOutline != null) {
+      buffer.writeln(courseOutline!.toPromptBlock());
+      buffer.writeln();
+    }
 
     if (chapters.isNotEmpty) {
       buffer.writeln('CHAPTER OUTLINE & SECTIONS:');

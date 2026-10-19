@@ -8,6 +8,7 @@ import '../providers/gemini_provider.dart';
 import '../rag/chunker.dart';
 import '../rag/context_builder.dart';
 import '../rag/retriever.dart';
+import 'web_search_service.dart';
 
 /// Notifier to manage Gemini API Key across the app
 class AIApiKeyNotifier extends StateNotifier<String?> {
@@ -179,25 +180,35 @@ class RealAIChatService {
           try {
             final retriever = EmbeddingRetriever(
               provider: provider,
-              initialK: 8,
-              topK: 5,
+              initialK: 4,
+              topK: 2,
               similarityThreshold: 0.35,
             );
             topChunks = await retriever.retrieve(
               prompt,
               activeDoc.chunks,
-              maxContextTokens: 1600,
+              maxContextTokens: 700,
             );
           } catch (_) {
-            // If semantic embedding retrieval fails, use keyword chunks as background
             final kw = _keywordRelevantChunks(prompt, activeDoc);
-            topChunks = kw.map((c) => DocumentChunk(
+            topChunks = kw.take(2).map((c) => DocumentChunk(
               content: c,
               chunkIndex: 0,
               tokenCount: c.split(' ').length,
               documentId: activeDoc.id,
             )).toList();
           }
+        }
+
+        String? webContext;
+        final web = _ref.read(webSearchServiceProvider);
+        if (web.needsLiveWeb(prompt) || (activeDoc == null && prompt.trim().length > 12)) {
+          try {
+            final hits = await web.search(prompt);
+            if (hits.isNotEmpty) {
+              webContext = hits.map((h) => h.toPromptLine()).join('\n');
+            }
+          } catch (_) {}
         }
 
         final contextBuilder = ContextBuilder(maxContextTokens: 2000);
@@ -214,6 +225,7 @@ class RealAIChatService {
           hierarchicalModel: activeDoc?.hierarchicalModel,
           subjectName: activeDoc?.fileName,
           topicName: (activeDoc?.concepts.isNotEmpty == true) ? activeDoc!.concepts.first.title : null,
+          webContext: webContext,
         );
 
         final response = await provider.complete(AIRequest(messages: messages));
