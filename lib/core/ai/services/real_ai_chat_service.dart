@@ -5,6 +5,7 @@ import '../../storage/secure_storage.dart';
 import '../ai_config.dart';
 import '../ai_message.dart';
 import '../providers/gemini_provider.dart';
+import '../rag/chunker.dart';
 import '../rag/context_builder.dart';
 import '../rag/retriever.dart';
 
@@ -139,78 +140,68 @@ class RealAIChatService {
       return 'Hello! How can I help you with your studies today? 😊';
     }
 
-    // Semantic RAG when API key + embedded chunks are available
-    if (apiKey != null && apiKey.isNotEmpty && activeDoc != null && activeDoc.chunks.isNotEmpty) {
+    // If API key is available, synthesize with Gemini 3.8 Flash
+    if (apiKey != null && apiKey.isNotEmpty) {
       try {
         final provider = GeminiProvider(AIConfig(
           providerType: AIProviderType.gemini,
           apiKey: apiKey,
           model: 'gemini-3.8-flash',
-          temperature: 0.5,
-          maxTokens: 1024,
+          temperature: 0.4,
+          maxTokens: 2048,
         ));
-        final retriever = EmbeddingRetriever(
-          provider: provider,
-          initialK: 8,
-          topK: 5,
-          similarityThreshold: 0.45,
-        );
-        final topChunks = await retriever.retrieve(
-          prompt,
-          activeDoc.chunks,
-          maxContextTokens: 1600,
-        );
 
-        if (topChunks.isNotEmpty) {
-          final contextBuilder = ContextBuilder(maxContextTokens: 2000);
-          final history = conversationHistory.take(6).map((m) =>
-            m.role == 'user'
-              ? AIMessage(role: AIRole.user, content: m.content)
-              : AIMessage(role: AIRole.assistant, content: m.content),
-          ).toList();
-
-          final messages = contextBuilder.build(
-            userQuery: prompt,
-            retrievedChunks: topChunks,
-            conversationHistory: history,
-          );
-
-          final response = await provider.complete(AIRequest(messages: messages));
-          return response.content.trim();
-        } else {
-          // No relevant chunks found
-          return 'I could not find an answer to that in your uploaded notes for **${activeDoc.fileName}**. '
-              'Try rephrasing your question or ask about a specific topic from the document.';
+        List<DocumentChunk> topChunks = [];
+        if (activeDoc != null && activeDoc.chunks.isNotEmpty) {
+          try {
+            final retriever = EmbeddingRetriever(
+              provider: provider,
+              initialK: 8,
+              topK: 5,
+              similarityThreshold: 0.35,
+            );
+            topChunks = await retriever.retrieve(
+              prompt,
+              activeDoc.chunks,
+              maxContextTokens: 1600,
+            );
+          } catch (_) {
+            // If semantic embedding retrieval fails, use keyword chunks as background
+            final kw = _keywordRelevantChunks(prompt, activeDoc);
+            topChunks = kw.map((c) => DocumentChunk(
+              content: c,
+              chunkIndex: 0,
+              tokenCount: c.split(' ').length,
+              documentId: activeDoc.id,
+            )).toList();
+          }
         }
+
+        final contextBuilder = ContextBuilder(maxContextTokens: 2000);
+        final history = conversationHistory.take(12).map((m) =>
+          m.role == 'user'
+            ? AIMessage(role: AIRole.user, content: m.content)
+            : AIMessage(role: AIRole.assistant, content: m.content),
+        ).toList();
+
+        final messages = contextBuilder.build(
+          userQuery: prompt,
+          retrievedChunks: topChunks,
+          conversationHistory: history,
+          subjectName: activeDoc?.fileName,
+          topicName: (activeDoc?.concepts.isNotEmpty == true) ? activeDoc!.concepts.first.title : null,
+        );
+
+        final response = await provider.complete(AIRequest(messages: messages));
+        return response.content.trim();
       } catch (e) {
-        // If embedding retrieval fails, don't drop to keyword notice — directly answer with document content using Gemini!
-        try {
-          final provider = GeminiProvider(AIConfig(
-            providerType: AIProviderType.gemini,
-            apiKey: apiKey,
-            model: 'gemini-3.8-flash',
-            temperature: 0.5,
-            maxTokens: 1024,
-          ));
-          final docExcerpt = activeDoc.fullText.isNotEmpty 
-              ? (activeDoc.fullText.length > 4000 ? activeDoc.fullText.substring(0, 4000) : activeDoc.fullText)
-              : activeDoc.chunks.take(4).map((c) => c.content).join('\n\n');
-          final messages = <AIMessage>[
-            AIMessage(
-              role: AIRole.system,
-              content: 'You are StudyMate AI, an academic mentor. Answer the student question based on this study material:\n\n$docExcerpt',
-            ),
-            AIMessage(role: AIRole.user, content: prompt),
-          ];
-          final response = await provider.complete(AIRequest(messages: messages));
-          return response.content.trim();
-        } catch (_) {
-          return _buildContextualRagAnswer(prompt, [], activeDoc, error: e.toString());
-        }
+        // Fallback to local semantic engine if API network error occurs
+        final keywordChunks = _keywordRelevantChunks(prompt, activeDoc);
+        return _buildContextualRagAnswer(prompt, keywordChunks, activeDoc, error: e.toString());
       }
     }
 
-    // Keyword fallback (no API key or no embeddings yet)
+    // Keyword fallback (if no API key configured)
     final keywordChunks = _keywordRelevantChunks(prompt, activeDoc);
     return _buildContextualRagAnswer(prompt, keywordChunks, activeDoc);
   }

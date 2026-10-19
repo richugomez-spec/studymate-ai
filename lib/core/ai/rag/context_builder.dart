@@ -4,11 +4,10 @@ import 'chunker.dart';
 /// Builds the full AI prompt for a RAG query.
 ///
 /// Combines:
-/// 1. System persona & role instructions
-/// 2. User's AI memory (weak topics, preferences)
-/// 3. Retrieved document chunks (grounding context)
-/// 4. Conversation history (short-term memory)
-/// 5. Current user query
+/// 1. System persona & teaching guidelines (ChatGPT / NotebookLM style)
+/// 2. Student context & knowledge base grounding
+/// 3. Conversational multi-turn history
+/// 4. Current user query with typo & shorthand resilience
 class ContextBuilder {
   /// Max tokens to use for retrieved context
   final int maxContextTokens;
@@ -44,15 +43,18 @@ class ContextBuilder {
       messages.add(AIMessage(
         role: AIRole.system,
         content:
-            'RELEVANT CONTENT FROM STUDENT\'S NOTES:\n\n$contextText\n\n'
-            'Base your response primarily on this content. '
-            'If you use information outside these notes, clearly indicate that.',
+            'STUDENT\'S COURSE MATERIAL & KNOWLEDGE BASE (CONTEXT):\n\n$contextText\n\n'
+            'HOW TO USE THIS CONTEXT:\n'
+            '- Use the above student notes as background context and foundation.\n'
+            '- DO NOT limit yourself only to this text. If the context is minimal, sparse, or only contains keywords, use your own deep reasoning to provide a thorough, complete, and master-level educational lesson.\n'
+            '- NEVER say "This is not covered in your notes", "Please upload more notes", or "I don\'t have enough context".\n'
+            '- If the notes mention a concept briefly, explain the full concept thoroughly and connect it back to their study topic.',
       ));
     }
 
-    // ── Conversation history (last 8 turns) ────────────────────────────────────
-    final history = conversationHistory.length > 8
-        ? conversationHistory.sublist(conversationHistory.length - 8)
+    // ── Conversation history (last 12 turns for deep contextual memory) ────────
+    final history = conversationHistory.length > 12
+        ? conversationHistory.sublist(conversationHistory.length - 12)
         : conversationHistory;
     messages.addAll(history);
 
@@ -68,44 +70,52 @@ class ContextBuilder {
     required String explanationStyle,
     required List<String> weakConcepts,
   }) {
-    final style = switch (explanationStyle) {
-      'beginner' => 'Use simple language, analogies, and real-world examples. '
-          'Avoid jargon. Explain as if teaching a first-year student.',
-      'expert' => 'Use precise technical terminology. '
-          'Assume strong background knowledge. Be concise and rigorous.',
-      _ => 'Use clear, balanced explanations suitable for an undergraduate student. '
-          'Include examples when helpful.',
-    };
-
     final contextSection = [
-      if (subjectName != null) 'Subject: $subjectName',
-      if (topicName != null) 'Current Topic: $topicName',
+      if (subjectName != null && subjectName.isNotEmpty) 'Subject: $subjectName',
+      if (topicName != null && topicName.isNotEmpty) 'Current Topic: $topicName',
     ].join(' | ');
 
     final weakSection = weakConcepts.isNotEmpty
-        ? '\nThe student has shown weakness in: ${weakConcepts.join(', ')}. '
-            'Pay extra attention to clarity on these concepts.'
+        ? '\nStudent weak areas: ${weakConcepts.join(', ')}. Pay special attention to intuitive clarity on these topics.'
         : '';
 
-    return '''You are StudyMate AI, a personal learning coach for university students. 
-Your role is NOT to just answer questions — you actively help students UNDERSTAND and MASTER their subject.
+    return '''You are StudyMate AI, an elite educational tutor, academic mentor, and personal professor (designed like ChatGPT / NotebookLM).
+Your primary mission is to help students truly UNDERSTAND, REASON ABOUT, and MASTER concepts.
 
 $contextSection$weakSection
 
-Your communication style: $style
+CORE DIRECTIVES & TEACHING PHILOSOPHY:
+1. ZERO REFUSAL POLICY:
+   - NEVER refuse to answer a student.
+   - NEVER say "This is not covered in your notes", "Please upload more content", or "I don't have enough context".
+   - If retrieved notes are sparse, brief, or just contain a single keyword (e.g. "Binary Search" or "Semaphores"), use your full knowledge and reasoning engine to deliver a world-class educational lesson.
 
-Guidelines:
-- CRITICAL: Always prioritize the student's uploaded notes over general model knowledge. Answer directly and specifically based on the provided notes.
-- If the specific answer is NOT found in the provided notes, explicitly state: "This is not covered in your uploaded notes," and do not fabricate facts.
-- Explain clearly like an expert academic mentor, keeping explanations grounded, structured, and factual.
-- If a concept is complex, break it down into clean numbered steps or bullet points.
-- Use markdown formatting: **bold** for key concepts and terms, code blocks for syntax or formulas.
-- End with a targeted follow-up question or check-in to test the student's understanding.''';
+2. ROBUST PROMPT UNDERSTANDING & TYPO RESILIENCE:
+   - Students frequently type in shorthand, with typos, abbreviations, or partial words (e.g., "binar serch" -> Binary Search, "dfs" -> Depth-First Search, "bst" -> Binary Search Tree, "recusion" -> Recursion, "expln" -> Explain, "why", "again", "idk", "confused").
+   - Automatically infer user intent, correct misspellings, and resolve abbreviations immediately without asking unnecessary clarification questions.
+
+3. CONVERSATIONAL MEMORY & MULTI-TURN CONTINUITY:
+   - Maintain continuous awareness of previous turns in the chat session.
+   - For example, if the student asks "Explain Stack", then follows with "Queue", then "Difference?", then "Example?", understand that they are comparing Stacks and Queues. Seamlessly build upon prior turns.
+
+4. MASTER TEACHING STRUCTURE:
+   When explaining or teaching a concept, structure your response naturally and educationally:
+   - Direct, intuitive answer
+   - Simple, crystal-clear explanation
+   - Step-by-step breakdown or mechanics
+   - Practical example (or code snippet / formula where applicable)
+   - Real-world analogy (making the abstract tangible)
+   - Common pitfalls or mistakes students make
+   - Quick summary or exam / interview tip
+
+5. CLEAN, NATURAL FORMATTING:
+   - Deliver clean, readable text. Avoid markdown clutter, excessive asterisks, raw dividers (---), or repetitive bolding.
+   - Use clean headings, clean bullet points, numbered steps, and syntax-highlighted code blocks where appropriate.''';
   }
 
   String _buildContextBlock(List<DocumentChunk> chunks) {
     return chunks.asMap().entries.map((e) {
-      return '[Source ${e.key + 1}]:\n${e.value.content}';
-    }).join('\n\n---\n\n');
+      return '[Excerpt ${e.key + 1}]:\n${e.value.content}';
+    }).join('\n\n');
   }
 }

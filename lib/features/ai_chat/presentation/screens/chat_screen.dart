@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -533,13 +534,64 @@ class _RealMessageBubble extends StatelessWidget {
                       Text('Synthesizing...', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12, color: AppColors.darkTextSecondary)),
                     ],
                   )
-                : SelectableText(
-                    message.content,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 13,
-                      color: AppColors.darkTextPrimary,
-                      height: 1.5,
+                : MarkdownBody(
+                    data: message.content,
+                    selectable: true,
+                    styleSheet: MarkdownStyleSheet(
+                      p: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 13.5,
+                        color: AppColors.darkTextPrimary,
+                        height: 1.55,
+                      ),
+                      h1: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        height: 1.4,
+                      ),
+                      h2: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        height: 1.4,
+                      ),
+                      h3: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.electricVioletLight,
+                        height: 1.4,
+                      ),
+                      strong: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                      listBullet: const TextStyle(
+                        color: AppColors.teal,
+                        fontSize: 13.5,
+                      ),
+                      code: const TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 12,
+                        backgroundColor: Colors.transparent,
+                        color: AppColors.teal,
+                      ),
+                      codeblockDecoration: BoxDecoration(
+                        color: AppColors.darkSurfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.darkBorder),
+                      ),
+                      codeblockPadding: const EdgeInsets.all(12),
+                      blockquote: TextStyle(
+                        color: Colors.white.withOpacity(0.85),
+                        fontStyle: FontStyle.italic,
+                      ),
+                      blockquoteDecoration: const BoxDecoration(
+                        border: Border(left: BorderSide(color: AppColors.electricViolet, width: 3)),
+                      ),
                     ),
                   ),
           ),

@@ -42,147 +42,34 @@ class DashboardScreen extends ConsumerWidget {
             pinned: false,
             backgroundColor: AppColors.darkBackground,
             surfaceTintColor: Colors.transparent,
-            title: Row(
-              children: [
-                Text(
-                  'S',
-                  style: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.darkTextTertiary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '/',
-                  style: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 12,
-                    color: AppColors.darkTextTertiary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'PORTAL',
-                  style: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                    color: AppColors.darkTextTertiary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '/',
-                  style: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 12,
-                    color: AppColors.darkTextTertiary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'Home Workspace',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.darkTextPrimary,
-                  ),
-                ),
-              ],
+            title: const Text(
+              'StudyMate AI',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
             actions: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.darkSurfaceVariant,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.darkBorderSubtle),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: AppColors.emerald,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      '28:02',
-                      style: TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.emerald,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
               IconButton(
                 onPressed: () => context.push(AppRoutes.uploadCenter),
-                tooltip: 'Search folio or add material (⌘K)',
-                icon: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: AppColors.darkSurface,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppColors.darkBorder),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.search_rounded, size: 14, color: AppColors.darkTextSecondary),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Search folio',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 11,
-                          color: AppColors.darkTextTertiary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                        decoration: BoxDecoration(
-                          color: AppColors.darkSurfaceContainer,
-                          borderRadius: BorderRadius.circular(3),
-                        ),
-                        child: Text(
-                          '⌘K',
-                          style: TextStyle(
-                            fontFamily: 'JetBrains Mono',
-                            fontSize: 9,
-                            color: AppColors.darkTextTertiary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                tooltip: 'Upload Study Material',
+                icon: const Icon(Icons.cloud_upload_outlined, size: 20, color: AppColors.electricVioletLight),
               ),
-              const SizedBox(width: 8),
               IconButton(
                 onPressed: () => context.push(AppRoutes.profile),
                 tooltip: 'Profile',
                 icon: CircleAvatar(
                   radius: 14,
                   backgroundColor: AppColors.darkSurfaceContainerHigh,
-                  child: const Text(
-                    'SM',
-                    style: TextStyle(
+                  child: Text(
+                    user?.displayName?.isNotEmpty == true ? user!.displayName![0].toUpperCase() : 'U',
+                    style: const TextStyle(
                       fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.darkTextPrimary,
+                      color: AppColors.electricViolet,
                     ),
                   ),
                 ),
@@ -343,88 +230,6 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
                   ],
                 ),
               ),
-              Row(
-                children: [
-                  InkWell(
-                    onTap: () {
-                      if (activeDoc != null) {
-                        context.push(AppRoutes.flashcards.replaceFirst(':topicId', activeDoc.id));
-                      } else {
-                        context.push(AppRoutes.uploadCenter);
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: AppColors.darkSurfaceVariant,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppColors.darkBorderSubtle),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.psychology_outlined, size: 14, color: AppColors.darkTextSecondary),
-                          const SizedBox(width: 7),
-                          Text(
-                            activeDoc != null
-                                ? 'Spaced Recall (${activeDoc.concepts.length} due)'
-                                : 'Spaced Recall (0 due)',
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.darkTextPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  InkWell(
-                    onTap: () async {
-                      final uid = user?.id ?? ref.read(firestoreServiceProvider).currentUserId;
-                      if (uid != null && uid.isNotEmpty) {
-                        await ref.read(firestoreServiceProvider).recordStudySessionTime(uid, 25);
-                      }
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Focus Block recorded! +25 study minutes added to Firestore.'),
-                            duration: Duration(seconds: 3),
-                          ),
-                        );
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: AppColors.darkSurfaceVariant,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppColors.darkBorderSubtle),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.play_arrow_rounded, size: 14, color: AppColors.darkTextSecondary),
-                          SizedBox(width: 5),
-                          Text(
-                            '25m Focus Block',
-                            style: TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.darkTextPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ],
           ),
         ],
@@ -540,50 +345,49 @@ class _TodayLearningMissionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      mission.title,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
-                        letterSpacing: -0.3,
-                        color: AppColors.darkTextPrimary,
-                      ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 600;
+
+              final details = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    mission.title,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                      letterSpacing: -0.3,
+                      color: AppColors.darkTextPrimary,
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      mission.description,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12.5,
-                        height: 1.45,
-                        color: AppColors.darkTextSecondary,
-                      ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    mission.description,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 12.5,
+                      height: 1.45,
+                      color: AppColors.darkTextSecondary,
                     ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        _StitchMetric(label: 'RETENTION', value: '${mission.expectedMasteryGainPercent + 75}% Optimal'),
-                        const SizedBox(width: 24),
-                        _StitchMetric(label: 'STAGE', value: 'L-4 (${mission.estimatedMinutes} mins)'),
-                        const SizedBox(width: 24),
-                        const _StitchMetric(label: 'SOURCE', value: 'Vlasov (1959) §4.2'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 24),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 20,
+                    runSpacing: 8,
+                    children: [
+                      _StitchMetric(label: 'RETENTION', value: '${mission.expectedMasteryGainPercent + 75}% Optimal'),
+                      _StitchMetric(label: 'STAGE', value: 'L-4 (${mission.estimatedMinutes} mins)'),
+                      _StitchMetric(label: 'SUBJECT', value: mission.subjectName.isNotEmpty ? mission.subjectName : 'Course Material'),
+                    ],
+                  ),
+                ],
+              );
+
+              final actions = Column(
+                crossAxisAlignment: isMobile ? CrossAxisAlignment.start : CrossAxisAlignment.end,
                 children: [
                   ElevatedButton(
                     onPressed: () {
@@ -606,7 +410,7 @@ class _TodayLearningMissionCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          mission.callToAction.isNotEmpty ? mission.callToAction : 'Resume Derivation',
+                          mission.callToAction.isNotEmpty ? mission.callToAction : 'Start Practice Drill',
                           style: const TextStyle(
                             fontFamily: 'Inter',
                             fontSize: 12,
@@ -618,12 +422,12 @@ class _TodayLearningMissionCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   TextButton.icon(
                     onPressed: () => context.push(AppRoutes.library),
                     icon: const Icon(Icons.menu_book_outlined, size: 14, color: AppColors.darkTextSecondary),
                     label: const Text(
-                      'Open Folio PDF',
+                      'Open Material',
                       style: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 12,
@@ -635,8 +439,28 @@ class _TodayLearningMissionCard extends StatelessWidget {
                     ),
                   ),
                 ],
-              ),
-            ],
+              );
+
+              if (isMobile) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    details,
+                    const SizedBox(height: 16),
+                    actions,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: details),
+                  const SizedBox(width: 24),
+                  actions,
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -723,59 +547,58 @@ class _EmptyLearningMissionCard extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35,
-                        letterSpacing: -0.3,
-                        color: AppColors.darkTextPrimary,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 600;
+
+              final details = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35,
+                      letterSpacing: -0.3,
+                      color: AppColors.darkTextPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 12.5,
+                      height: 1.45,
+                      color: AppColors.darkTextSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 20,
+                    runSpacing: 8,
+                    children: [
+                      _StitchMetric(
+                        label: 'DOCUMENTS',
+                        value: activeDoc != null ? '1 Active' : '0 Indexed',
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      description,
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12.5,
-                        height: 1.45,
-                        color: AppColors.darkTextSecondary,
+                      _StitchMetric(
+                        label: 'CONCEPTS',
+                        value: '${activeDoc?.concepts.length ?? 0} Extracted',
                       ),
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        _StitchMetric(
-                          label: 'DOCUMENTS',
-                          value: activeDoc != null ? '1 Active' : '0 Indexed',
-                        ),
-                        const SizedBox(width: 24),
-                        _StitchMetric(
-                          label: 'CONCEPTS',
-                          value: '${activeDoc?.concepts.length ?? 0} Extracted',
-                        ),
-                        const SizedBox(width: 24),
-                        _StitchMetric(
-                          label: 'STATUS',
-                          value: activeDoc != null ? 'Ready for drill' : 'Awaiting upload',
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 24),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+                      _StitchMetric(
+                        label: 'STATUS',
+                        value: activeDoc != null ? 'Ready for drill' : 'Awaiting upload',
+                      ),
+                    ],
+                  ),
+                ],
+              );
+
+              final actions = Column(
+                crossAxisAlignment: isMobile ? CrossAxisAlignment.start : CrossAxisAlignment.end,
                 children: [
                   ElevatedButton(
                     onPressed: () {
@@ -811,7 +634,7 @@ class _EmptyLearningMissionCard extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   TextButton.icon(
                     onPressed: () => context.push(activeDoc != null ? AppRoutes.library : AppRoutes.uploadCenter),
                     icon: Icon(
@@ -832,8 +655,28 @@ class _EmptyLearningMissionCard extends ConsumerWidget {
                     ),
                   ),
                 ],
-              ),
-            ],
+              );
+
+              if (isMobile) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    details,
+                    const SizedBox(height: 16),
+                    actions,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: details),
+                  const SizedBox(width: 24),
+                  actions,
+                ],
+              );
+            },
           ),
         ],
       ),

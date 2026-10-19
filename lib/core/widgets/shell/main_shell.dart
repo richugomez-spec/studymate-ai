@@ -160,37 +160,6 @@ class _StudyMateSidebar extends StatelessWidget {
                   ),
                 ],
               ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isDark ? AppColors.darkSurfaceContainerLowest : AppColors.lightSurfaceVariant,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 5,
-                      height: 5,
-                      decoration: const BoxDecoration(
-                        color: AppColors.emerald,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      'ONLINE',
-                      style: TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? AppColors.emerald : AppColors.lightTextSecondary,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
           const SizedBox(height: 20),
@@ -273,57 +242,6 @@ class _StudyMateSidebar extends StatelessWidget {
           }),
 
           const Spacer(),
-
-          // Active session micro status
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.darkSurfaceContainerLowest : AppColors.lightSurfaceVariant,
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(
-                color: isDark ? AppColors.darkBorderSubtle : AppColors.lightBorder,
-                width: 1,
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'AI ENGINE',
-                      style: TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Gemini 3.8 Flash',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w500,
-                        color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: const BoxDecoration(
-                    color: AppColors.emerald,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
