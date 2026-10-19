@@ -33,8 +33,8 @@ class _SRSFlashcard {
 }
 
 class FlashcardScreen extends ConsumerStatefulWidget {
-  final String topicId;
-  const FlashcardScreen({super.key, required this.topicId});
+  final String? topicId;
+  const FlashcardScreen({super.key, this.topicId});
 
   @override
   ConsumerState<FlashcardScreen> createState() => _FlashcardScreenState();
@@ -149,6 +149,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
   @override
   Widget build(BuildContext context) {
     final activeDoc = ref.watch(activeDocumentProvider);
+    if (_cards.isEmpty && activeDoc != null && activeDoc.flashcards.isNotEmpty) {
+      _loadCards();
+    }
 
     if (activeDoc == null || _cards.isEmpty) {
       return Scaffold(

@@ -10,8 +10,8 @@ import '../../../../core/theme/app_colors.dart';
 enum SummaryMode { short, medium, detailed }
 
 class SummaryScreen extends ConsumerStatefulWidget {
-  final String topicId;
-  const SummaryScreen({super.key, required this.topicId});
+  final String? topicId;
+  const SummaryScreen({super.key, this.topicId});
 
   @override
   ConsumerState<SummaryScreen> createState() => _SummaryScreenState();

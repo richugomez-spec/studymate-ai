@@ -8,8 +8,8 @@ import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
 
 class QuestionPaperAnalyzerScreen extends ConsumerStatefulWidget {
-  final String topicId;
-  const QuestionPaperAnalyzerScreen({super.key, required this.topicId});
+  final String? topicId;
+  const QuestionPaperAnalyzerScreen({super.key, this.topicId});
 
   @override
   ConsumerState<QuestionPaperAnalyzerScreen> createState() => _QuestionPaperAnalyzerScreenState();

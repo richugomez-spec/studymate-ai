@@ -7,8 +7,8 @@ import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
 
 class MindMapScreen extends ConsumerStatefulWidget {
-  final String topicId;
-  const MindMapScreen({super.key, required this.topicId});
+  final String? topicId;
+  const MindMapScreen({super.key, this.topicId});
 
   @override
   ConsumerState<MindMapScreen> createState() => _MindMapScreenState();

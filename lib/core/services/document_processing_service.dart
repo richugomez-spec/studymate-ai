@@ -9,6 +9,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 import '../ai/models/hierarchical_document_model.dart';
 import '../ai/rag/chunker.dart';
 import '../ai/services/embedding_service.dart';
+import '../storage/hive_storage.dart';
 
 /// Models for real extracted learning assets
 class ExtractedConcept {
@@ -109,18 +110,249 @@ class UploadedDocument {
     this.downloadUrl,
     this.hierarchicalModel,
   });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'fileName': fileName,
+    'fileType': fileType,
+    'byteSize': byteSize,
+    'fullText': fullText.length > 50000 ? fullText.substring(0, 50000) : fullText,
+    'concepts': concepts.map((c) => {
+      'id': c.id,
+      'title': c.title,
+      'description': c.description,
+      'initialMastery': c.initialMastery,
+      'importanceScore': c.importanceScore,
+      'keyPoints': c.keyPoints,
+    }).toList(),
+    'flashcards': flashcards.map((f) => {
+      'id': f.id,
+      'front': f.front,
+      'back': f.back,
+      'conceptTitle': f.conceptTitle,
+    }).toList(),
+    'quizzes': quizzes.map((q) => {
+      'id': q.id,
+      'question': q.question,
+      'options': q.options,
+      'correctIndex': q.correctIndex,
+      'explanation': q.explanation,
+      'conceptTitle': q.conceptTitle,
+    }).toList(),
+    'summary': {
+      'title': summary.title,
+      'overview': summary.overview,
+      'keyTakeaways': summary.keyTakeaways,
+      'coreTheorems': summary.coreTheorems,
+      'examTraps': summary.examTraps,
+    },
+    'uploadedAt': uploadedAt.toIso8601String(),
+    'downloadUrl': downloadUrl,
+    if (hierarchicalModel != null)
+      'hierarchicalModel': {
+        'documentId': hierarchicalModel!.documentId,
+        'fileName': hierarchicalModel!.fileName,
+        'totalPages': hierarchicalModel!.totalPages,
+        'documentOverview': hierarchicalModel!.documentOverview,
+        'chapters': hierarchicalModel!.chapters.map((ch) => {
+          'id': ch.id,
+          'title': ch.title,
+          'startPage': ch.startPage,
+          'endPage': ch.endPage,
+          'summary': ch.summary,
+          'keyLearningObjectives': ch.keyLearningObjectives,
+          'sections': ch.sections.map((sec) => {
+            'id': sec.id,
+            'title': sec.title,
+            'pageNumber': sec.pageNumber,
+            'summary': sec.summary,
+            'coreTheorems': sec.coreTheorems,
+            'detectedFormulas': sec.detectedFormulas,
+          }).toList(),
+        }).toList(),
+        'formulas': hierarchicalModel!.formulas.map((f) => {
+          'name': f.name,
+          'expression': f.expression,
+          'explanation': f.explanation,
+          'pageNumber': f.pageNumber,
+        }).toList(),
+        'glossary': hierarchicalModel!.glossary.map((g) => {
+          'term': g.term,
+          'definition': g.definition,
+          'context': g.context,
+          'pageNumber': g.pageNumber,
+        }).toList(),
+        'relationships': hierarchicalModel!.relationships.map((r) => {
+          'sourceConcept': r.sourceConcept,
+          'targetConcept': r.targetConcept,
+          'relationshipType': r.relationshipType,
+          'explanation': r.explanation,
+        }).toList(),
+        'examWeightage': hierarchicalModel!.examWeightage.map((w) => {
+          'topic': w.topic,
+          'estimatedWeightagePercent': w.estimatedWeightagePercent,
+          'frequencyTier': w.frequencyTier,
+          'typicalExamQuestions': w.typicalExamQuestions,
+          'commonPitfalls': w.commonPitfalls,
+        }).toList(),
+        'learningObjectives': hierarchicalModel!.learningObjectives,
+        'realWorldApplications': hierarchicalModel!.realWorldApplications,
+      },
+  };
+
+  factory UploadedDocument.fromJson(Map<String, dynamic> json) {
+    final conceptsList = (json['concepts'] as List? ?? []).map((c) => ExtractedConcept(
+      id: c['id'] ?? '',
+      title: c['title'] ?? '',
+      description: c['description'] ?? '',
+      initialMastery: (c['initialMastery'] as num?)?.toDouble() ?? 0.5,
+      importanceScore: (c['importanceScore'] as num?)?.toInt() ?? 4,
+      keyPoints: List<String>.from(c['keyPoints'] ?? []),
+    )).toList();
+
+    final flashcardsList = (json['flashcards'] as List? ?? []).map((f) => ExtractedFlashcard(
+      id: f['id'] ?? '',
+      front: f['front'] ?? '',
+      back: f['back'] ?? '',
+      conceptTitle: f['conceptTitle'] ?? '',
+    )).toList();
+
+    final quizzesList = (json['quizzes'] as List? ?? []).map((q) => ExtractedQuizQuestion(
+      id: q['id'] ?? '',
+      question: q['question'] ?? '',
+      options: List<String>.from(q['options'] ?? []),
+      correctIndex: (q['correctIndex'] as num?)?.toInt() ?? 0,
+      explanation: q['explanation'] ?? '',
+      conceptTitle: q['conceptTitle'] ?? '',
+    )).toList();
+
+    final summaryMap = json['summary'] as Map<String, dynamic>? ?? {};
+    final summaryObj = ExtractedSummary(
+      title: summaryMap['title'] ?? '',
+      overview: summaryMap['overview'] ?? '',
+      keyTakeaways: List<String>.from(summaryMap['keyTakeaways'] ?? []),
+      coreTheorems: List<String>.from(summaryMap['coreTheorems'] ?? []),
+      examTraps: List<String>.from(summaryMap['examTraps'] ?? []),
+    );
+
+    HierarchicalDocumentModel? hierModel;
+    if (json['hierarchicalModel'] != null) {
+      final hm = json['hierarchicalModel'] as Map<String, dynamic>;
+      hierModel = HierarchicalDocumentModel(
+        documentId: hm['documentId'] ?? '',
+        fileName: hm['fileName'] ?? '',
+        totalPages: (hm['totalPages'] as num?)?.toInt() ?? 1,
+        documentOverview: hm['documentOverview'] ?? '',
+        chapters: (hm['chapters'] as List? ?? []).map((ch) => DocumentChapter(
+          id: ch['id'] ?? '',
+          title: ch['title'] ?? '',
+          startPage: (ch['startPage'] as num?)?.toInt() ?? 1,
+          endPage: (ch['endPage'] as num?)?.toInt() ?? 1,
+          summary: ch['summary'] ?? '',
+          keyLearningObjectives: List<String>.from(ch['keyLearningObjectives'] ?? []),
+          sections: (ch['sections'] as List? ?? []).map((sec) => DocumentSection(
+            id: sec['id'] ?? '',
+            title: sec['title'] ?? '',
+            pageNumber: (sec['pageNumber'] as num?)?.toInt() ?? 1,
+            summary: sec['summary'] ?? '',
+            coreTheorems: List<String>.from(sec['coreTheorems'] ?? []),
+            detectedFormulas: List<String>.from(sec['detectedFormulas'] ?? []),
+          )).toList(),
+        )).toList(),
+        formulas: (hm['formulas'] as List? ?? []).map((f) => ExtractedFormula(
+          name: f['name'] ?? '',
+          expression: f['expression'] ?? '',
+          explanation: f['explanation'] ?? '',
+          pageNumber: (f['pageNumber'] as num?)?.toInt() ?? 1,
+        )).toList(),
+        glossary: (hm['glossary'] as List? ?? []).map((g) => ExtractedDefinition(
+          term: g['term'] ?? '',
+          definition: g['definition'] ?? '',
+          context: g['context'] ?? '',
+          pageNumber: (g['pageNumber'] as num?)?.toInt() ?? 1,
+        )).toList(),
+        relationships: (hm['relationships'] as List? ?? []).map((r) => ConceptRelationship(
+          sourceConcept: r['sourceConcept'] ?? '',
+          targetConcept: r['targetConcept'] ?? '',
+          relationshipType: r['relationshipType'] ?? '',
+          explanation: r['explanation'] ?? '',
+        )).toList(),
+        examWeightage: (hm['examWeightage'] as List? ?? []).map((w) => ExamWeightageTopic(
+          topic: w['topic'] ?? '',
+          estimatedWeightagePercent: (w['estimatedWeightagePercent'] as num?)?.toDouble() ?? 25.0,
+          frequencyTier: w['frequencyTier'] ?? 'High',
+          typicalExamQuestions: List<String>.from(w['typicalExamQuestions'] ?? []),
+          commonPitfalls: List<String>.from(w['commonPitfalls'] ?? []),
+        )).toList(),
+        learningObjectives: List<String>.from(hm['learningObjectives'] ?? []),
+        realWorldApplications: List<String>.from(hm['realWorldApplications'] ?? []),
+      );
+    }
+
+    final rawText = (json['fullText'] as String?) ?? '';
+    final chunks = const DocumentChunker().chunk(rawText, sourceId: json['fileName'] ?? 'doc');
+
+    return UploadedDocument(
+      id: json['id'] ?? '',
+      fileName: json['fileName'] ?? '',
+      fileType: json['fileType'] ?? 'DOC',
+      byteSize: (json['byteSize'] as num?)?.toInt() ?? 0,
+      fullText: rawText,
+      chunks: chunks,
+      concepts: conceptsList,
+      flashcards: flashcardsList,
+      quizzes: quizzesList,
+      summary: summaryObj,
+      uploadedAt: DateTime.tryParse(json['uploadedAt'] ?? '') ?? DateTime.now(),
+      downloadUrl: json['downloadUrl'],
+      hierarchicalModel: hierModel,
+    );
+  }
 }
 
-/// State notifier holding the active uploaded document
+/// State notifier holding the active uploaded document with persistent disk cache
 class ActiveDocumentNotifier extends StateNotifier<UploadedDocument?> {
-  ActiveDocumentNotifier() : super(null);
+  static const _storageKey = 'active_document_cache';
+
+  ActiveDocumentNotifier() : super(_restoreInitial()) {
+    if (state == null) {
+      _loadAsync();
+    }
+  }
+
+  static UploadedDocument? _restoreInitial() {
+    try {
+      final cachedJson = HiveStorage.get<String>(_storageKey);
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        final map = jsonDecode(cachedJson) as Map<String, dynamic>;
+        return UploadedDocument.fromJson(map);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _loadAsync() async {
+    try {
+      final cachedJson = HiveStorage.get<String>(_storageKey);
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        final map = jsonDecode(cachedJson) as Map<String, dynamic>;
+        state = UploadedDocument.fromJson(map);
+      }
+    } catch (_) {}
+  }
 
   void setDocument(UploadedDocument doc) {
     state = doc;
+    try {
+      HiveStorage.put(_storageKey, jsonEncode(doc.toJson()));
+    } catch (_) {}
   }
 
   void clearDocument() {
     state = null;
+    try {
+      HiveStorage.delete(_storageKey);
+    } catch (_) {}
   }
 }
 

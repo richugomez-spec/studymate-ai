@@ -96,6 +96,9 @@ class FirestoreDocumentModel {
   final int conceptCount;
   final int quizCount;
   final int flashcardCount;
+  final String? summary;
+  final String? extractedText;
+  final Map<String, dynamic>? documentData;
 
   const FirestoreDocumentModel({
     required this.id,
@@ -109,6 +112,9 @@ class FirestoreDocumentModel {
     this.conceptCount = 0,
     this.quizCount = 0,
     this.flashcardCount = 0,
+    this.summary,
+    this.extractedText,
+    this.documentData,
   });
 
   factory FirestoreDocumentModel.fromMap(Map<String, dynamic> map, String docId) {
@@ -124,6 +130,9 @@ class FirestoreDocumentModel {
       conceptCount: (map['conceptCount'] as num?)?.toInt() ?? 0,
       quizCount: (map['quizCount'] as num?)?.toInt() ?? 0,
       flashcardCount: (map['flashcardCount'] as num?)?.toInt() ?? 0,
+      summary: map['summary'] as String?,
+      extractedText: map['extractedText'] as String?,
+      documentData: map['documentData'] as Map<String, dynamic>?,
     );
   }
 
@@ -142,6 +151,9 @@ class FirestoreDocumentModel {
       'conceptCount': conceptCount,
       'quizCount': quizCount,
       'flashcardCount': flashcardCount,
+      if (summary != null) 'summary': summary,
+      if (extractedText != null) 'extractedText': extractedText,
+      if (documentData != null) 'documentData': documentData,
     };
   }
 

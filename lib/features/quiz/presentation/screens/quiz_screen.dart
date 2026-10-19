@@ -33,8 +33,8 @@ class _GeneratedQuizQuestion {
 }
 
 class QuizScreen extends ConsumerStatefulWidget {
-  final String topicId;
-  const QuizScreen({super.key, required this.topicId});
+  final String? topicId;
+  const QuizScreen({super.key, this.topicId});
 
   @override
   ConsumerState<QuizScreen> createState() => _QuizScreenState();

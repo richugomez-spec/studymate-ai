@@ -153,6 +153,9 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
               conceptCount: processedDoc.concepts.length,
               quizCount: processedDoc.quizzes.length,
               flashcardCount: processedDoc.flashcards.length,
+              summary: processedDoc.summary.overview,
+              extractedText: processedDoc.fullText,
+              documentData: processedDoc.toJson(),
             );
           }
 

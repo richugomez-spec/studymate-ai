@@ -158,6 +158,9 @@ class FirestoreService {
     int conceptCount = 0,
     int quizCount = 0,
     int flashcardCount = 0,
+    String? summary,
+    String? extractedText,
+    Map<String, dynamic>? documentData,
   }) async {
     try {
       final now = DateTime.now();
@@ -178,6 +181,9 @@ class FirestoreService {
         conceptCount: conceptCount,
         quizCount: quizCount,
         flashcardCount: flashcardCount,
+        summary: summary,
+        extractedText: extractedText,
+        documentData: documentData,
       );
 
       batch.set(newDocRef, docModel.toMap());

@@ -53,17 +53,12 @@ GoRouter appRouter(AppRouterRef ref) {
   ref.onDispose(refreshNotifier.dispose);
 
   return GoRouter(
-    initialLocation: AppRoutes.splash,
+    initialLocation: AppRoutes.home,
     refreshListenable: refreshNotifier,
     redirect: (context, state) {
       final user = authRepository.currentUser;
       final isAuthenticated = user != null;
       final location = state.matchedLocation;
-
-      // Allow splash to manage initial boot
-      if (location == AppRoutes.splash) {
-        return null;
-      }
 
       final isAuthRoute = location == AppRoutes.login || location == AppRoutes.onboarding;
 
@@ -72,7 +67,7 @@ GoRouter appRouter(AppRouterRef ref) {
         return AppRoutes.home;
       }
 
-      // Guest visitors can browse Home, Library, AI Chat, Progress, Settings in preview mode
+      // Guest visitors can browse Home, Library, AI Chat, Study Tools, Progress, Settings in preview mode
       return null;
     },
     debugLogDiagnostics: true,
