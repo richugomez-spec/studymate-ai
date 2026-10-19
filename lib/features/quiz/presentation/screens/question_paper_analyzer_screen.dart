@@ -102,35 +102,74 @@ class _QuestionPaperAnalyzerScreenState extends ConsumerState<QuestionPaperAnaly
           // ── Topic Weightage Chart ─────────────────────────────────────────
           const Text('TOPIC EXAM WEIGHTAGE', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.darkTextTertiary)),
           const SizedBox(height: 10),
-          ...concepts.take(4).map((c) {
-            final idx = concepts.indexOf(c);
-            final weight = [35, 25, 20, 15][idx % 4];
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(c.title, style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
-                      Text('$weight% weightage', style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.electricVioletLight)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: weight / 100.0,
-                      backgroundColor: Colors.white.withOpacity(0.06),
-                      valueColor: AlwaysStoppedAnimation<Color>(idx == 0 ? AppColors.electricViolet : AppColors.teal),
-                      minHeight: 6,
+          if (activeDoc.hierarchicalModel?.examWeightage.isNotEmpty == true) ...[
+            ...activeDoc.hierarchicalModel!.examWeightage.map((ew) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(ew.topic, style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: ew.frequencyTier == 'Very High' ? Colors.deepOrangeAccent.withOpacity(0.15) : AppColors.teal.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('${ew.frequencyTier} • ${ew.estimatedWeightagePercent.toInt()}%', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: FontWeight.w700, color: ew.frequencyTier == 'Very High' ? Colors.deepOrangeAccent : AppColors.teal)),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-            );
-          }),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: ew.estimatedWeightagePercent / 100.0,
+                        backgroundColor: Colors.white.withOpacity(0.06),
+                        valueColor: AlwaysStoppedAnimation<Color>(ew.frequencyTier == 'Very High' ? Colors.deepOrangeAccent : AppColors.teal),
+                        minHeight: 6,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ] else ...[
+            ...concepts.take(4).map((c) {
+              final idx = concepts.indexOf(c);
+              final weight = [35, 25, 20, 15][idx % 4];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(c.title, style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
+                        Text('$weight% weightage', style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.electricVioletLight)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: weight / 100.0,
+                        backgroundColor: Colors.white.withOpacity(0.06),
+                        valueColor: AlwaysStoppedAnimation<Color>(idx == 0 ? AppColors.electricViolet : AppColors.teal),
+                        minHeight: 6,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
 
           const SizedBox(height: 20),
 

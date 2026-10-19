@@ -1,12 +1,13 @@
+import '../models/hierarchical_document_model.dart';
 import '../ai_message.dart';
 import 'chunker.dart';
 
-/// Builds the full AI prompt for a RAG query.
+/// Builds the full AI prompt for an AI-First query.
 ///
 /// Combines:
 /// 1. System persona & teaching guidelines (ChatGPT / NotebookLM style)
-/// 2. Student context & knowledge base grounding
-/// 3. Conversational multi-turn history
+/// 2. Hierarchical document intelligence across all chapters & pages
+/// 3. Conversational multi-turn history with token compression
 /// 4. Current user query with typo & shorthand resilience
 class ContextBuilder {
   /// Max tokens to use for retrieved context
@@ -19,6 +20,7 @@ class ContextBuilder {
     required String userQuery,
     required List<DocumentChunk> retrievedChunks,
     required List<AIMessage> conversationHistory,
+    HierarchicalDocumentModel? hierarchicalModel,
     String? topicName,
     String? subjectName,
     String? explanationStyle,
@@ -36,6 +38,14 @@ class ContextBuilder {
         weakConcepts: weakConcepts ?? [],
       ),
     ));
+
+    // ── Hierarchical Knowledge Base Grounding (AI-First) ──────────────────────
+    if (hierarchicalModel != null) {
+      messages.add(AIMessage(
+        role: AIRole.system,
+        content: hierarchicalModel.generateHolisticReasoningPrompt(),
+      ));
+    }
 
     // ── Context from notes (30% RAG / 70% Gemini Reasoning) ───────────────────
     if (retrievedChunks.isNotEmpty) {

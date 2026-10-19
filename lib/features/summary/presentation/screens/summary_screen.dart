@@ -221,27 +221,121 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
 
           const SizedBox(height: 18),
 
-          // ── 3. Key Equations & Formulas ────────────────────────────────────
+          // ── 3. Hierarchical Chapter Outline ──────────────────────────────
+          if (activeDoc.hierarchicalModel?.chapters.isNotEmpty == true) ...[
+            _buildSectionHeader('Hierarchical Chapter Architecture (${activeDoc.hierarchicalModel!.chapters.length} Chapters)', Icons.menu_book_rounded, AppColors.electricVioletLight),
+            const SizedBox(height: 10),
+            ...activeDoc.hierarchicalModel!.chapters.map((ch) => Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurfaceVariant,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.darkBorderSubtle),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          ch.title,
+                          style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w700, color: Colors.white),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.electricViolet.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'Pages ${ch.startPage}-${ch.endPage}',
+                          style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, color: AppColors.electricVioletLight),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    ch.summary,
+                    style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: Colors.white.withOpacity(0.7), height: 1.35),
+                  ),
+                  if (ch.sections.isNotEmpty && _mode != SummaryMode.short) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: ch.sections.take(3).map((s) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.04),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '§ ${s.title}',
+                          style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white.withOpacity(0.65)),
+                        ),
+                      )).toList(),
+                    ),
+                  ],
+                ],
+              ),
+            )),
+            const SizedBox(height: 18),
+          ],
+
+          // ── 4. Key Equations & Formulas ────────────────────────────────────
           _buildSectionHeader('Key Equations & Guarantees', Icons.functions_rounded, AppColors.teal),
           const SizedBox(height: 10),
-          ...theorems.map((th) => Container(
-            margin: const EdgeInsets.only(bottom: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.darkSurfaceVariant,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.teal.withOpacity(0.2)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.code_rounded, size: 16, color: AppColors.teal),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(th, style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12, color: Colors.white)),
-                ),
-              ],
-            ),
-          )),
+          if (activeDoc.hierarchicalModel?.formulas.isNotEmpty == true) ...[
+            ...activeDoc.hierarchicalModel!.formulas.map((f) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurfaceVariant,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.teal.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calculate_outlined, size: 16, color: AppColors.teal),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(f.expression, style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.teal)),
+                        const SizedBox(height: 2),
+                        Text(f.name, style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white.withOpacity(0.6))),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )),
+          ] else ...[
+            ...theorems.map((th) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.darkSurfaceVariant,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.teal.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.code_rounded, size: 16, color: AppColors.teal),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(th, style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12, color: Colors.white)),
+                  ),
+                ],
+              ),
+            )),
+          ],
 
           const SizedBox(height: 18),
 

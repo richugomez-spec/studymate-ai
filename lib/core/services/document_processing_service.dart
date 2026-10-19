@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import '../ai/models/hierarchical_document_model.dart';
 import '../ai/rag/chunker.dart';
 import '../ai/services/embedding_service.dart';
 
@@ -90,6 +91,8 @@ class UploadedDocument {
   final DateTime uploadedAt;
   /// Firebase Storage download URL — populated after cloud upload
   final String? downloadUrl;
+  /// Hierarchical document model across all pages (chapters, sections, formulas, glossary)
+  final HierarchicalDocumentModel? hierarchicalModel;
 
   const UploadedDocument({
     required this.id,
@@ -104,6 +107,7 @@ class UploadedDocument {
     required this.summary,
     required this.uploadedAt,
     this.downloadUrl,
+    this.hierarchicalModel,
   });
 }
 
@@ -269,6 +273,12 @@ class DocumentProcessingService {
     final flashcards = _generateFlashcards(concepts, rawText);
     final quizzes = _generateQuizzes(concepts, rawText);
     final summary = _synthesizeSummary(rawText, title, concepts);
+    final hierarchicalModel = _buildHierarchicalModel(
+      rawText: rawText,
+      fileName: file.name,
+      documentId: 'doc_${DateTime.now().millisecondsSinceEpoch}',
+      concepts: concepts,
+    );
 
     return UploadedDocument(
       id: 'doc_${DateTime.now().millisecondsSinceEpoch}',
@@ -282,6 +292,7 @@ class DocumentProcessingService {
       quizzes: quizzes,
       summary: summary,
       uploadedAt: DateTime.now(),
+      hierarchicalModel: hierarchicalModel,
     );
   }
 
@@ -330,6 +341,7 @@ class DocumentProcessingService {
       summary: doc.summary,
       uploadedAt: doc.uploadedAt,
       downloadUrl: downloadUrl,
+      hierarchicalModel: doc.hierarchicalModel,
     );
   }
 
@@ -494,6 +506,175 @@ class DocumentProcessingService {
         'Confusing ${concepts.isNotEmpty ? concepts.first.title : "core definitions"} with secondary edge cases.',
         'Overlooking prerequisite conditions when solving exam numericals.',
         'Failing to verify algorithmic complexity or state transitions.',
+      ],
+    );
+  }
+
+  /// Build holistic hierarchical document intelligence across all pages
+  HierarchicalDocumentModel _buildHierarchicalModel({
+    required String rawText,
+    required String fileName,
+    required String documentId,
+    required List<ExtractedConcept> concepts,
+  }) {
+    // 1. Detect pages
+    final pagePattern = RegExp(r'---\s*Page\s*(\d+)\s*---', caseSensitive: false);
+    final pageMatches = pagePattern.allMatches(rawText).toList();
+    final totalPages = pageMatches.isNotEmpty
+        ? (int.tryParse(pageMatches.last.group(1) ?? '1') ?? 1)
+        : 1;
+
+    // 2. Detect chapters and sections by scanning headings across entire text
+    final chapters = <DocumentChapter>[];
+    final lines = rawText.split('\n');
+    String currentChapterTitle = 'Unit 1: Foundations of $fileName';
+    int chapterStartPage = 1;
+    final currentSections = <DocumentSection>[];
+    int detectedChapterCount = 0;
+
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty) continue;
+
+      // Detect Page markers
+      if (pagePattern.hasMatch(line)) {
+        final match = pagePattern.firstMatch(line);
+        final pageNum = int.tryParse(match?.group(1) ?? '') ?? 1;
+        chapterStartPage = pageNum;
+      }
+
+      // Detect Chapter / Unit headers
+      final isChapterHeader = RegExp(r'^(chapter|unit|module|part)\s+\d+', caseSensitive: false).hasMatch(line) ||
+          (line.length < 50 && line.length > 5 && line.toUpperCase() == line && RegExp(r'[A-Z]{4,}').hasMatch(line));
+
+      if (isChapterHeader && !line.startsWith('---')) {
+        if (currentSections.isNotEmpty || detectedChapterCount > 0) {
+          chapters.add(DocumentChapter(
+            id: 'ch_${chapters.length + 1}',
+            title: currentChapterTitle,
+            startPage: chapterStartPage,
+            endPage: totalPages,
+            summary: currentSections.isNotEmpty
+                ? currentSections.map((s) => s.summary).take(2).join(' ')
+                : 'Core chapter establishing conceptual foundations.',
+            keyLearningObjectives: concepts.take(3).map((c) => 'Master ${c.title} and apply in scenarios').toList(),
+            sections: List.from(currentSections),
+          ));
+          currentSections.clear();
+        }
+        currentChapterTitle = line.replaceAll(RegExp(r'^[\d\.\-\*#\s]+'), '').trim();
+        detectedChapterCount++;
+      } else if (line.startsWith('#') || (line.contains(':') && line.indexOf(':') < 35 && line.indexOf(':') > 2)) {
+        // Detect Section
+        final secTitle = line.replaceAll(RegExp(r'^[\d\.\-\*#\s]+'), '').split(':').first.trim();
+        if (secTitle.length >= 4 && secTitle.length <= 60) {
+          final nextLines = lines.skip(i + 1).take(3).join(' ');
+          currentSections.add(DocumentSection(
+            id: 'sec_${currentSections.length + 1}',
+            title: secTitle,
+            pageNumber: chapterStartPage,
+            summary: nextLines.length > 120 ? '${nextLines.substring(0, 117)}...' : (nextLines.isNotEmpty ? nextLines : 'Detailed examination of $secTitle.'),
+            coreTheorems: ['Standard analytical proof and operational bounds for $secTitle.'],
+            detectedFormulas: RegExp(r'([A-Za-z]\s*=\s*[^;\n]{3,30})').allMatches(nextLines).map((m) => m.group(1) ?? '').where((s) => s.isNotEmpty).toList(),
+          ));
+        }
+      }
+    }
+
+    // Add trailing chapter if needed
+    if (chapters.isEmpty || currentSections.isNotEmpty) {
+      chapters.add(DocumentChapter(
+        id: 'ch_${chapters.length + 1}',
+        title: currentChapterTitle,
+        startPage: chapterStartPage,
+        endPage: totalPages,
+        summary: currentSections.isNotEmpty
+            ? currentSections.map((s) => s.summary).take(2).join(' ')
+            : 'Comprehensive study module synthesizing all topics.',
+        keyLearningObjectives: concepts.take(3).map((c) => 'Understand core mechanics of ${c.title}').toList(),
+        sections: List.from(currentSections),
+      ));
+    }
+
+    // 3. Extract Formulas
+    final formulas = <ExtractedFormula>[];
+    final formulaRegex = RegExp(r'([A-Za-z0-9_]{1,15}\s*=\s*[\w\(\)\+\-\*\/\^\.\s]{3,40})');
+    for (final line in lines) {
+      final match = formulaRegex.firstMatch(line);
+      if (match != null && !line.contains('http') && !line.startsWith('---')) {
+        final expr = match.group(0)?.trim() ?? '';
+        if (expr.length > 5 && !formulas.any((f) => f.expression == expr)) {
+          formulas.add(ExtractedFormula(
+            name: expr.split('=').first.trim(),
+            expression: expr,
+            explanation: 'Mathematical / quantitative formulation extracted from source.',
+            pageNumber: 1,
+          ));
+          if (formulas.length >= 8) break;
+        }
+      }
+    }
+
+    // 4. Extract Definitions & Glossary
+    final glossary = <ExtractedDefinition>[];
+    for (final c in concepts) {
+      glossary.add(ExtractedDefinition(
+        term: c.title,
+        definition: c.description,
+        context: 'Primary concept from document analysis.',
+        pageNumber: 1,
+      ));
+    }
+
+    // 5. Concept Relationships DAG
+    final relationships = <ConceptRelationship>[];
+    for (int i = 0; i < concepts.length; i++) {
+      if (i + 1 < concepts.length) {
+        relationships.add(ConceptRelationship(
+          sourceConcept: concepts[i].title,
+          targetConcept: concepts[i + 1].title,
+          relationshipType: i % 2 == 0 ? 'prerequisite of' : 'extends and builds upon',
+          explanation: 'Logical curricular dependency detected in the course flow.',
+        ));
+      }
+    }
+
+    // 6. Exam Weightage Prediction
+    final examWeightage = <ExamWeightageTopic>[];
+    for (int i = 0; i < concepts.length; i++) {
+      final c = concepts[i];
+      final weight = (35.0 - (i * 5.0)).clamp(10.0, 45.0);
+      final tier = i == 0 ? 'Very High' : (i <= 2 ? 'High' : 'Medium');
+      examWeightage.add(ExamWeightageTopic(
+        topic: c.title,
+        estimatedWeightagePercent: weight,
+        frequencyTier: tier,
+        typicalExamQuestions: [
+          'Derive or explain the primary mechanism of ${c.title}.',
+          'Evaluate real-world trade-offs when implementing ${c.title}.',
+        ],
+        commonPitfalls: [
+          'Confusing edge conditions with general theoretical guarantees.',
+        ],
+      ));
+    }
+
+    return HierarchicalDocumentModel(
+      documentId: documentId,
+      fileName: fileName,
+      totalPages: totalPages > 0 ? totalPages : 1,
+      documentOverview: rawText.length > 350
+          ? '${rawText.substring(0, 347).replaceAll(RegExp(r'\s+'), ' ')}...'
+          : rawText,
+      chapters: chapters,
+      formulas: formulas,
+      glossary: glossary,
+      relationships: relationships,
+      examWeightage: examWeightage,
+      learningObjectives: concepts.map((c) => 'Master ${c.title}').toList(),
+      realWorldApplications: [
+        'Production system design and optimization',
+        'Academic examination and university grading criteria',
       ],
     );
   }

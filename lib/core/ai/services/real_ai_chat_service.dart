@@ -211,6 +211,7 @@ class RealAIChatService {
           userQuery: prompt,
           retrievedChunks: topChunks,
           conversationHistory: history,
+          hierarchicalModel: activeDoc?.hierarchicalModel,
           subjectName: activeDoc?.fileName,
           topicName: (activeDoc?.concepts.isNotEmpty == true) ? activeDoc!.concepts.first.title : null,
         );

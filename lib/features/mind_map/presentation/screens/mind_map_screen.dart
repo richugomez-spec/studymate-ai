@@ -216,6 +216,23 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
 
                 const Text('RELATIONSHIPS & SUB-POINTS', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.darkTextTertiary)),
                 const SizedBox(height: 8),
+                if (activeDoc.hierarchicalModel?.relationships.isNotEmpty == true) ...[
+                  ...activeDoc.hierarchicalModel!.relationships
+                      .where((r) => r.sourceConcept == selected.title || r.targetConcept == selected.title)
+                      .map((r) => Container(
+                        margin: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.darkSurfaceVariant,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: AppColors.darkBorderSubtle),
+                        ),
+                        child: Text(
+                          '${r.sourceConcept} [${r.relationshipType}] ${r.targetConcept}',
+                          style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: AppColors.teal),
+                        ),
+                      )),
+                ],
                 if (selected.keyPoints.isNotEmpty) ...[
                   ...selected.keyPoints.map((kp) => Padding(
                     padding: const EdgeInsets.only(bottom: 6),
@@ -228,7 +245,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
                     ),
                   )),
                 ] else ...[
-                  Text('Core conceptual node in knowledge graph.', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: Colors.white38)),
+                  const Text('Core conceptual node in knowledge graph.', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: Colors.white38)),
                 ],
 
                 const SizedBox(height: 24),
