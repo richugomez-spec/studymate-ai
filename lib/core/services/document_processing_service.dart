@@ -386,6 +386,22 @@ class DocumentProcessingService {
     return result.files.first;
   }
 
+  /// Pick multiple files from the user's filesystem
+  Future<List<PlatformFile>> pickMultipleFiles({List<String>? allowedExtensions}) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowMultiple: true,
+      allowedExtensions: allowedExtensions ?? [
+        'pdf', 'pptx', 'docx', 'txt', 'md', 'json', 'csv',
+        'png', 'jpg', 'jpeg', 'webp',
+      ],
+      withData: true,
+    );
+
+    if (result == null || result.files.isEmpty) return [];
+    return result.files.where((f) => f.bytes != null).toList();
+  }
+
   /// Extract raw text from any supported file
   Future<String> extractText(PlatformFile file) async {
     final bytes = file.bytes;
