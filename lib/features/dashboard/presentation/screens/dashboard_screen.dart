@@ -1542,6 +1542,20 @@ class _QuickCognitiveActionsGrid extends ConsumerWidget {
         color: const Color(0xFF5F85DB),
         onTap: () => navigateOrPrompt(AppRoutes.summary),
       ),
+      _ActionItem(
+        icon: Icons.analytics_outlined,
+        title: 'PYQ Analyzer',
+        subtitle: 'Exam Weightage',
+        color: const Color(0xFF10B981),
+        onTap: () => navigateOrPrompt(AppRoutes.questionPaperAnalyzer),
+      ),
+      _ActionItem(
+        icon: Icons.assignment_outlined,
+        title: 'Mock Exam',
+        subtitle: 'Full Papers & Key',
+        color: const Color(0xFFEC4899),
+        onTap: () => navigateOrPrompt(AppRoutes.examGenerator),
+      ),
     ];
 
     return GridView.builder(

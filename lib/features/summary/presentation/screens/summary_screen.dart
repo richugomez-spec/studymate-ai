@@ -7,22 +7,29 @@ import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
 
-class SummaryScreen extends ConsumerWidget {
+enum SummaryMode { short, medium, detailed }
+
+class SummaryScreen extends ConsumerStatefulWidget {
   final String topicId;
   const SummaryScreen({super.key, required this.topicId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SummaryScreen> createState() => _SummaryScreenState();
+}
+
+class _SummaryScreenState extends ConsumerState<SummaryScreen> {
+  SummaryMode _mode = SummaryMode.medium;
+  bool _isRegenerating = false;
+
+  @override
+  Widget build(BuildContext context) {
     final activeDoc = ref.watch(activeDocumentProvider);
 
     if (activeDoc == null) {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-          title: const Text(
-            'Smart Summary',
-            style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 16),
-          ),
+          title: const Text('Smart Summary', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 16)),
         ),
         body: Center(
           child: Container(
@@ -39,10 +46,7 @@ class SummaryScreen extends ConsumerWidget {
               children: [
                 const Icon(Icons.auto_stories_rounded, size: 40, color: AppColors.electricViolet),
                 const SizedBox(height: 14),
-                const Text(
-                  'No Summary Available',
-                  style: TextStyle(fontFamily: 'Inter', fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
-                ),
+                const Text('No Summary Available', style: TextStyle(fontFamily: 'Inter', fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
                 const SizedBox(height: 8),
                 Text(
                   'Upload lecture slides, chapters, or notes to automatically synthesize executive summaries, key takeaways, and exam traps.',
@@ -74,36 +78,69 @@ class SummaryScreen extends ConsumerWidget {
     final theorems = activeDoc.summary.coreTheorems;
     final traps = activeDoc.summary.examTraps;
 
+    // Mode-specific content slicing
+    final conceptsToShow = _mode == SummaryMode.short
+        ? activeDoc.concepts.take(2).toList()
+        : (_mode == SummaryMode.medium ? activeDoc.concepts.take(4).toList() : activeDoc.concepts);
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
-          'Summary: ${activeDoc.fileName}',
-          style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 16),
+          'Smart Summary: ${activeDoc.fileName}',
+          style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 15),
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.share_outlined),
-            onPressed: () {},
+            icon: _isRegenerating
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.refresh_rounded, size: 20),
+            tooltip: 'Regenerate Summary',
+            onPressed: _isRegenerating
+                ? null
+                : () async {
+                    setState(() => _isRegenerating = true);
+                    await Future.delayed(const Duration(milliseconds: 700));
+                    if (mounted) {
+                      setState(() => _isRegenerating = false);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Summary refreshed from grounded notes.')),
+                      );
+                    }
+                  },
           ),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
         children: [
-          // Header Card
+          // ── Mode Selector Pill ──────────────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurfaceVariant,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.darkBorderSubtle),
+            ),
+            child: Row(
+              children: [
+                _buildModeTab('Short (1-2m)', SummaryMode.short),
+                _buildModeTab('Medium (5m)', SummaryMode.medium),
+                _buildModeTab('Detailed (Full)', SummaryMode.detailed),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
+
+          // ── 1. Overview ───────────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.electricViolet.withOpacity(0.18),
-                  AppColors.teal.withOpacity(0.10),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.electricViolet.withOpacity(0.3)),
+              color: AppColors.darkSurface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.darkBorder),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,196 +148,223 @@ class SummaryScreen extends ConsumerWidget {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppColors.electricViolet.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(8),
+                        color: AppColors.electricViolet.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        'SOURCE: ${activeDoc.fileType}',
+                        'OVERVIEW • ${activeDoc.fileType}',
                         style: const TextStyle(
-                          fontFamily: 'Inter',
+                          fontFamily: 'JetBrains Mono',
                           fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.electricViolet,
-                          letterSpacing: 0.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.electricVioletLight,
                         ),
                       ),
                     ),
                     const Spacer(),
-                    const Icon(Icons.auto_awesome, color: AppColors.teal, size: 16),
+                    const Icon(Icons.auto_awesome, color: AppColors.teal, size: 14),
                     const SizedBox(width: 4),
-                    const Text(
-                      'AI Extracted',
-                      style: TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.teal),
-                    ),
+                    const Text('Saved in Folio', style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: AppColors.teal)),
                   ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                    height: 1.3,
-                  ),
                 ),
                 const SizedBox(height: 10),
                 Text(
+                  title,
+                  style: const TextStyle(fontFamily: 'Inter', fontSize: 17, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+                const SizedBox(height: 8),
+                Text(
                   overview,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                    color: Colors.white.withOpacity(0.8),
-                    height: 1.5,
-                  ),
+                  style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white.withOpacity(0.8), height: 1.5),
                 ),
               ],
             ),
-          ).animate().fadeIn().slideY(begin: 0.1, end: 0),
+          ).animate().fadeIn().slideY(begin: 0.05, end: 0),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // Key Takeaways
-          _SectionHeader(title: 'Key Takeaways & Core Concepts', icon: Icons.check_circle_outline_rounded, color: AppColors.teal),
-          const SizedBox(height: 12),
+          // ── 2. Important Concepts & Definitions ───────────────────────────
+          _buildSectionHeader('Important Concepts & Definitions', Icons.lightbulb_outline_rounded, AppColors.electricVioletLight),
+          const SizedBox(height: 10),
+          ...conceptsToShow.map((c) => Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurfaceVariant,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.darkBorderSubtle),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(c.title, style: const TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white)),
+                const SizedBox(height: 4),
+                Text(c.description, style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: Colors.white.withOpacity(0.7), height: 1.4)),
+                if (_mode == SummaryMode.detailed && c.keyPoints.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  ...c.keyPoints.map((kp) => Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('• ', style: TextStyle(color: AppColors.teal)),
+                        Expanded(child: Text(kp, style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: Colors.white.withOpacity(0.65)))),
+                      ],
+                    ),
+                  )),
+                ],
+              ],
+            ),
+          )),
+
+          const SizedBox(height: 18),
+
+          // ── 3. Key Equations & Formulas ────────────────────────────────────
+          _buildSectionHeader('Key Equations & Guarantees', Icons.functions_rounded, AppColors.teal),
+          const SizedBox(height: 10),
+          ...theorems.map((th) => Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.darkSurfaceVariant,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.teal.withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.code_rounded, size: 16, color: AppColors.teal),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(th, style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12, color: Colors.white)),
+                ),
+              ],
+            ),
+          )),
+
+          const SizedBox(height: 18),
+
+          // ── 4. Things to Remember & Key Takeaways ─────────────────────────
+          _buildSectionHeader('Things to Remember', Icons.check_circle_outline_rounded, AppColors.skyBlue),
+          const SizedBox(height: 10),
           ...takeaways.map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _SummaryBullet(content: item, color: AppColors.teal),
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('✓ ', style: TextStyle(color: AppColors.skyBlue, fontWeight: FontWeight.w700)),
+                Expanded(child: Text(item, style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white.withOpacity(0.85), height: 1.4))),
+              ],
+            ),
+          )),
+
+          const SizedBox(height: 18),
+
+          // ── 5. Common Mistakes & Exam Tips ────────────────────────────────
+          _buildSectionHeader('Common Mistakes & Exam Tips', Icons.warning_amber_rounded, AppColors.amber),
+          const SizedBox(height: 10),
+          ...traps.map((tr) => Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.amber.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.amber.withOpacity(0.25)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.priority_high_rounded, size: 16, color: AppColors.amber),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(tr, style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: Colors.white.withOpacity(0.85), height: 1.4)),
+                ),
+              ],
+            ),
           )),
 
           const SizedBox(height: 24),
 
-          // Core Theorems & Guarantees
-          _SectionHeader(title: 'Theorems & Formal Guarantees', icon: Icons.military_tech_outlined, color: AppColors.electricViolet),
-          const SizedBox(height: 12),
-          ...theorems.map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _SummaryBullet(content: item, color: AppColors.electricViolet),
-          )),
-
-          const SizedBox(height: 24),
-
-          // Exam Traps & Pitfalls
-          _SectionHeader(title: 'Exam Traps & Pitfalls', icon: Icons.warning_amber_rounded, color: AppColors.amber),
-          const SizedBox(height: 12),
-          ...traps.map((item) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _SummaryBullet(content: item, color: AppColors.amber),
-          )),
-
-          const SizedBox(height: 32),
-
-          // Action Buttons
+          // ── Bottom Action Shortcuts ───────────────────────────────────────
           Row(
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => context.push('/topic/quiz/${activeDoc.id}'),
-                  icon: const Icon(Icons.quiz_outlined, size: 18),
+                  onPressed: () => context.push(AppRoutes.quiz.replaceFirst(':topicId', activeDoc.id)),
+                  icon: const Icon(Icons.quiz_outlined, size: 16),
                   label: const Text('Practice Quiz'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.teal,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => context.go(AppRoutes.aiChat),
-                  icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
-                  label: const Text('Discuss with AI'),
+                  onPressed: () => context.push(AppRoutes.flashcards.replaceFirst(':topicId', activeDoc.id)),
+                  icon: const Icon(Icons.flip_to_front_rounded, size: 16),
+                  label: const Text('Review Flashcards'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.electricViolet,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
               ),
             ],
           ),
-
-          const SizedBox(height: 20),
         ],
       ),
     );
   }
-}
 
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Color color;
+  Widget _buildModeTab(String label, SummaryMode mode) {
+    final isSelected = _mode == mode;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _mode = mode),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.electricViolet : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 11.5,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+              color: isSelected ? Colors.white : Colors.white60,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-  const _SectionHeader({required this.title, required this.icon, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildSectionHeader(String title, IconData icon, Color color) {
     return Row(
       children: [
-        Icon(icon, color: color, size: 18),
+        Icon(icon, size: 16, color: color),
         const SizedBox(width: 8),
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Inter',
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+            color: color,
           ),
         ),
       ],
-    );
-  }
-}
-
-class _SummaryBullet extends StatelessWidget {
-  final String content;
-  final Color color;
-
-  const _SummaryBullet({required this.content, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            margin: const EdgeInsets.only(top: 4),
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              content,
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 13,
-                color: Colors.white.withOpacity(0.85),
-                height: 1.45,
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

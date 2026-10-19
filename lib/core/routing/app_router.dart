@@ -16,6 +16,8 @@ import '../../features/subject/presentation/screens/subject_screen.dart';
 import '../../features/unit/presentation/screens/unit_screen.dart';
 import '../../features/topic/presentation/screens/topic_screen.dart';
 import '../../features/quiz/presentation/screens/quiz_screen.dart';
+import '../../features/quiz/presentation/screens/question_paper_analyzer_screen.dart';
+import '../../features/quiz/presentation/screens/exam_generator_screen.dart';
 import '../../features/flashcard/presentation/screens/flashcard_screen.dart';
 import '../../features/summary/presentation/screens/summary_screen.dart';
 import '../../features/mind_map/presentation/screens/mind_map_screen.dart';
@@ -157,6 +159,18 @@ GoRouter appRouter(AppRouterRef ref) {
       GoRoute(
         path: AppRoutes.mindMap,
         builder: (_, state) => MindMapScreen(
+          topicId: state.pathParameters['topicId']!,
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.questionPaperAnalyzer,
+        builder: (_, state) => QuestionPaperAnalyzerScreen(
+          topicId: state.pathParameters['topicId']!,
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.examGenerator,
+        builder: (_, state) => ExamGeneratorScreen(
           topicId: state.pathParameters['topicId']!,
         ),
       ),

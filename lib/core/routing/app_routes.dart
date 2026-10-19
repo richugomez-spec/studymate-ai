@@ -23,6 +23,8 @@ abstract final class AppRoutes {
   static const quiz = '/quiz/:topicId';
   static const flashcards = '/flashcards/:topicId';
   static const mindMap = '/mind-map/:topicId';
+  static const questionPaperAnalyzer = '/analyzer/:topicId';
+  static const examGenerator = '/exam/:topicId';
 
   // Tools
   static const uploadCenter = '/upload';
