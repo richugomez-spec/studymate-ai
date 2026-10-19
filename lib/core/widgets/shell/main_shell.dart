@@ -19,8 +19,6 @@ class MainShell extends ConsumerStatefulWidget {
 }
 
 class _MainShellState extends ConsumerState<MainShell> {
-  int _selectedIndex = 0;
-
   static const _sectionedNav = [
     _NavSection(label: 'WORKSPACE', destinations: [
       _NavDestination(route: AppRoutes.home, icon: Icons.home_outlined, selectedIcon: Icons.home_rounded, label: 'Home'),
@@ -43,9 +41,20 @@ class _MainShellState extends ConsumerState<MainShell> {
 
   static final _allDestinations = _sectionedNav.expand((s) => s.destinations).toList();
 
+  int _calculateSelectedIndex(BuildContext context) {
+    final location = GoRouterState.of(context).matchedLocation;
+    for (int i = 0; i < _allDestinations.length; i++) {
+      final route = _allDestinations[i].route;
+      if (location == route) return i;
+      if (route != '/' && location.startsWith(route)) return i;
+      // Tool path prefix matching (e.g. /flashcards matches /flashcards/current)
+      final basePrefix = route.split('/')[1];
+      if (basePrefix.isNotEmpty && location.startsWith('/$basePrefix')) return i;
+    }
+    return 0;
+  }
+
   void _onDestinationSelected(int index) {
-    if (_selectedIndex == index) return;
-    setState(() => _selectedIndex = index);
     context.go(_allDestinations[index].route);
   }
 
@@ -54,6 +63,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 900;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedIndex = _calculateSelectedIndex(context);
 
     if (isDesktop) {
       return Scaffold(
@@ -61,7 +71,7 @@ class _MainShellState extends ConsumerState<MainShell> {
         body: Row(
           children: [
             _StudyMateSidebar(
-              selectedIndex: _selectedIndex,
+              selectedIndex: selectedIndex,
               sectionedNav: _sectionedNav,
               allDestinations: _allDestinations,
               onDestinationSelected: _onDestinationSelected,
@@ -89,7 +99,7 @@ class _MainShellState extends ConsumerState<MainShell> {
     return Scaffold(
       body: widget.child,
       bottomNavigationBar: _StudyMateBottomNav(
-        selectedIndex: _selectedIndex,
+        selectedIndex: selectedIndex,
         destinations: mobileDestinations,
         onDestinationSelected: _onDestinationSelected,
       ),
