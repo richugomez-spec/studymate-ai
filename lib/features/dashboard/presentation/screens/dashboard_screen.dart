@@ -10,6 +10,7 @@ import '../../../../core/ai/engines/ai_learning_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../auth/presentation/widgets/auth_required_modal.dart';
 
 /// Living Mission Control Dashboard
 ///
@@ -52,28 +53,66 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ),
             actions: [
-              IconButton(
-                onPressed: () => context.push(AppRoutes.uploadCenter),
-                tooltip: 'Upload Study Material',
-                icon: const Icon(Icons.cloud_upload_outlined, size: 20, color: AppColors.electricVioletLight),
-              ),
-              IconButton(
-                onPressed: () => context.push(AppRoutes.profile),
-                tooltip: 'Profile',
-                icon: CircleAvatar(
-                  radius: 14,
-                  backgroundColor: AppColors.darkSurfaceContainerHigh,
-                  child: Text(
-                    user?.displayName?.isNotEmpty == true ? user!.displayName![0].toUpperCase() : 'U',
-                    style: const TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.electricViolet,
+              if (user == null) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                  child: ElevatedButton(
+                    onPressed: () => AuthRequiredModal.show(
+                      context,
+                      title: 'Sign in to StudyMate AI',
+                      message: 'Sign in to access your course notes, AI tutor, and custom study materials.',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.electricViolet,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: const Text(
+                      'Sign In',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12.5,
+                      ),
                     ),
                   ),
                 ),
+              ],
+              IconButton(
+                onPressed: () {
+                  if (user == null) {
+                    AuthRequiredModal.show(
+                      context,
+                      title: 'Sign in to upload documents',
+                      message: 'Create a free account or sign in to index your notes, extract concepts, and generate live study materials.',
+                    );
+                  } else {
+                    context.push(AppRoutes.uploadCenter);
+                  }
+                },
+                tooltip: 'Upload Study Material',
+                icon: const Icon(Icons.cloud_upload_outlined, size: 20, color: AppColors.electricVioletLight),
               ),
+              if (user != null)
+                IconButton(
+                  onPressed: () => context.push(AppRoutes.profile),
+                  tooltip: 'Profile',
+                  icon: CircleAvatar(
+                    radius: 14,
+                    backgroundColor: AppColors.darkSurfaceContainerHigh,
+                    child: Text(
+                      user.displayName?.isNotEmpty == true ? user.displayName![0].toUpperCase() : 'U',
+                      style: const TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.electricViolet,
+                      ),
+                    ),
+                  ),
+                ),
               const SizedBox(width: 12),
             ],
           ),
@@ -170,18 +209,21 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
         : null;
     final firestoreUser = firestoreUserAsync?.asData?.value;
 
+    final isGuest = user == null;
     final displayName = firestoreUser?.name.isNotEmpty == true
         ? firestoreUser!.name
         : (user?.displayName != null && user!.displayName!.isNotEmpty)
             ? user.displayName!
             : (user?.email != null && user!.email.isNotEmpty)
                 ? user.email.split('@').first
-                : 'Student';
+                : 'Guest Student';
 
-    final greetingTitle = 'Ready to continue, $displayName';
-    final courseSubtitle = user?.course != null && user!.course!.isNotEmpty
-        ? user.course!
-        : (activeDoc != null ? 'Active Folio: ${activeDoc.fileName}' : 'Academic Course Workspace');
+    final greetingTitle = isGuest ? 'Welcome to StudyMate AI' : 'Ready to continue, $displayName';
+    final courseSubtitle = isGuest
+        ? 'Browse preview workspace • Sign in anytime to unlock full AI coaching'
+        : (user?.course != null && user!.course!.isNotEmpty
+            ? user!.course!
+            : (activeDoc != null ? 'Active Folio: ${activeDoc.fileName}' : 'Academic Course Workspace'));
 
     return Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 6),

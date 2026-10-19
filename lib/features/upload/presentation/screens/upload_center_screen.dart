@@ -9,6 +9,7 @@ import '../../../../core/services/firebase_upload_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../auth/presentation/widgets/auth_required_modal.dart';
 
 class UploadCenterScreen extends ConsumerStatefulWidget {
   const UploadCenterScreen({super.key});
@@ -30,6 +31,16 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
   ];
 
   Future<void> _pickFile() async {
+    final currentUser = ref.read(currentUserProvider);
+    if (currentUser == null) {
+      final signedIn = await AuthRequiredModal.show(
+        context,
+        title: 'Sign in to upload documents',
+        message: 'Create a free account or sign in to index your notes, extract concepts, and generate live study materials.',
+      );
+      if (!signedIn) return;
+    }
+
     setState(() {
       _isProcessing = true;
       _uploadProgress = 0.0;

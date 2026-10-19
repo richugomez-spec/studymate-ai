@@ -9,6 +9,7 @@ import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../auth/presentation/widgets/auth_required_modal.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   const ChatScreen({super.key});
@@ -165,6 +166,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _sendMessage(String text) async {
     final clean = text.trim();
     if (clean.isEmpty || _isSending) return;
+
+    final currentUser = ref.read(currentUserProvider);
+    if (currentUser == null) {
+      final signedIn = await AuthRequiredModal.show(
+        context,
+        title: 'Sign in to chat with AI Coach',
+        message: 'Sign in to access unlimited AI tutoring, document Q&A, and persistent chat sessions across your devices.',
+      );
+      if (!signedIn) return;
+    }
 
     final userMsg = RealChatMessage(
       id: 'usr_${DateTime.now().millisecondsSinceEpoch}',

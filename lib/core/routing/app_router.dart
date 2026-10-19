@@ -64,16 +64,12 @@ GoRouter appRouter(AppRouterRef ref) {
 
       final isAuthRoute = location == AppRoutes.login || location == AppRoutes.onboarding;
 
-      // Unauthenticated users attempting to access protected routes are sent to Login
-      if (!isAuthenticated && !isAuthRoute) {
-        return AppRoutes.login;
-      }
-
-      // Authenticated users attempting to access auth routes are sent to Dashboard
+      // Authenticated users navigating to login are redirected back to home
       if (isAuthenticated && isAuthRoute) {
         return AppRoutes.home;
       }
 
+      // Guest visitors can browse Home, Library, AI Chat, Progress, Settings in preview mode
       return null;
     },
     debugLogDiagnostics: true,

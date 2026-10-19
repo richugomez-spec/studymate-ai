@@ -7,6 +7,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../auth/presentation/widgets/auth_required_modal.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -15,19 +16,20 @@ class AnalyticsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final activeDoc = ref.watch(activeDocumentProvider);
     final user = ref.watch(currentUserProvider);
+    final isGuest = user == null;
     final userId = user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
     final progressAsync = userId.isNotEmpty
         ? ref.watch(userStudyProgressStreamProvider(userId))
         : null;
     final progress = progressAsync?.asData?.value;
 
-    final studyHours = ((progress?.totalMinutes ?? 0) / 60.0).toStringAsFixed(1);
-    final quizCount = (progress?.quizzesCompleted ?? 0) > 0
+    final studyHours = isGuest ? '0.0' : ((progress?.totalMinutes ?? 0) / 60.0).toStringAsFixed(1);
+    final quizCount = isGuest ? 0 : ((progress?.quizzesCompleted ?? 0) > 0
         ? progress!.quizzesCompleted
-        : (activeDoc?.quizzes.length ?? 0);
-    final cardCount = (progress?.flashcardsReviewed ?? 0) > 0
+        : (activeDoc?.quizzes.length ?? 0));
+    final cardCount = isGuest ? 0 : ((progress?.flashcardsReviewed ?? 0) > 0
         ? progress!.flashcardsReviewed
-        : (activeDoc?.flashcards.length ?? 0);
+        : (activeDoc?.flashcards.length ?? 0));
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -44,6 +46,63 @@ class AnalyticsScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(20),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
+                if (isGuest) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.electricViolet.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.electricViolet.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock_outline_rounded, color: AppColors.electricVioletLight, size: 22),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Guest Preview Mode',
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Sign in to track real study minutes, quiz mastery, and retention stability.',
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 12,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: () => AuthRequiredModal.show(
+                            context,
+                            title: 'Sign in to view your progress',
+                            message: 'Sync your learning records, retain mastery analytics, and unlock custom study targets.',
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.electricViolet,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          child: const Text('Sign In', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
 
                 // ── Stats Row ─────────────────────────────────────────────
                 LayoutBuilder(

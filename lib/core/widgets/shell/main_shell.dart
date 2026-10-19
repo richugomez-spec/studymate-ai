@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/routing/app_routes.dart';
+import '../../../features/auth/presentation/providers/auth_provider.dart';
+import '../../../features/auth/presentation/widgets/auth_required_modal.dart';
 
 /// Main navigation shell with bottom navigation bar.
 /// Wraps all 5 bottom-nav tabs using GoRouter's ShellRoute.
@@ -242,6 +244,97 @@ class _StudyMateSidebar extends StatelessWidget {
           }),
 
           const Spacer(),
+
+          // Bottom Account / Guest action
+          Consumer(
+            builder: (context, ref, _) {
+              final user = ref.watch(currentUserProvider);
+              if (user == null) {
+                return InkWell(
+                  onTap: () => AuthRequiredModal.show(
+                    context,
+                    title: 'Sign in to StudyMate AI',
+                    message: 'Unlock your AI tutor, uploaded lecture notes, and automated flashcards.',
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.electricViolet.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.electricViolet.withOpacity(0.25)),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.login_rounded, size: 16, color: AppColors.electricVioletLight),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Sign In',
+                            style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.electricVioletLight,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final name = user.displayName?.isNotEmpty == true
+                  ? user.displayName!
+                  : user.email.split('@').first;
+
+              return InkWell(
+                onTap: () => context.push(AppRoutes.profile),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppColors.darkSurfaceContainer : AppColors.lightSurfaceVariant,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: isDark ? AppColors.darkBorderSubtle : AppColors.lightBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 12,
+                        backgroundColor: AppColors.electricViolet.withOpacity(0.2),
+                        child: Text(
+                          name[0].toUpperCase(),
+                          style: const TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.electricViolet,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                          ),
+                        ),
+                      ),
+                      Icon(Icons.more_vert_rounded, size: 14, color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
