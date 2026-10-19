@@ -25,6 +25,7 @@ import '../../features/upload/presentation/screens/upload_center_screen.dart';
 import '../../features/planner/presentation/screens/planner_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/achievements/presentation/screens/achievements_screen.dart';
+import '../../features/study_tools/presentation/screens/study_tools_screen.dart';
 import '../widgets/shell/main_shell.dart';
 import 'app_routes.dart';
 
@@ -107,6 +108,10 @@ GoRouter appRouter(AppRouterRef ref) {
             pageBuilder: (_, __) => const NoTransitionPage(child: ChatScreen()),
           ),
           GoRoute(
+            path: AppRoutes.studyTools,
+            pageBuilder: (_, __) => const NoTransitionPage(child: StudyToolsScreen()),
+          ),
+          GoRoute(
             path: AppRoutes.progress,
             pageBuilder: (_, __) => const NoTransitionPage(child: AnalyticsScreen()),
           ),
@@ -178,7 +183,9 @@ GoRouter appRouter(AppRouterRef ref) {
       // ── Tool Routes ───────────────────────────────────────────────────────
       GoRoute(
         path: AppRoutes.uploadCenter,
-        builder: (_, __) => const UploadCenterScreen(),
+        builder: (_, state) => UploadCenterScreen(
+          targetTool: state.uri.queryParameters['targetTool'],
+        ),
       ),
       GoRoute(
         path: AppRoutes.studyPlanner,

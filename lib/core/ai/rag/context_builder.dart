@@ -37,26 +37,42 @@ class ContextBuilder {
       ),
     ));
 
-    // ── Context from notes (RAG) ───────────────────────────────────────────────
+    // ── Context from notes (30% RAG / 70% Gemini Reasoning) ───────────────────
     if (retrievedChunks.isNotEmpty) {
-      final contextText = _buildContextBlock(retrievedChunks);
+      // Limit to top 3 most relevant chunks to optimize tokens and prevent prompt stuffing
+      final topChunks = retrievedChunks.take(3).toList();
+      final contextText = _buildContextBlock(topChunks);
       messages.add(AIMessage(
         role: AIRole.system,
         content:
-            'STUDENT\'S COURSE MATERIAL & KNOWLEDGE BASE (CONTEXT):\n\n$contextText\n\n'
-            'HOW TO USE THIS CONTEXT:\n'
-            '- Use the above student notes as background context and foundation.\n'
-            '- DO NOT limit yourself only to this text. If the context is minimal, sparse, or only contains keywords, use your own deep reasoning to provide a thorough, complete, and master-level educational lesson.\n'
-            '- NEVER say "This is not covered in your notes", "Please upload more notes", or "I don\'t have enough context".\n'
-            '- If the notes mention a concept briefly, explain the full concept thoroughly and connect it back to their study topic.',
+            'REFERENCE MATERIAL (30% ANCHOR / 70% MODEL REASONING):\n\n$contextText\n\n'
+            'INSTRUCTIONS:\n'
+            '- Anchor your response to the student\'s notes where applicable.\n'
+            '- Use model reasoning, general knowledge, real-world examples, and analogies to fill in any missing concepts.\n'
+            '- NEVER say "I don\'t have enough information", "Not covered in your notes", or "Please upload more notes". Teach naturally like ChatGPT and an engaging professor.\n'
+            '- Understand typos, shorthand, and one-word prompts ("cpu?", "why", "1", "expalin", "simple", "exam") effortlessly.',
       ));
     }
 
-    // ── Conversation history (last 12 turns for deep contextual memory) ────────
-    final history = conversationHistory.length > 12
-        ? conversationHistory.sublist(conversationHistory.length - 12)
-        : conversationHistory;
-    messages.addAll(history);
+    // ── Compact Context Memory (Tokens optimized: summary + recent turns) ────
+    if (conversationHistory.length > 6) {
+      // Compress older exchanges into a compact summary memory to save 80% tokens
+      final older = conversationHistory.sublist(0, conversationHistory.length - 6);
+      final recent = conversationHistory.sublist(conversationHistory.length - 6);
+      
+      final olderSummary = older
+          .where((m) => m.content.isNotEmpty)
+          .map((m) => '${m.role.name}: ${m.content.length > 80 ? '${m.content.substring(0, 80)}...' : m.content}')
+          .join(' | ');
+
+      messages.add(AIMessage(
+        role: AIRole.system,
+        content: 'CONVERSATION CONTEXT MEMORY: $olderSummary',
+      ));
+      messages.addAll(recent);
+    } else {
+      messages.addAll(conversationHistory);
+    }
 
     // ── Current query ──────────────────────────────────────────────────────────
     messages.add(AIMessage(role: AIRole.user, content: userQuery));

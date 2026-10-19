@@ -146,13 +146,13 @@ class DashboardScreen extends ConsumerWidget {
 
                 const SizedBox(height: 24),
 
-                // ── 3. Next Actions & Deadlines / Vitals ──────────────────────
+                // ── 3. Quick Resume & Recent Active Material ───────────────────────
                 _SuggestedActionsAndDeadlinesRow(activeDoc: activeDoc)
                     .animate(delay: 180.ms).fadeIn().slideY(begin: 0.05, end: 0),
 
                 const SizedBox(height: 24),
 
-                // ── 4. Cognitive Radar & Vitals ──────────────────────────────
+                // ── 4. Today's Progress & Study Streak ──────────────────────
                 examReadinessAsync.when(
                   data: (readiness) => _CognitiveRadarVitalsRow(readinessScore: readiness)
                       .animate(delay: 240.ms).fadeIn().slideY(begin: 0.05, end: 0),
@@ -160,33 +160,7 @@ class DashboardScreen extends ConsumerWidget {
                   error: (_, __) => const _CognitiveRadarVitalsRow(readinessScore: 0.0),
                 ),
 
-                const SizedBox(height: 24),
-
-                // ── 5. High-Yield Gap Radar ──────────────────────────────────
-                _HighYieldGapRadarCard().animate(delay: 300.ms).fadeIn().slideY(begin: 0.05, end: 0),
-
-                const SizedBox(height: 24),
-
-                // ── 6. Quick Cognitive Learning Tools ────────────────────────
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'COGNITIVE LEARNING TOOLS',
-                      style: TextStyle(
-                        fontFamily: 'JetBrains Mono',
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.darkTextTertiary,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                  ],
-                ).animate(delay: 360.ms).fadeIn(),
-                const SizedBox(height: 10),
-                _QuickCognitiveActionsGrid().animate(delay: 380.ms).fadeIn(),
-
-                const SizedBox(height: 40),
+                const SizedBox(height: 36),
               ]),
             ),
           ),
@@ -1012,9 +986,11 @@ class _CognitiveRadarVitalsRow extends ConsumerWidget {
         ? (conceptsKnown * 15).clamp(20, 95)
         : (computedReadiness > 0 ? (computedReadiness * 0.9).toInt() : 0);
 
+    final streakDays = progress?.currentStreak ?? 1;
+
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isMobile = constraints.maxWidth < 600;
+        final isMobile = constraints.maxWidth < 650;
 
         final items = [
           _VitalCard(
@@ -1034,7 +1010,15 @@ class _CognitiveRadarVitalsRow extends ConsumerWidget {
             progress: computedStability / 100.0,
           ),
           _VitalCard(
-            title: 'Focus Total',
+            title: 'Study Streak',
+            value: '${streakDays}d',
+            trend: 'Daily Habit Active',
+            color: Colors.deepOrangeAccent,
+            icon: Icons.local_fire_department_rounded,
+            progress: (streakDays / 7.0).clamp(0.14, 1.0),
+          ),
+          _VitalCard(
+            title: 'Today Focus',
             value: '${focusMinutes}m',
             trend: 'Firestore tracked',
             color: AppColors.electricViolet,
@@ -1044,10 +1028,14 @@ class _CognitiveRadarVitalsRow extends ConsumerWidget {
         ];
 
         if (isMobile) {
-          return Column(
-            children: items
-                .map((w) => Padding(padding: const EdgeInsets.only(bottom: 10), child: w))
-                .toList(),
+          return GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: 1.45,
+            children: items,
           );
         }
 
@@ -1058,6 +1046,8 @@ class _CognitiveRadarVitalsRow extends ConsumerWidget {
             Expanded(child: items[1]),
             const SizedBox(width: 12),
             Expanded(child: items[2]),
+            const SizedBox(width: 12),
+            Expanded(child: items[3]),
           ],
         );
       },

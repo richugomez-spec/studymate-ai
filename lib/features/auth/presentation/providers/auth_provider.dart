@@ -37,10 +37,10 @@ Stream<AppUser?> authState(AuthStateRef ref) {
   return repository.authStateChanges;
 }
 
-/// Synchronously access currently authenticated user (null if unauthenticated)
+/// Synchronously and reactively access currently authenticated user from live auth stream
 final currentUserProvider = Provider<AppUser?>((ref) {
-  final repository = ref.watch(authRepositoryProvider);
-  return repository.currentUser;
+  final authStreamAsync = ref.watch(authStateProvider);
+  return authStreamAsync.asData?.value ?? ref.watch(authRepositoryProvider).currentUser;
 });
 
 /// Auth mutation notifier for performing real backend authentication

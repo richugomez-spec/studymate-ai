@@ -9,6 +9,7 @@ abstract final class AppRoutes {
   static const home = '/home';
   static const library = '/library';
   static const aiChat = '/ai-chat';
+  static const studyTools = '/study-tools';
   static const progress = '/progress';
   static const settings = '/settings';
 

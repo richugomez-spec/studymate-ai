@@ -41,6 +41,12 @@ class _MainShellState extends ConsumerState<MainShell> {
       label: 'AI Chat',
     ),
     _NavDestination(
+      route: AppRoutes.studyTools,
+      icon: Icons.psychology_outlined,
+      selectedIcon: Icons.psychology_rounded,
+      label: 'Study Tools',
+    ),
+    _NavDestination(
       route: AppRoutes.progress,
       icon: Icons.bar_chart_outlined,
       selectedIcon: Icons.bar_chart_rounded,

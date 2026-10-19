@@ -12,7 +12,8 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/auth_required_modal.dart';
 
 class UploadCenterScreen extends ConsumerStatefulWidget {
-  const UploadCenterScreen({super.key});
+  final String? targetTool;
+  const UploadCenterScreen({super.key, this.targetTool});
 
   @override
   ConsumerState<UploadCenterScreen> createState() => _UploadCenterScreenState();
@@ -95,7 +96,44 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
         _isProcessing = false;
       });
 
-      if (mounted) _showSuccessSheet(processedDoc);
+      if (mounted) {
+        final target = widget.targetTool?.toLowerCase().trim();
+        if (target != null && target.isNotEmpty) {
+          switch (target) {
+            case 'mindmap':
+            case 'mind_map':
+              context.go(AppRoutes.mindMap.replaceFirst(':topicId', processedDoc.id));
+              break;
+            case 'quiz':
+              context.go(AppRoutes.quiz.replaceFirst(':topicId', processedDoc.id));
+              break;
+            case 'flashcards':
+            case 'flashcard':
+              context.go(AppRoutes.flashcards.replaceFirst(':topicId', processedDoc.id));
+              break;
+            case 'summary':
+            case 'smart_summary':
+              context.go(AppRoutes.summary.replaceFirst(':topicId', processedDoc.id));
+              break;
+            case 'pyq':
+            case 'pyq_analyzer':
+              context.go(AppRoutes.questionPaperAnalyzer.replaceFirst(':topicId', processedDoc.id));
+              break;
+            case 'mock_exam':
+            case 'exam':
+              context.go(AppRoutes.examGenerator.replaceFirst(':topicId', processedDoc.id));
+              break;
+            case 'chat':
+            case 'ai_chat':
+              context.go(AppRoutes.aiChat);
+              break;
+            default:
+              _showSuccessSheet(processedDoc);
+          }
+        } else {
+          _showSuccessSheet(processedDoc);
+        }
+      }
 
       // 5. Fire-and-forget: Upload to Firebase Storage & Firestore in background
       unawaited(() async {
@@ -264,7 +302,40 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
               subtitle: 'Key takeaways and exam traps synthesis',
               onTap: () {
                 Navigator.of(ctx).pop();
-                context.push('/topic/summary/${doc.id}');
+                context.push(AppRoutes.summary.replaceFirst(':topicId', doc.id));
+              },
+            ),
+            const SizedBox(height: 10),
+            _ActionOption(
+              icon: Icons.hub_rounded,
+              color: const Color(0xFFFF9F43),
+              title: 'Mind Map',
+              subtitle: 'Interactive DAG knowledge graph visualization',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                context.push(AppRoutes.mindMap.replaceFirst(':topicId', doc.id));
+              },
+            ),
+            const SizedBox(height: 10),
+            _ActionOption(
+              icon: Icons.analytics_outlined,
+              color: const Color(0xFF10B981),
+              title: 'PYQ Analyzer',
+              subtitle: 'Previous year paper pattern & weightage breakdown',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                context.push(AppRoutes.questionPaperAnalyzer.replaceFirst(':topicId', doc.id));
+              },
+            ),
+            const SizedBox(height: 10),
+            _ActionOption(
+              icon: Icons.assignment_outlined,
+              color: const Color(0xFFEC4899),
+              title: 'Mock Exam',
+              subtitle: 'Full timed simulated exam with AI evaluation',
+              onTap: () {
+                Navigator.of(ctx).pop();
+                context.push(AppRoutes.examGenerator.replaceFirst(':topicId', doc.id));
               },
             ),
           ],
