@@ -25,12 +25,17 @@ String _mimeTypeFor(String? extension) => switch (extension?.toLowerCase()) {
     };
 
 String _statusLabel(FirestoreDocumentModel doc) {
+  if (doc.status == 'queued' || doc.uploadStatus == 'queued') return 'Queued';
   if (doc.uploadStatus == 'uploading' || doc.status == 'uploading') {
     return 'Uploading';
   }
   if (doc.status == 'indexed') return 'AI Ready';
-  if (doc.status == 'upload_error' || doc.status == 'index_error') {
-    return 'Needs retry';
+  if (doc.status == 'extracting') return 'Extracting';
+  if (doc.status == 'indexing') return 'Indexing';
+  if (doc.status == 'upload_error' ||
+      doc.status == 'index_error' ||
+      doc.uploadStatus == 'error') {
+    return 'Needs Retry';
   }
   return 'Processing';
 }
@@ -60,6 +65,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String? _activeFolderName;
   String? _activeFolderParentId;
   final Set<String> _selectedDocIds = {};
+  final Set<String> _deletingDocIds = {};
   String _viewMode = 'grid'; // grid | list
 
   @override
@@ -145,29 +151,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     }
 
-    // Automatically restore last opened document from Firestore if none is active
-    final restoreDocs = _activeFolderId != null
-        ? firestoreDocs.where((doc) => doc.folderId == _activeFolderId).toList()
-        : _activeSubjectId == null
-            ? const <FirestoreDocumentModel>[]
-            : firestoreDocs
-                .where((doc) => doc.subjectId == _activeSubjectId)
-                .toList();
-    if (activeDoc == null && restoreDocs.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final current = ref.read(activeDocumentProvider);
-        if (current == null && restoreDocs.isNotEmpty) {
-          final sorted = List<FirestoreDocumentModel>.from(restoreDocs);
-          sorted.sort((a, b) => b.lastOpened.compareTo(a.lastOpened));
-          _onDocTap(sorted.first);
-        }
-      });
-    }
-
     final isDesktop = MediaQuery.of(context).size.width >= 1100;
 
     final filteredDocs = firestoreDocs.where((doc) {
+      if (_deletingDocIds.contains(doc.id)) return false;
       if (_activeFolderId != null &&
           doc.folderId != _activeFolderId &&
           doc.subjectId != _activeFolderId) return false;
@@ -226,7 +213,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           onDelete: _deleteSubject,
                           onCreate: _createSubject,
                         )
-                      : filteredDocs.isEmpty && activeDoc == null
+                      : filteredDocs.isEmpty
                           ? _LibraryEmptyState(
                               onUpload: () => _openUploadModal(context),
                               onAddFolder: _addFolder,
@@ -239,10 +226,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               viewMode: _viewMode,
                               onDocTap: _onDocTap,
                               onDocSelect: _onDocSelect,
-                              onQuickAction: _onQuickAction,
                               onDocDelete: (doc) => _onDocDelete(doc, userId),
                               onDocRename: _onDocRename,
                               onDocReindex: _onDocReindex,
+                              onDocView: _viewDocument,
+                              onDocMove: _moveDocument,
                             ),
                 ),
                 if (_activeSubjectId != null)
@@ -276,8 +264,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             SizedBox(
               width: 300,
               child: _StudyToolsStudio(
-                activeDoc: activeDoc,
-                onToolTap: (route) => _openTool(context, activeDoc, route),
+                subjectName:
+                    _activeSubjectId == null ? null : _activeSubjectName,
+                onToolTap: (route) => _openTool(context, route),
                 onAiChat: () {
                   final ids = _selectedDocIds.toList(growable: false);
                   ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
@@ -296,7 +285,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       String subjectId, List<Map<String, dynamic>> items) {
     final ids = <String>{
       for (final item in items)
-        if (item['kind'] == 'folder' && item['subjectId'] == subjectId)
+        if (item['kind'] == 'folder' &&
+            (item['subjectId'] == subjectId || item['parentId'] == subjectId))
           item['id'].toString(),
     };
     var changed = true;
@@ -416,20 +406,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         List<String>.unmodifiable(_selectedDocIds);
   }
 
-  void _onQuickAction(FirestoreDocumentModel doc, String route) {
-    final active = _buildFallback(doc);
-    ref.read(activeDocumentProvider.notifier).setDocument(active);
-    final ids = _selectedDocIds.toList(growable: false);
-    ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = ids;
-    final target =
-        route.replaceFirst(':topicId', ids.isEmpty ? 'current' : ids.join(','));
-    if (route == AppRoutes.aiChat) {
-      context.go(route);
-    } else {
-      context.push(target);
-    }
-  }
-
   Future<void> _onDocDelete(FirestoreDocumentModel doc, String userId) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -463,23 +439,32 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       ),
     );
     if (confirm != true) return;
+    setState(() => _deletingDocIds.add(doc.id));
     try {
       await ref
           .read(firebaseUploadServiceProvider)
           .deleteStoredDocument(doc.storagePath);
+      await ref.read(firestoreServiceProvider).deleteDocument(
+            documentId: doc.id,
+            ownerId: userId.isNotEmpty ? userId : doc.ownerId,
+          );
+      KnowledgeEngine.invalidateSubjectContext(doc.subjectId,
+          ownerId: userId.isNotEmpty
+              ? userId
+              : ref.read(firestoreServiceProvider).currentUserId);
+      _selectedDocIds.remove(doc.id);
+      ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
+          List.unmodifiable(_selectedDocIds);
     } catch (error) {
       debugPrint('Stored file cleanup did not complete: $error');
       if (mounted) {
+        setState(() => _deletingDocIds.remove(doc.id));
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('The file could not be removed. Please retry.'),
+          content: Text('The file could not be deleted. Please retry.'),
         ));
       }
       return;
     }
-    await ref.read(firestoreServiceProvider).deleteDocument(
-          documentId: doc.id,
-          ownerId: userId.isNotEmpty ? userId : doc.ownerId,
-        );
     // Clear active doc if it was the deleted one
     final activeDoc = ref.read(activeDocumentProvider);
     if (activeDoc?.id == doc.id) {
@@ -510,28 +495,142 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     controller.dispose();
     if (title == null || title.isEmpty) return;
     await ref.read(firestoreServiceProvider).renameDocument(doc.id, title);
+    KnowledgeEngine.invalidateSubjectContext(doc.subjectId,
+        ownerId: ref.read(firestoreServiceProvider).currentUserId);
+  }
+
+  Future<void> _viewDocument(FirestoreDocumentModel doc) async {
+    var content = doc.extractedText?.trim() ?? '';
+    if (content.isEmpty && doc.storagePath.isNotEmpty) {
+      try {
+        final bytes = await ref
+            .read(firebaseUploadServiceProvider)
+            .downloadDocument(doc.storagePath);
+        content = await ref.read(documentProcessingServiceProvider).extractText(
+              PlatformFile(
+                  name: doc.fileName, size: bytes.length, bytes: bytes),
+            );
+      } catch (_) {
+        content = '';
+      }
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        child: SizedBox(
+          width: 760,
+          height: 620,
+          child: Column(children: [
+            ListTile(
+              title: Text(doc.title.isNotEmpty ? doc.title : doc.fileName),
+              subtitle: Text(doc.fileType.toUpperCase()),
+              trailing: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: content.isEmpty
+                  ? const Center(
+                      child: Text('A preview is not available for this file.'),
+                    )
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(20),
+                      child: SelectableText(content),
+                    ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _moveDocument(FirestoreDocumentModel doc) async {
+    final userId = ref.read(currentUserProvider)?.id ??
+        ref.read(firestoreServiceProvider).currentUserId ??
+        '';
+    final items = userId.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : ref.read(userKnowledgeStreamProvider(userId)).asData?.value ??
+            const <Map<String, dynamic>>[];
+    final folderIds = _activeSubjectId == null
+        ? <String>{}
+        : _folderIdsForSubject(_activeSubjectId!, items);
+    final folders = items
+        .where((item) =>
+            item['kind'] == 'folder' && folderIds.contains(item['id']))
+        .toList();
+    if (folders.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Create a folder before moving this file.'),
+      ));
+      return;
+    }
+    final folder = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Move to folder'),
+        children: folders
+            .where((item) => item['id'] != doc.folderId)
+            .map((item) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, item),
+                  child: Text(item['title']?.toString() ?? 'Folder'),
+                ))
+            .toList(),
+      ),
+    );
+    if (folder == null) return;
+    await ref.read(firestoreServiceProvider).moveDocumentToFolder(
+          doc.id,
+          folder['id'] as String,
+          folderName: folder['title']?.toString() ?? 'Folder',
+        );
+    KnowledgeEngine.invalidateSubjectContext(doc.subjectId,
+        ownerId: ref.read(firestoreServiceProvider).currentUserId);
   }
 
   Future<void> _onDocReindex(FirestoreDocumentModel doc) async {
+    KnowledgeEngine.invalidateSubjectContext(doc.subjectId,
+        ownerId: ref.read(firestoreServiceProvider).currentUserId);
     try {
       final firestore = ref.read(firestoreServiceProvider);
       final upload = ref.read(firebaseUploadServiceProvider);
       final processing = ref.read(documentProcessingServiceProvider);
-      await firestore.setDocumentStatus(doc.id, 'processing');
+      if (doc.uploadStatus == 'error' || doc.status == 'upload_error') {
+        final picked = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: [doc.fileType.toLowerCase().replaceAll('.', '')],
+          withData: true,
+        );
+        if (picked == null || picked.files.isEmpty) return;
+        await upload.retryUpload(
+          picked.files.first,
+          documentId: doc.id,
+          storagePath: doc.storagePath,
+        );
+      }
       final cachedText = doc.extractedText?.trim() ?? '';
-      final bytes = cachedText.isNotEmpty || doc.storagePath.isEmpty
+      await firestore.setDocumentStatus(
+          doc.id, cachedText.isEmpty ? 'extracting' : 'indexing');
+      final bytes = doc.storagePath.isEmpty
           ? null
           : await upload.downloadDocument(doc.storagePath);
       final text = cachedText.isNotEmpty
           ? cachedText
           : bytes == null
               ? ''
-              : await processing.extractText(PlatformFile(
-                  name: doc.fileName, size: bytes.length, bytes: bytes));
+              : await processing
+                  .extractText(PlatformFile(
+                      name: doc.fileName, size: bytes.length, bytes: bytes))
+                  .timeout(const Duration(minutes: 2));
       if (text.trim().isEmpty && bytes == null) {
         throw StateError('No source content is available.');
       }
-      await ref.read(knowledgeEngineProvider).index(
+      await firestore.setDocumentStatus(doc.id, 'indexing');
+      await ref
+          .read(knowledgeEngineProvider)
+          .index(
             sourceId: doc.id,
             title: doc.title,
             content: text,
@@ -539,7 +638,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             subjectId: doc.subjectId,
             sourceBytes: bytes,
             mimeType: _mimeTypeFor(doc.fileType),
-          );
+          )
+          .timeout(const Duration(minutes: 3));
     } catch (error) {
       debugPrint('Document re-indexing did not complete.');
       await ref
@@ -548,12 +648,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     }
   }
 
-  void _openTool(
-      BuildContext context, UploadedDocument? activeDoc, String routeTemplate) {
-    if (activeDoc == null && _activeSubjectId == null) {
+  void _openTool(BuildContext context, String routeTemplate) {
+    if (_activeSubjectId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select or upload a document first.'),
+          content: Text('Open a subject to use its study tools.'),
           backgroundColor: AppColors.electricViolet,
           duration: Duration(seconds: 2),
         ),
@@ -585,11 +684,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         defaultSubject: _activeSubjectName,
         subjectId: _activeSubjectId,
         folderId: _activeFolderId,
-        onFilesUploaded: (docs) {
-          if (docs.isNotEmpty) {
-            ref.read(activeDocumentProvider.notifier).setDocument(docs.first);
-          }
-        },
       ),
     );
   }
@@ -652,6 +746,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     await ref
         .read(firestoreServiceProvider)
         .renameSubject(subject['id'] as String, name);
+    KnowledgeEngine.invalidateSubjectContext(subject['id'] as String,
+        ownerId: ref.read(firestoreServiceProvider).currentUserId);
     if (_activeSubjectId == subject['id'] && mounted)
       setState(() => _activeSubjectName = name);
     if (_activeSubjectId == subject['id']) {
@@ -678,6 +774,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (confirm != true) return;
     final id = subject['id'] as String;
     final firestore = ref.read(firestoreServiceProvider);
+    KnowledgeEngine.invalidateSubjectContext(id,
+        ownerId: firestore.currentUserId);
     final deletingActiveSubject = _activeSubjectId == id;
     if (deletingActiveSubject && mounted) {
       setState(() {
@@ -782,6 +880,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               subjectId: subjectId,
                               folderId: _activeFolderId ?? '',
                               topic: noteTopic);
+                      KnowledgeEngine.invalidateSubjectContext(subjectId,
+                          ownerId:
+                              ref.read(firestoreServiceProvider).currentUserId);
                       final engine = ref.read(knowledgeEngineProvider);
                       unawaited(() async {
                         try {
@@ -899,6 +1000,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     await ref
         .read(firestoreServiceProvider)
         .renameWorkspaceFolder(folder['id'] as String, name);
+    KnowledgeEngine.invalidateSubjectContext(_activeSubjectId,
+        ownerId: ref.read(firestoreServiceProvider).currentUserId);
     if (_activeFolderId == folder['id'] && mounted)
       setState(() => _activeFolderName = name);
   }
@@ -923,6 +1026,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     await ref
         .read(firestoreServiceProvider)
         .deleteWorkspaceFolder(folder['id'] as String);
+    KnowledgeEngine.invalidateSubjectContext(_activeSubjectId,
+        ownerId: ref.read(firestoreServiceProvider).currentUserId);
     if (_activeFolderId == folder['id'] && mounted) {
       setState(() {
         _activeFolderId = null;
@@ -945,6 +1050,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           folder['id'] as String,
           folderName: folder['title']?.toString() ?? 'Folder',
         )));
+    KnowledgeEngine.invalidateSubjectContext(_activeSubjectId,
+        ownerId: firestore.currentUserId);
     if (mounted)
       setState(() {
         _selectedDocIds
@@ -1054,7 +1161,8 @@ class _SubjectExplorer extends StatelessWidget {
   Set<String> _folderIds(String subjectId) {
     final ids = <String>{
       for (final item in workspaceItems)
-        if (item['kind'] == 'folder' && item['subjectId'] == subjectId)
+        if (item['kind'] == 'folder' &&
+            (item['subjectId'] == subjectId || item['parentId'] == subjectId))
           item['id'].toString(),
     };
     var changed = true;
@@ -1356,27 +1464,27 @@ class _LibraryHeader extends StatelessWidget {
                   const Icon(Icons.chevron_right, size: 16),
                   Text(activeFolderName!),
                 ],
-                IconButton(
-                    tooltip: 'Create subject',
-                    onPressed: onSubjectCreate,
-                    icon: const Icon(Icons.add_circle_outline, size: 18)),
-                if (activeSubjectId != null)
-                  PopupMenuButton<String>(
-                    tooltip: 'Subject options',
-                    onSelected: (action) {
-                      final subject = subjects
-                          .where((s) => s['id'] == activeSubjectId)
-                          .first;
-                      if (action == 'rename') onSubjectRename(subject);
-                      if (action == 'delete') onSubjectDelete(subject);
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                          value: 'rename', child: Text('Rename subject')),
-                      PopupMenuItem(
-                          value: 'delete', child: Text('Delete subject')),
-                    ],
+                if (activeSubjectId == null)
+                  IconButton(
+                      tooltip: 'Create subject',
+                      onPressed: onSubjectCreate,
+                      icon: const Icon(Icons.add_circle_outline, size: 18)),
+                if (activeSubjectId != null) ...[
+                  TextButton.icon(
+                    onPressed: () => onSubjectRename(
+                        subjects.firstWhere((s) => s['id'] == activeSubjectId)),
+                    icon: const Icon(Icons.drive_file_rename_outline, size: 15),
+                    label: const Text('Rename'),
                   ),
+                  TextButton.icon(
+                    onPressed: () => onSubjectDelete(
+                        subjects.firstWhere((s) => s['id'] == activeSubjectId)),
+                    icon: const Icon(Icons.delete_outline, size: 15),
+                    label: const Text('Delete Subject'),
+                    style:
+                        TextButton.styleFrom(foregroundColor: AppColors.error),
+                  ),
+                ],
               ]),
             ],
           ),
@@ -1547,10 +1655,11 @@ class _LibraryDocumentFolio extends StatelessWidget {
   final String viewMode;
   final ValueChanged<FirestoreDocumentModel> onDocTap;
   final ValueChanged<String> onDocSelect;
-  final void Function(FirestoreDocumentModel, String) onQuickAction;
   final ValueChanged<FirestoreDocumentModel> onDocDelete;
   final ValueChanged<FirestoreDocumentModel> onDocRename;
   final ValueChanged<FirestoreDocumentModel> onDocReindex;
+  final ValueChanged<FirestoreDocumentModel> onDocView;
+  final ValueChanged<FirestoreDocumentModel> onDocMove;
 
   const _LibraryDocumentFolio({
     required this.docs,
@@ -1559,37 +1668,16 @@ class _LibraryDocumentFolio extends StatelessWidget {
     required this.viewMode,
     required this.onDocTap,
     required this.onDocSelect,
-    required this.onQuickAction,
     required this.onDocDelete,
     required this.onDocRename,
     required this.onDocReindex,
+    required this.onDocView,
+    required this.onDocMove,
   });
 
   @override
   Widget build(BuildContext context) {
-    final displayDocs = docs.isNotEmpty
-        ? docs
-        : (activeDoc != null
-            ? [
-                FirestoreDocumentModel(
-                  id: activeDoc!.id,
-                  ownerId: '',
-                  title: activeDoc!.fileName
-                      .replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), ''),
-                  subject: 'General',
-                  fileName: activeDoc!.fileName,
-                  fileUrl: activeDoc!.downloadUrl ?? '',
-                  uploadedAt: activeDoc!.uploadedAt,
-                  lastOpened: DateTime.now(),
-                  conceptCount: activeDoc!.concepts.length,
-                  quizCount: activeDoc!.quizzes.length,
-                  flashcardCount: activeDoc!.flashcards.length,
-                  summary: activeDoc!.summary.overview,
-                  extractedText: activeDoc!.fullText,
-                  documentData: activeDoc!.toJson(),
-                ),
-              ]
-            : <FirestoreDocumentModel>[]);
+    final displayDocs = docs;
 
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -1664,10 +1752,11 @@ class _LibraryDocumentFolio extends StatelessWidget {
                     index: i,
                     onTap: () => onDocTap(d),
                     onSelect: () => onDocSelect(d.id),
-                    onQuickAction: (route) => onQuickAction(d, route),
                     onDelete: () => onDocDelete(d),
                     onRename: () => onDocRename(d),
                     onReindex: () => onDocReindex(d),
+                    onView: () => onDocView(d),
+                    onMove: () => onDocMove(d),
                   );
                 },
               );
@@ -1686,10 +1775,11 @@ class _LibraryDocumentFolio extends StatelessWidget {
                   index: e.key,
                   onTap: () => onDocTap(d),
                   onSelect: () => onDocSelect(d.id),
-                  onQuickAction: (route) => onQuickAction(d, route),
                   onDelete: () => onDocDelete(d),
                   onRename: () => onDocRename(d),
                   onReindex: () => onDocReindex(d),
+                  onView: () => onDocView(d),
+                  onMove: () => onDocMove(d),
                 ),
               );
             }).toList(),
@@ -1708,10 +1798,11 @@ class _DocumentCard extends StatefulWidget {
   final int index;
   final VoidCallback onTap;
   final VoidCallback onSelect;
-  final ValueChanged<String> onQuickAction;
   final VoidCallback onDelete;
   final VoidCallback onRename;
   final VoidCallback onReindex;
+  final VoidCallback onView;
+  final VoidCallback onMove;
 
   const _DocumentCard({
     required this.doc,
@@ -1720,10 +1811,11 @@ class _DocumentCard extends StatefulWidget {
     required this.index,
     required this.onTap,
     required this.onSelect,
-    required this.onQuickAction,
     required this.onDelete,
     required this.onRename,
     required this.onReindex,
+    required this.onView,
+    required this.onMove,
   });
 
   @override
@@ -1920,22 +2012,15 @@ class _DocumentCardState extends State<_DocumentCard> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         _HoverAction(
-                            icon: Icons.flip_to_front_outlined,
-                            tooltip: 'Flashcards',
-                            color: AppColors.teal,
-                            onTap: () =>
-                                widget.onQuickAction(AppRoutes.flashcards)),
-                        _HoverAction(
-                            icon: Icons.quiz_outlined,
-                            tooltip: 'Quiz',
-                            color: AppColors.amber,
-                            onTap: () => widget.onQuickAction(AppRoutes.quiz)),
-                        _HoverAction(
-                            icon: Icons.summarize_outlined,
-                            tooltip: 'Summary',
+                            icon: Icons.visibility_outlined,
+                            tooltip: 'View',
                             color: AppColors.skyBlue,
-                            onTap: () =>
-                                widget.onQuickAction(AppRoutes.summary)),
+                            onTap: widget.onView),
+                        _HoverAction(
+                            icon: Icons.drive_file_move_outline,
+                            tooltip: 'Move',
+                            color: AppColors.teal,
+                            onTap: widget.onMove),
                         _HoverAction(
                             icon: Icons.edit_outlined,
                             tooltip: 'Rename',
@@ -1943,7 +2028,11 @@ class _DocumentCardState extends State<_DocumentCard> {
                             onTap: widget.onRename),
                         _HoverAction(
                             icon: Icons.refresh_rounded,
-                            tooltip: 'Re-index',
+                            tooltip: doc.status == 'index_error' ||
+                                    doc.status == 'upload_error' ||
+                                    doc.uploadStatus == 'error'
+                                ? 'Retry'
+                                : 'Re-index',
                             color: AppColors.amber,
                             onTap: widget.onReindex),
                         _HoverAction(
@@ -1978,10 +2067,11 @@ class _DocumentListRow extends StatefulWidget {
   final int index;
   final VoidCallback onTap;
   final VoidCallback onSelect;
-  final ValueChanged<String> onQuickAction;
   final VoidCallback onDelete;
   final VoidCallback onRename;
   final VoidCallback onReindex;
+  final VoidCallback onView;
+  final VoidCallback onMove;
 
   const _DocumentListRow({
     required this.doc,
@@ -1990,10 +2080,11 @@ class _DocumentListRow extends StatefulWidget {
     required this.index,
     required this.onTap,
     required this.onSelect,
-    required this.onQuickAction,
     required this.onDelete,
     required this.onRename,
     required this.onReindex,
+    required this.onView,
+    required this.onMove,
   });
 
   @override
@@ -2109,20 +2200,15 @@ class _DocumentListRowState extends State<_DocumentListRow> {
               const SizedBox(width: 12),
               if (_hovered) ...[
                 _HoverAction(
-                    icon: Icons.flip_to_front_outlined,
-                    tooltip: 'Flashcards',
-                    color: AppColors.teal,
-                    onTap: () => widget.onQuickAction(AppRoutes.flashcards)),
-                _HoverAction(
-                    icon: Icons.quiz_outlined,
-                    tooltip: 'Quiz',
-                    color: AppColors.amber,
-                    onTap: () => widget.onQuickAction(AppRoutes.quiz)),
-                _HoverAction(
-                    icon: Icons.summarize_outlined,
-                    tooltip: 'Summary',
+                    icon: Icons.visibility_outlined,
+                    tooltip: 'View',
                     color: AppColors.skyBlue,
-                    onTap: () => widget.onQuickAction(AppRoutes.summary)),
+                    onTap: widget.onView),
+                _HoverAction(
+                    icon: Icons.drive_file_move_outline,
+                    tooltip: 'Move',
+                    color: AppColors.teal,
+                    onTap: widget.onMove),
                 _HoverAction(
                     icon: Icons.edit_outlined,
                     tooltip: 'Rename',
@@ -2130,7 +2216,11 @@ class _DocumentListRowState extends State<_DocumentListRow> {
                     onTap: widget.onRename),
                 _HoverAction(
                     icon: Icons.refresh_rounded,
-                    tooltip: 'Re-index',
+                    tooltip: doc.status == 'index_error' ||
+                            doc.status == 'upload_error' ||
+                            doc.uploadStatus == 'error'
+                        ? 'Retry'
+                        : 'Re-index',
                     color: AppColors.amber,
                     onTap: widget.onReindex),
                 _HoverAction(
@@ -2155,12 +2245,12 @@ class _DocumentListRowState extends State<_DocumentListRow> {
 // ── Right Panel: Study Tools Studio ──────────────────────────────────────────
 
 class _StudyToolsStudio extends StatelessWidget {
-  final UploadedDocument? activeDoc;
+  final String? subjectName;
   final ValueChanged<String> onToolTap;
   final VoidCallback onAiChat;
 
   const _StudyToolsStudio({
-    required this.activeDoc,
+    required this.subjectName,
     required this.onToolTap,
     required this.onAiChat,
   });
@@ -2195,7 +2285,7 @@ class _StudyToolsStudio extends StatelessWidget {
                       color: AppColors.darkTextPrimary),
                 ),
               ),
-              if (activeDoc != null)
+              if (subjectName != null)
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -2213,9 +2303,7 @@ class _StudyToolsStudio extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           Text(
-            activeDoc != null
-                ? activeDoc!.fileName
-                : 'Select a document to enable tools.',
+            subjectName ?? 'Choose a subject to use study tools.',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -2223,52 +2311,6 @@ class _StudyToolsStudio extends StatelessWidget {
                 fontSize: 11,
                 color: Colors.white.withOpacity(0.4)),
           ),
-          if (activeDoc != null) ...[
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [
-                  AppColors.electricViolet.withOpacity(0.12),
-                  AppColors.skyBlue.withOpacity(0.06),
-                ]),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: AppColors.electricViolet.withOpacity(0.22)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    activeDoc!.fileName,
-                    style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.darkTextPrimary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _StatBubble(
-                          label: '${activeDoc!.concepts.length}',
-                          sublabel: 'concepts'),
-                      const SizedBox(width: 6),
-                      _StatBubble(
-                          label: '${activeDoc!.flashcards.length}',
-                          sublabel: 'cards'),
-                      const SizedBox(width: 6),
-                      _StatBubble(
-                          label: '${activeDoc!.quizzes.length}',
-                          sublabel: 'quizzes'),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
           const SizedBox(height: 16),
           const Text(
             'QUICK ACTIONS',
@@ -2281,59 +2323,62 @@ class _StudyToolsStudio extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                _ToolTile(
-                    icon: Icons.auto_awesome_rounded,
-                    title: 'AI Chat Tutor',
-                    desc: 'Ask anything with citations',
-                    color: AppColors.electricViolet,
-                    onTap: onAiChat),
-                _ToolTile(
-                    icon: Icons.summarize_rounded,
-                    title: 'Smart Summary',
-                    desc: 'Key takeaways & overview',
-                    color: AppColors.skyBlue,
-                    onTap: () => onToolTap(AppRoutes.summary)),
-                _ToolTile(
-                    icon: Icons.hub_rounded,
-                    title: 'Mind Map',
-                    desc: 'Visual concept graph',
-                    color: AppColors.amber,
-                    onTap: () => onToolTap(AppRoutes.mindMap)),
-                _ToolTile(
-                    icon: Icons.flip_to_front_rounded,
-                    title: 'Flashcards',
-                    desc: 'Spaced repetition drills',
-                    color: AppColors.teal,
-                    onTap: () => onToolTap(AppRoutes.flashcards)),
-                _ToolTile(
-                    icon: Icons.quiz_rounded,
-                    title: 'Quiz Generator',
-                    desc: 'Active recall questions',
-                    color: AppColors.electricVioletLight,
-                    onTap: () => onToolTap(AppRoutes.quiz)),
-                _ToolTile(
-                    icon: Icons.analytics_rounded,
-                    title: 'PYQ Analyzer',
-                    desc: 'Exam weight analysis',
-                    color: AppColors.teal,
-                    onTap: () => onToolTap(AppRoutes.questionPaperAnalyzer)),
-                _ToolTile(
-                    icon: Icons.assignment_rounded,
-                    title: 'Exam Generator',
-                    desc: 'Full mock papers',
-                    color: AppColors.electricViolet,
-                    onTap: () => onToolTap(AppRoutes.examGenerator)),
-                _ToolTile(
-                    icon: Icons.functions_rounded,
-                    title: 'Formula Sheet',
-                    desc: 'Extracted equations',
-                    color: AppColors.skyBlue,
-                    onTap: () => onToolTap(AppRoutes.summary)),
-              ],
-            ),
+            child: subjectName == null
+                ? const Center(child: Text('Open a subject to begin.'))
+                : ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      _ToolTile(
+                          icon: Icons.auto_awesome_rounded,
+                          title: 'AI Chat Tutor',
+                          desc: 'Ask anything with citations',
+                          color: AppColors.electricViolet,
+                          onTap: onAiChat),
+                      _ToolTile(
+                          icon: Icons.summarize_rounded,
+                          title: 'Smart Summary',
+                          desc: 'Key takeaways & overview',
+                          color: AppColors.skyBlue,
+                          onTap: () => onToolTap(AppRoutes.summary)),
+                      _ToolTile(
+                          icon: Icons.hub_rounded,
+                          title: 'Mind Map',
+                          desc: 'Visual concept graph',
+                          color: AppColors.amber,
+                          onTap: () => onToolTap(AppRoutes.mindMap)),
+                      _ToolTile(
+                          icon: Icons.flip_to_front_rounded,
+                          title: 'Flashcards',
+                          desc: 'Spaced repetition drills',
+                          color: AppColors.teal,
+                          onTap: () => onToolTap(AppRoutes.flashcards)),
+                      _ToolTile(
+                          icon: Icons.quiz_rounded,
+                          title: 'Quiz Generator',
+                          desc: 'Active recall questions',
+                          color: AppColors.electricVioletLight,
+                          onTap: () => onToolTap(AppRoutes.quiz)),
+                      _ToolTile(
+                          icon: Icons.analytics_rounded,
+                          title: 'PYQ Analyzer',
+                          desc: 'Exam weight analysis',
+                          color: AppColors.teal,
+                          onTap: () =>
+                              onToolTap(AppRoutes.questionPaperAnalyzer)),
+                      _ToolTile(
+                          icon: Icons.assignment_rounded,
+                          title: 'Exam Generator',
+                          desc: 'Full mock papers',
+                          color: AppColors.electricViolet,
+                          onTap: () => onToolTap(AppRoutes.examGenerator)),
+                      _ToolTile(
+                          icon: Icons.functions_rounded,
+                          title: 'Formula Sheet',
+                          desc: 'Extracted equations',
+                          color: AppColors.skyBlue,
+                          onTap: () => onToolTap(AppRoutes.summary)),
+                    ],
+                  ),
           ),
         ],
       ),
@@ -2344,15 +2389,11 @@ class _StudyToolsStudio extends StatelessWidget {
 // ── Upload Modal ──────────────────────────────────────────────────────────────
 
 class _UploadModal extends ConsumerStatefulWidget {
-  final ValueChanged<List<UploadedDocument>> onFilesUploaded;
   final String defaultSubject;
   final String? subjectId;
   final String? folderId;
   const _UploadModal(
-      {required this.onFilesUploaded,
-      required this.defaultSubject,
-      this.subjectId,
-      this.folderId});
+      {required this.defaultSubject, this.subjectId, this.folderId});
 
   @override
   ConsumerState<_UploadModal> createState() => _UploadModalState();
@@ -2424,55 +2465,63 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
         _currentStep = 'Saving sources to your workspace…';
         _progress = 0.25;
       });
-      final results =
-          await Future.wait(files.map((file) => uploadService.uploadFile(
-                file,
-                subject: subject,
-                subjectId: subjectId,
-                folderId: widget.folderId ?? '',
-                topic: topic,
-                subtopic: subtopic,
-                notes: notes,
-                tags: tags,
-              )));
-      final completedDocs = <UploadedDocument>[];
+      KnowledgeEngine.invalidateSubjectContext(subjectId,
+          ownerId: firestore.currentUserId);
+      final results = await Future.wait<UploadResult?>(
+        files.asMap().entries.map((entry) async {
+          final file = entry.value;
+          try {
+            return await uploadService.uploadFile(
+              file,
+              onProgress: (progress) {
+                if (!mounted) return;
+                setState(() {
+                  _currentStep = 'Uploading ${file.name}';
+                  _progress =
+                      0.25 + 0.45 * ((entry.key + progress) / files.length);
+                });
+              },
+              subject: subject,
+              subjectId: subjectId,
+              folderId: widget.folderId ?? '',
+              topic: topic,
+              subtopic: subtopic,
+              notes: notes,
+              tags: tags,
+            );
+          } catch (_) {
+            return null;
+          }
+        }),
+      );
+      KnowledgeEngine.invalidateSubjectContext(subjectId,
+          ownerId: firestore.currentUserId);
       for (var i = 0; i < files.length; i++) {
         final file = files[i];
         final result = results[i];
-        completedDocs.add(UploadedDocument(
-          id: result.firestoreDocId,
-          fileName: file.name,
-          fileType: (file.extension ?? 'file').toUpperCase(),
-          byteSize: file.size,
-          fullText: '',
-          concepts: const [],
-          flashcards: const [],
-          quizzes: const [],
-          summary: ExtractedSummary(
-              title: file.name,
-              overview: '',
-              keyTakeaways: const [],
-              coreTheorems: const [],
-              examTraps: const []),
-          uploadedAt: DateTime.now(),
-          downloadUrl: result.downloadUrl,
-          subjectId: subjectId,
-          subject: subject,
-        ));
+        if (result == null) continue;
         unawaited(() async {
           try {
-            final text = await processingService.extractText(file);
-            await knowledgeEngine.index(
-              sourceId: result.firestoreDocId,
-              title: file.name,
-              content: text,
-              subject: subject,
-              subjectId: subjectId,
-              topic: topic,
-              subtopic: subtopic,
-              sourceBytes: file.bytes,
-              mimeType: _mimeTypeFor(file.extension),
-            );
+            await firestore.setDocumentStatus(
+                result.firestoreDocId, 'extracting');
+            final text = await processingService
+                .extractText(file)
+                .timeout(const Duration(minutes: 2));
+            await firestore.setDocumentStatus(
+                result.firestoreDocId, 'indexing');
+            await knowledgeEngine
+                .index(
+                  sourceId: result.firestoreDocId,
+                  title: file.name,
+                  content: text,
+                  subject: subject,
+                  subjectId: subjectId,
+                  topic: topic,
+                  subtopic: subtopic,
+                  sourceBytes: file.bytes,
+                  mimeType: _mimeTypeFor(file.extension),
+                )
+                .timeout(const Duration(minutes: 3));
           } catch (_) {
             debugPrint('Background indexing did not complete.');
             await firestore.setDocumentIndexError(
@@ -2487,8 +2536,13 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
       });
 
       if (mounted) {
-        widget.onFilesUploaded(completedDocs);
         Navigator.of(context).pop();
+        if (results.any((result) => result == null)) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content:
+                Text('Some files failed to upload. Use Retry in the Library.'),
+          ));
+        }
       }
     } catch (_) {
       setState(() => _isProcessing = false);
@@ -2569,6 +2623,7 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
 
             TextField(
                 controller: _subjectController,
+                readOnly: widget.subjectId != null,
                 decoration: const InputDecoration(labelText: 'Subject')),
             TextField(
                 controller: _topicController,

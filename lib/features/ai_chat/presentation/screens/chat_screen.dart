@@ -238,7 +238,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final chatService = ref.read(realAIChatServiceProvider);
       final responseBuffer = StringBuffer();
       await for (final part in chatService.streamAI(
-        prompt: clean,
+        prompt:
+            'Current subject: ${ref.read(activeKnowledgeSubjectNameProvider) ?? 'Study Workspace'}. '
+            '${ref.read(selectedKnowledgeSourceIdsProvider).isEmpty ? 'Use all indexed files and notes in this subject.' : 'Use only the selected files.'} '
+            'Do not ask which document or material to use.\nQuestion: $clean',
         conversationHistory: _messages.where((m) => !m.isThinking).toList(),
         subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
             ref.read(activeKnowledgeWorkspaceIdProvider),

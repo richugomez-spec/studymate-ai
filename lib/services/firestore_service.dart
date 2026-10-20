@@ -223,7 +223,8 @@ class FirestoreService {
     final folderIds = <String>{
       for (final item in knowledge)
         if (item.data()['kind'] == 'folder' &&
-            item.data()['subjectId'] == subjectId)
+            (item.data()['subjectId'] == subjectId ||
+                item.data()['parentId'] == subjectId))
           item.id,
     };
     var changed = true;
@@ -247,10 +248,12 @@ class FirestoreService {
       return data['subjectId'] == subjectId ||
           folderIds.contains(item.id) ||
           folderIds.contains(data['parentId']) ||
+          folderIds.contains(data['folderId']) ||
           documentIds.contains(data['sourceId']);
     }).toList();
     final sessions = snapshots[2].docs.where((session) =>
         session.data()['subjectId'] == subjectId ||
+        folderIds.contains(session.data()['folderId']) ||
         folderIds.contains(session.data()['subjectId']) ||
         documentIds.contains(session.data()['documentId']));
     await Future.wait(sessions.map((session) async {
@@ -292,7 +295,8 @@ class FirestoreService {
     final folderIds = <String>{
       for (final item in knowledge)
         if (item.data()['kind'] == 'folder' &&
-            item.data()['subjectId'] == subjectId)
+            (item.data()['subjectId'] == subjectId ||
+                item.data()['parentId'] == subjectId))
           item.id,
     };
     var changed = true;
@@ -353,7 +357,8 @@ class FirestoreService {
     if (subjectId != null && subjectId.isNotEmpty) {
       folderIds.addAll(notes
           .where((item) =>
-              item['kind'] == 'folder' && item['subjectId'] == subjectId)
+              item['kind'] == 'folder' &&
+              (item['subjectId'] == subjectId || item['parentId'] == subjectId))
           .map((item) => item['id'] as String));
       var changed = true;
       while (changed) {
@@ -784,6 +789,7 @@ class FirestoreService {
       await _deleteDocuments(staleCache.map((d) => d.reference).toList());
     } catch (e) {
       debugPrint('FirestoreService.deleteDocument error: $e');
+      rethrow;
     }
   }
 

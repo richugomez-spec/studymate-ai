@@ -137,8 +137,8 @@ class FirebaseUploadService {
       'storagePath': storagePath,
       'downloadUrl': '',
       'uploadedAt': FieldValue.serverTimestamp(),
-      'status': 'uploading',
-      'uploadStatus': 'uploading',
+      'status': 'queued',
+      'uploadStatus': 'queued',
       'subject': subject,
       'subjectId': subjectId,
       'folderId': folderId,
@@ -182,6 +182,10 @@ class FirebaseUploadService {
       required DateTime uploadedAt,
       void Function(double)? onProgress}) async {
     try {
+      await _firestore.collection('documents').doc(documentId).update({
+        'uploadStatus': 'uploading',
+        'status': 'uploading',
+      });
       final ref = _storage.ref(storagePath);
       final task = ref.putData(
           bytes,
@@ -195,7 +199,7 @@ class FirebaseUploadService {
           onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
         }
       }, onError: (_) {});
-      final snapshot = await task;
+      final snapshot = await task.timeout(const Duration(minutes: 5));
       final url = await snapshot.ref.getDownloadURL();
       await _firestore.collection('documents').doc(documentId).update({
         'downloadUrl': url,
@@ -212,6 +216,28 @@ class FirebaseUploadService {
       debugPrint('Background upload failed: $error');
       rethrow;
     }
+  }
+
+  Future<void> retryUpload(
+    PlatformFile file, {
+    required String documentId,
+    required String storagePath,
+  }) async {
+    validateFile(file);
+    final bytes = file.bytes;
+    final uid = currentUserId;
+    if (bytes == null || uid == null) {
+      throw StateError('The selected file could not be uploaded.');
+    }
+    await _uploadInBackground(
+      bytes: bytes,
+      uid: uid,
+      fileName: file.name,
+      ext: (file.extension ?? '').toLowerCase(),
+      storagePath: storagePath,
+      documentId: documentId,
+      uploadedAt: DateTime.now(),
+    );
   }
 
   Future<Uint8List> downloadDocument(String storagePath) async {

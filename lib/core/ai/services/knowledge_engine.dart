@@ -18,6 +18,44 @@ class KnowledgeEngine {
   KnowledgeEngine(this._ref);
   final Ref _ref;
   static final Map<String, Future<Map<String, dynamic>>> _inFlight = {};
+  static final Map<String, Future<List<Map<String, dynamic>>>> _contextCache =
+      {};
+
+  static void invalidateSubjectContext(String? subjectId, {String? ownerId}) {
+    if (subjectId == null || subjectId.isEmpty) {
+      if (ownerId == null) {
+        _contextCache.clear();
+      } else {
+        _contextCache.removeWhere((key, _) => key.startsWith('$ownerId|'));
+      }
+      return;
+    }
+    final prefix = '${ownerId ?? ''}|$subjectId|';
+    _contextCache.removeWhere((key, _) => key.startsWith(prefix));
+  }
+
+  Future<List<Map<String, dynamic>>> _loadContext(
+    FirestoreService firestore, {
+    String? subjectId,
+    required List<String> sourceIds,
+  }) async {
+    final ownerId = firestore.currentUserId ?? 'guest';
+    final selection = List<String>.from(sourceIds)..sort();
+    final key = '$ownerId|${subjectId ?? ''}|${selection.join(',')}';
+    final pending = _contextCache[key];
+    if (pending != null) return pending;
+    final load = firestore.loadKnowledge(
+      subjectId: subjectId,
+      sourceIds: sourceIds,
+    );
+    _contextCache[key] = load;
+    try {
+      return await load;
+    } catch (_) {
+      if (identical(_contextCache[key], load)) _contextCache.remove(key);
+      rethrow;
+    }
+  }
 
   Future<Map<String, dynamic>> generate({
     required String task,
@@ -40,10 +78,8 @@ class KnowledgeEngine {
                     .where((id) => id.isNotEmpty)
                     .toList()
                 : const <String>[]);
-    final records = await firestore.loadKnowledge(
-      subjectId: subjectId,
-      sourceIds: scopedIds,
-    );
+    final records = await _loadContext(firestore,
+        subjectId: subjectId, sourceIds: scopedIds);
     final relevant = _prioritize(records,
         subjectId != null && subjectId.isNotEmpty ? null : topicId, prompt,
         sourceIds: scopedIds,
@@ -200,6 +236,8 @@ class KnowledgeEngine {
     await _ref.read(firestoreServiceProvider).saveKnowledgeIndex(
         sourceId, structured,
         sourceText: content, sourceKind: sourceKind, subjectId: subjectId);
+    invalidateSubjectContext(subjectId,
+        ownerId: _ref.read(firestoreServiceProvider).currentUserId);
     if (sourceKind == 'document') {
       unawaited(_prepareDocumentStudyCounts(sourceId));
     }
@@ -614,7 +652,7 @@ class KnowledgeEngine {
       String history = ''}) async* {
     final firestore = _ref.read(firestoreServiceProvider);
     final selectedIds = sourceIds;
-    final records = await firestore.loadKnowledge(
+    final records = await _loadContext(firestore,
         subjectId: subjectId, sourceIds: selectedIds);
     final sources = _prioritize(records, null, prompt,
         sourceIds: selectedIds,
