@@ -17,8 +17,7 @@ class StudyToolsScreen extends ConsumerWidget {
     final activeDoc = ref.watch(activeDocumentProvider);
     final user = ref.watch(currentUserProvider);
 
-    void navigateOrPrompt(String routeTemplate, String toolKey,
-        {String? query}) {
+    void navigateOrPrompt(String routeTemplate, {String? query}) {
       if (user == null) {
         AuthRequiredModal.show(
           context,
@@ -30,7 +29,7 @@ class StudyToolsScreen extends ConsumerWidget {
       }
 
       if (activeDoc == null) {
-        context.push('${AppRoutes.uploadCenter}?targetTool=$toolKey');
+        context.go(AppRoutes.library);
       } else {
         context.push(
             '${routeTemplate.replaceFirst(':topicId', activeDoc.id)}${query ?? ''}');
@@ -54,7 +53,7 @@ class StudyToolsScreen extends ConsumerWidget {
             'SuperMemo SM-2 interval scheduling with automated active recall scoring.',
         badge: 'Spaced Repetition',
         color: AppColors.teal,
-        onTap: () => navigateOrPrompt(AppRoutes.flashcards, 'flashcards'),
+        onTap: () => navigateOrPrompt(AppRoutes.flashcards),
       ),
       _ToolItem(
         icon: Icons.quiz_rounded,
@@ -63,7 +62,7 @@ class StudyToolsScreen extends ConsumerWidget {
             'Multi-format quizzes (MCQ, True/False, Fill in Blank) with weak topic tracking.',
         badge: 'Custom Drills',
         color: AppColors.electricViolet,
-        onTap: () => navigateOrPrompt(AppRoutes.quiz, 'quiz'),
+        onTap: () => navigateOrPrompt(AppRoutes.quiz),
       ),
       _ToolItem(
         icon: Icons.auto_stories_rounded,
@@ -72,7 +71,7 @@ class StudyToolsScreen extends ConsumerWidget {
             'Executive summaries in Short (1-2m), Medium (5m), and Detailed revision modes.',
         badge: 'Persistent Revision',
         color: AppColors.skyBlue,
-        onTap: () => navigateOrPrompt(AppRoutes.summary, 'summary'),
+        onTap: () => navigateOrPrompt(AppRoutes.summary),
       ),
       _ToolItem(
         icon: Icons.functions_rounded,
@@ -80,8 +79,8 @@ class StudyToolsScreen extends ConsumerWidget {
         subtitle: 'Build a formula reference from your workspace knowledge.',
         badge: 'AI Generated',
         color: AppColors.skyBlue,
-        onTap: () => navigateOrPrompt(AppRoutes.summary, 'formula',
-            query: '?mode=formula'),
+        onTap: () =>
+            navigateOrPrompt(AppRoutes.summary, query: '?mode=formula'),
       ),
       _ToolItem(
         icon: Icons.hub_rounded,
@@ -90,7 +89,7 @@ class StudyToolsScreen extends ConsumerWidget {
             'Zoomable semantic knowledge graph displaying concept relationships & formulas.',
         badge: 'Visual DAG',
         color: const Color(0xFFFF9F43),
-        onTap: () => navigateOrPrompt(AppRoutes.mindMap, 'mindmap'),
+        onTap: () => navigateOrPrompt(AppRoutes.mindMap),
       ),
       _ToolItem(
         icon: Icons.analytics_outlined,
@@ -99,7 +98,7 @@ class StudyToolsScreen extends ConsumerWidget {
             'Repeated questions detector, topic weightage distributions, and exam predictors.',
         badge: 'Exam Radar',
         color: const Color(0xFF10B981),
-        onTap: () => navigateOrPrompt(AppRoutes.questionPaperAnalyzer, 'pyq'),
+        onTap: () => navigateOrPrompt(AppRoutes.questionPaperAnalyzer),
       ),
       _ToolItem(
         icon: Icons.assignment_outlined,
@@ -108,7 +107,7 @@ class StudyToolsScreen extends ConsumerWidget {
             'Complete mock papers with custom marks, time limits, and answer keys.',
         badge: 'Exam Simulation',
         color: const Color(0xFFEC4899),
-        onTap: () => navigateOrPrompt(AppRoutes.examGenerator, 'mock_exam'),
+        onTap: () => navigateOrPrompt(AppRoutes.examGenerator),
       ),
     ];
 
@@ -129,7 +128,7 @@ class StudyToolsScreen extends ConsumerWidget {
             icon: const Icon(Icons.cloud_upload_outlined,
                 size: 20, color: AppColors.electricVioletLight),
             tooltip: 'Upload Study Material',
-            onPressed: () => context.push(AppRoutes.uploadCenter),
+            onPressed: () => context.go(AppRoutes.library),
           ),
           const SizedBox(width: 8),
         ],

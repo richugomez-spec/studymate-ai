@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../services/firestore_service.dart';
@@ -34,7 +36,10 @@ class KnowledgeEngine {
       '${task.toLowerCase()}|${topicId ?? ''}|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|$dateSignature',
     );
     final cached = await firestore.getGenerationCache(cacheKey);
-    if (cached != null) return cached;
+    if (cached != null) {
+      await _updateSourceCounts(firestore, task, topicId, cached);
+      return cached;
+    }
 
     final webResults = _needsWeb(prompt, relevant)
         ? await _ref
@@ -91,7 +96,29 @@ class KnowledgeEngine {
           .map((r) => {'title': r['title'], 'url': r['url'], 'kind': 'web'}),
     ];
     await firestore.cacheGeneration(cacheKey, result);
+    await _updateSourceCounts(firestore, task, topicId, result);
     return result;
+  }
+
+  Future<void> _updateSourceCounts(
+    FirestoreService firestore,
+    String task,
+    String? topicId,
+    Map<String, dynamic> result,
+  ) async {
+    if (topicId == null || topicId.isEmpty || topicId == 'current') return;
+    if (task == 'flashcards') {
+      final cards = result['cards'];
+      if (cards is List) {
+        await firestore.updateDocumentCounts(topicId, flashcards: cards.length);
+      }
+    } else if (task == 'quiz') {
+      final questions = result['questions'];
+      if (questions is List) {
+        await firestore.updateDocumentCounts(topicId,
+            quizzes: questions.length);
+      }
+    }
   }
 
   Future<Map<String, dynamic>> index({
@@ -125,7 +152,23 @@ class KnowledgeEngine {
     await _ref.read(firestoreServiceProvider).saveKnowledgeIndex(
         sourceId, structured,
         sourceText: content, sourceKind: sourceKind);
+    if (sourceKind == 'document') {
+      unawaited(_prepareDocumentStudyCounts(sourceId));
+    }
     return structured;
+  }
+
+  Future<void> _prepareDocumentStudyCounts(String sourceId) async {
+    try {
+      await generateFlashcards(topicId: sourceId);
+    } catch (_) {
+      debugPrint('Flashcard count preparation did not complete.');
+    }
+    try {
+      await generateQuiz(topicId: sourceId);
+    } catch (_) {
+      debugPrint('Quiz count preparation did not complete.');
+    }
   }
 
   Future<Map<String, dynamic>> _generateUncached(
@@ -271,23 +314,69 @@ class KnowledgeEngine {
       });
   Future<Map<String, dynamic>> generateMindMap(
           {String? topicId,
-          String prompt = 'Create a hierarchical mind map.'}) =>
+          String prompt =
+              'Create a complete hierarchical mind map with multiple concept levels. Give every node a stable id and parentId, and connect related nodes with edges.'}) =>
       generate(task: 'mind_map', prompt: prompt, topicId: topicId, options: {
-        'shape': {'root': '', 'nodes': [], 'edges': []}
+        'shape': {
+          'root': 'topic title',
+          'nodes': [
+            {
+              'id': 'unique-id',
+              'parentId': 'parent-id',
+              'name': '',
+              'description': ''
+            }
+          ],
+          'edges': [
+            {'from': 'parent-id', 'to': 'unique-id', 'label': 'relationship'}
+          ]
+        }
       });
   Future<Map<String, dynamic>> generateSummary(
           {String? topicId,
           String prompt = 'Write a concise, accurate study summary.'}) =>
-      generate(task: 'summary', prompt: prompt, topicId: topicId);
+      generate(task: 'summary', prompt: prompt, topicId: topicId, options: {
+        'shape': {
+          'overview': '',
+          'key_takeaways': [],
+          'key_concepts': [],
+          'important_points': [],
+          'examples': [],
+          'exam_tips': [],
+          'formulas': [],
+          'variable_meanings': []
+        }
+      });
   Future<Map<String, dynamic>> generateExam(
           {String? topicId,
-          String prompt = 'Create a balanced mock exam with answer key.'}) =>
-      generate(task: 'exam', prompt: prompt, topicId: topicId);
+          String prompt = 'Create a balanced mock exam with an answer key.'}) =>
+      generate(task: 'exam', prompt: prompt, topicId: topicId, options: {
+        'shape': {
+          'title': '',
+          'questions': [
+            {
+              'prompt': '',
+              'marks': 0,
+              'modelAnswer': '',
+              'markingScheme': [],
+              'commonMistakes': []
+            }
+          ]
+        }
+      });
   Future<Map<String, dynamic>> generatePYQ(
           {String? topicId,
           String prompt =
               'Analyze uploaded previous-year questions for patterns. Do not claim frequency without evidence.'}) =>
-      generate(task: 'pyq', prompt: prompt, topicId: topicId);
+      generate(task: 'pyq', prompt: prompt, topicId: topicId, options: {
+        'shape': {
+          'frequently_repeated_questions': [],
+          'topic_frequency': [],
+          'marks_distribution': [],
+          'important_units': [],
+          'predicted_questions': []
+        }
+      });
   Future<Map<String, dynamic>> answer(
           {required String prompt, String? topicId, String history = ''}) =>
       generate(

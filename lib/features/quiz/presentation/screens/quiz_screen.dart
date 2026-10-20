@@ -49,6 +49,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   QuizType _quizType = QuizType.mcq;
   bool _quizStarted = false;
   bool _isGenerating = false;
+  String? _generationError;
 
   // Active quiz state
   int _currentIndex = 0;
@@ -71,25 +72,39 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     if (_isGenerating) return;
     setState(() => _isGenerating = true);
     _questions.clear();
+    _generationError = null;
     try {
       final result = await ref.read(knowledgeEngineProvider).generateQuiz(
             topicId: widget.topicId ?? doc.id,
             prompt:
-                'Create $_questionCount ${_difficulty.name} ${_quizType.name} questions. Return questions with question, options, answer, explanation, and conceptTitle.',
+                'Create exactly $_questionCount ${_difficulty.name} ${_quizType.name} practice questions. Return a JSON questions list. Each question must include non-empty question, options, answer, answerIndex, explanation, and conceptTitle. For non-multiple-choice formats, still provide valid options where appropriate.',
           );
       final generated = result['questions'];
       if (generated is List) {
         for (final item in generated.whereType<Map>()) {
           final q = Map<String, dynamic>.from(item);
-          final options = (q['options'] as List? ?? const [])
+          var options = (q['options'] as List? ?? const [])
               .map((e) => e.toString())
               .toList();
+          if (_quizType == QuizType.trueFalse && options.isEmpty) {
+            options = ['True', 'False'];
+          }
+          if (_quizType == QuizType.mcq && options.length < 2) continue;
           final answer = (q['answer'] ?? '').toString();
+          final question = (q['question'] ?? '').toString().trim();
+          if (question.isEmpty || answer.trim().isEmpty) continue;
+          final requestedIndex = (q['answerIndex'] as num?)?.toInt() ?? -1;
+          final fallbackIndex = options.indexOf(answer);
+          final answerIndex =
+              requestedIndex >= 0 && requestedIndex < options.length
+                  ? requestedIndex
+                  : fallbackIndex < 0
+                      ? 0
+                      : fallbackIndex;
           _questions.add(_GeneratedQuizQuestion(
-            question: (q['question'] ?? '').toString(),
+            question: question,
             options: options,
-            correctIndex:
-                (q['answerIndex'] as num?)?.toInt() ?? options.indexOf(answer),
+            correctIndex: answerIndex,
             correctAnswer: answer,
             explanation: (q['explanation'] ?? '').toString(),
             conceptTitle: (q['conceptTitle'] ?? '').toString(),
@@ -99,6 +114,11 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       }
 
       if (!mounted) return;
+      if (_questions.isEmpty) {
+        setState(() => _generationError =
+            'We could not prepare a quiz from this topic. Please try again.');
+        return;
+      }
       setState(() {
         _quizStarted = true;
         _currentIndex = 0;
@@ -110,6 +130,10 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       });
     } catch (_) {
       debugPrint('Quiz generation did not complete after failover.');
+      if (mounted) {
+        setState(() => _generationError =
+            'We could not prepare a quiz right now. Please try again.');
+      }
     } finally {
       if (mounted) setState(() => _isGenerating = false);
     }
@@ -215,7 +239,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                         color: Colors.white60)),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(
-                  onPressed: () => context.push(AppRoutes.uploadCenter),
+                  onPressed: () => context.go(AppRoutes.library),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white),
@@ -255,6 +279,11 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (_generationError != null) ...[
+                    Text(_generationError!,
+                        style: const TextStyle(color: AppColors.error)),
+                    const SizedBox(height: 12),
+                  ],
                   const Text('Configure Active Assessment',
                       style: TextStyle(
                           fontFamily: 'Inter',

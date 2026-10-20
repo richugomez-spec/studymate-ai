@@ -6,6 +6,7 @@ import '../../../../core/ai/services/knowledge_engine.dart';
 class ExamGeneratorScreen extends ConsumerStatefulWidget {
   final String? topicId;
   const ExamGeneratorScreen({super.key, this.topicId});
+
   @override
   ConsumerState<ExamGeneratorScreen> createState() =>
       _ExamGeneratorScreenState();
@@ -15,16 +16,31 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
   int _marks = 50;
   int _minutes = 60;
   String _difficulty = 'Moderate';
-  bool _answerKey = true;
+  bool _isGenerating = false;
+  String? _error;
   Future<Map<String, dynamic>>? _result;
+  final Set<int> _revealedAnswers = {};
 
   Future<void> _generate() async {
-    setState(() => _result = ref.read(knowledgeEngineProvider).generateExam(
-          topicId: widget.topicId,
-          prompt:
-              'Generate an exam for $_marks marks, $_minutes minutes, difficulty $_difficulty, answer key $_answerKey. Use a balanced question mix grounded in workspace topics. Return title and questions (type, prompt, marks, answer, explanation).',
-        ));
-    await _result;
+    setState(() {
+      _error = null;
+      _isGenerating = true;
+      _revealedAnswers.clear();
+      _result = ref.read(knowledgeEngineProvider).generateExam(
+            topicId: widget.topicId,
+            prompt:
+                'Generate a $_marks mark exam for $_minutes minutes at $_difficulty difficulty. Create precise, varied questions grounded in workspace knowledge. Return JSON with title and questions. Each question must have prompt, marks, modelAnswer, markingScheme (list), and commonMistakes (list). Do not include the answer in the question prompt.',
+          );
+    });
+    try {
+      await _result;
+    } catch (_) {
+      if (mounted)
+        setState(() => _error =
+            'We could not create an exam right now. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
   }
 
   @override
@@ -46,60 +62,94 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
                       .toList(),
                   onChanged: (v) =>
                       setState(() => _difficulty = v ?? 'Moderate')),
-              SwitchListTile(
-                  title: const Text('Include answer key'),
-                  value: _answerKey,
-                  onChanged: (v) => setState(() => _answerKey = v)),
+              if (_error != null) Text(_error!),
               const SizedBox(height: 12),
               FilledButton.icon(
-                  onPressed: _generate,
+                  onPressed: _isGenerating ? null : _generate,
                   icon: const Icon(Icons.auto_awesome),
-                  label: const Text('Generate exam')),
+                  label: Text(_isGenerating ? 'Thinking...' : 'Generate exam')),
             ])
           : FutureBuilder<Map<String, dynamic>>(
               future: _result,
               builder: (context, snapshot) {
-                if (snapshot.connectionState != ConnectionState.done)
-                  return const Center(child: CircularProgressIndicator());
-                if (snapshot.hasError)
-                  return const Center(child: Text('Please try again.'));
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Center(child: Text('Thinking...'));
+                }
+                if (snapshot.hasError || snapshot.data == null) {
+                  return _friendlyError();
+                }
                 final data = snapshot.data!;
                 final questions = (data['questions'] as List? ?? const [])
                     .whereType<Map>()
+                    .map(Map<String, dynamic>.from)
+                    .where((q) => (q['prompt'] ?? q['question'] ?? '')
+                        .toString()
+                        .trim()
+                        .isNotEmpty)
                     .toList();
+                if (questions.isEmpty) return _friendlyError();
                 return ListView(padding: const EdgeInsets.all(20), children: [
                   Text((data['title'] ?? 'Practice Exam').toString(),
                       style: Theme.of(context).textTheme.headlineSmall),
                   for (var i = 0; i < questions.length; i++)
-                    Card(
-                        child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                      'Question ${i + 1} · ${questions[i]['marks'] ?? ''} marks',
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 8),
-                                  Text((questions[i]['prompt'] ??
-                                          questions[i]['question'] ??
-                                          '')
-                                      .toString()),
-                                  if (_answerKey &&
-                                      questions[i]['answer'] != null) ...[
-                                    const Divider(),
-                                    Text('Answer: ${questions[i]['answer']}'),
-                                    if (questions[i]['explanation'] != null)
-                                      Text(questions[i]['explanation']
-                                          .toString())
-                                  ],
-                                ]))),
+                    _questionCard(questions[i], i),
                   TextButton(
                       onPressed: () => setState(() => _result = null),
                       child: const Text('Adjust settings')),
                 ]);
               }),
+    );
+  }
+
+  Widget _friendlyError() => Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('We could not prepare the exam. Please try again.'),
+          TextButton(
+              onPressed: () => setState(() => _result = null),
+              child: const Text('Back to settings')),
+        ]),
+      );
+
+  Widget _questionCard(Map<String, dynamic> question, int index) {
+    final revealed = _revealedAnswers.contains(index);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Question ${index + 1} · ${question['marks'] ?? ''} marks',
+              style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text((question['prompt'] ?? question['question'] ?? '').toString()),
+          if (!revealed) ...[
+            const SizedBox(height: 12),
+            OutlinedButton(
+                onPressed: () => setState(() => _revealedAnswers.add(index)),
+                child: const Text('Reveal Answer')),
+          ],
+          if (revealed) ...[
+            const Divider(),
+            _answerSection(
+                'Model Answer', question['modelAnswer'] ?? question['answer']),
+            _answerSection('Marking Scheme', question['markingScheme']),
+            _answerSection('Common Mistakes', question['commonMistakes']),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Widget _answerSection(String title, dynamic value) {
+    if (value == null) return const SizedBox.shrink();
+    final values = value is List ? value : [value];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        for (final item in values)
+          Text(
+              '• ${item is Map ? (item['criterion'] ?? item['point'] ?? item['text'] ?? '').toString() : item.toString()}'),
+      ]),
     );
   }
 

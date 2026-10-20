@@ -21,7 +21,6 @@ import '../../features/quiz/presentation/screens/exam_generator_screen.dart';
 import '../../features/flashcard/presentation/screens/flashcard_screen.dart';
 import '../../features/summary/presentation/screens/summary_screen.dart';
 import '../../features/mind_map/presentation/screens/mind_map_screen.dart';
-import '../../features/upload/presentation/screens/upload_center_screen.dart';
 import '../../features/planner/presentation/screens/planner_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/achievements/presentation/screens/achievements_screen.dart';
@@ -190,9 +189,7 @@ GoRouter appRouter(AppRouterRef ref) {
       // ── Tool Routes ───────────────────────────────────────────────────────
       GoRoute(
         path: AppRoutes.uploadCenter,
-        builder: (_, state) => UploadCenterScreen(
-          targetTool: state.uri.queryParameters['targetTool'],
-        ),
+        redirect: (_, __) => AppRoutes.library,
       ),
       GoRoute(
         path: AppRoutes.studyPlanner,

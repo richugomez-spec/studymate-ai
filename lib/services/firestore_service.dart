@@ -202,6 +202,39 @@ class FirestoreService {
           : sourceText,
       'indexedAt': FieldValue.serverTimestamp(),
       'status': 'indexed',
+      if (sourceKind == 'document') ...{
+        'conceptCount': (index['concepts'] as List?)?.length ?? 0,
+        if (index['flashcards'] is List)
+          'flashcardCount': (index['flashcards'] as List).length,
+        if (index['quizzes'] is List)
+          'quizCount': (index['quizzes'] as List).length,
+      },
+    });
+  }
+
+  Future<void> setDocumentStatus(String documentId, String status) =>
+      _docsCol.doc(documentId).update({
+        'status': status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+  Future<void> updateDocumentCounts(String documentId,
+      {int? concepts, int? flashcards, int? quizzes}) async {
+    try {
+      await _docsCol.doc(documentId).update({
+        if (concepts != null) 'conceptCount': concepts,
+        if (flashcards != null) 'flashcardCount': flashcards,
+        if (quizzes != null) 'quizCount': quizzes,
+      });
+    } catch (error) {
+      debugPrint('Study asset counters could not be updated.');
+    }
+  }
+
+  Future<void> renameDocument(String documentId, String title) async {
+    await _docsCol.doc(documentId).update({
+      'title': title,
+      'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 
@@ -356,12 +389,13 @@ class FirestoreService {
   Stream<List<FirestoreDocumentModel>> streamUserDocuments(String ownerId) {
     return _docsCol
         .where('ownerId', isEqualTo: ownerId)
-        .orderBy('uploadedAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
+      final documents = snapshot.docs
           .map((doc) => FirestoreDocumentModel.fromMap(doc.data(), doc.id))
           .toList();
+      documents.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
+      return documents;
     }).handleError((e) {
       debugPrint('FirestoreService.streamUserDocuments error: $e');
     });

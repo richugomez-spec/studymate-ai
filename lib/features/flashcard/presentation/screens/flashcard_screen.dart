@@ -75,20 +75,28 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       });
     }
     try {
-      final result = await ref
-          .read(knowledgeEngineProvider)
-          .generateFlashcards(topicId: widget.topicId);
+      final result = await ref.read(knowledgeEngineProvider).generateFlashcards(
+          topicId: widget.topicId,
+          prompt:
+              'Create useful active recall cards. Return cards as a list of objects with a concise front question and a correct, clear back answer.');
       final generated = result['cards'];
       _cards.clear();
-      if (generated is List)
+      if (generated is List) {
         for (int i = 0; i < generated.length; i++) {
+          if (generated[i] is! Map) continue;
           final card = Map<String, dynamic>.from(generated[i] as Map);
+          final front =
+              (card['front'] ?? card['question'] ?? '').toString().trim();
+          final back = (card['back'] ?? card['answer'] ?? '').toString().trim();
+          if (front.isEmpty || back.isEmpty) continue;
           _cards.add(_SRSFlashcard(
             id: '$i',
-            front: (card['front'] ?? '').toString(),
-            back: (card['back'] ?? '').toString(),
+            front: front,
+            back: back,
           ));
         }
+      }
+      if (_cards.isEmpty) _generationFailed = true;
     } catch (_) {
       debugPrint('Flashcard generation did not complete after failover.');
       _generationFailed = true;
@@ -230,7 +238,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(
-                  onPressed: () => context.push(AppRoutes.uploadCenter),
+                  onPressed: () => context.go(AppRoutes.library),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white),

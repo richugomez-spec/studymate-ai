@@ -99,6 +99,10 @@ class FirestoreDocumentModel {
   final String? summary;
   final String? extractedText;
   final Map<String, dynamic>? documentData;
+  final String status;
+  final String uploadStatus;
+  final String storagePath;
+  final Map<String, dynamic>? structuredKnowledge;
 
   const FirestoreDocumentModel({
     required this.id,
@@ -115,9 +119,14 @@ class FirestoreDocumentModel {
     this.summary,
     this.extractedText,
     this.documentData,
+    this.status = 'processing',
+    this.uploadStatus = 'uploaded',
+    this.storagePath = '',
+    this.structuredKnowledge,
   });
 
-  factory FirestoreDocumentModel.fromMap(Map<String, dynamic> map, String docId) {
+  factory FirestoreDocumentModel.fromMap(
+      Map<String, dynamic> map, String docId) {
     return FirestoreDocumentModel(
       id: docId,
       ownerId: (map['ownerId'] as String?) ?? '',
@@ -133,6 +142,12 @@ class FirestoreDocumentModel {
       summary: map['summary'] as String?,
       extractedText: map['extractedText'] as String?,
       documentData: map['documentData'] as Map<String, dynamic>?,
+      status: (map['status'] as String?) ?? 'processing',
+      uploadStatus: (map['uploadStatus'] as String?) ?? 'uploaded',
+      storagePath: (map['storagePath'] as String?) ?? '',
+      structuredKnowledge: map['structuredKnowledge'] is Map
+          ? Map<String, dynamic>.from(map['structuredKnowledge'] as Map)
+          : null,
     );
   }
 
@@ -154,6 +169,11 @@ class FirestoreDocumentModel {
       if (summary != null) 'summary': summary,
       if (extractedText != null) 'extractedText': extractedText,
       if (documentData != null) 'documentData': documentData,
+      'status': status,
+      'uploadStatus': uploadStatus,
+      'storagePath': storagePath,
+      if (structuredKnowledge != null)
+        'structuredKnowledge': structuredKnowledge,
     };
   }
 
@@ -169,6 +189,10 @@ class FirestoreDocumentModel {
     int? conceptCount,
     int? quizCount,
     int? flashcardCount,
+    String? status,
+    String? uploadStatus,
+    String? storagePath,
+    Map<String, dynamic>? structuredKnowledge,
   }) {
     return FirestoreDocumentModel(
       id: id ?? this.id,
@@ -182,6 +206,10 @@ class FirestoreDocumentModel {
       conceptCount: conceptCount ?? this.conceptCount,
       quizCount: quizCount ?? this.quizCount,
       flashcardCount: flashcardCount ?? this.flashcardCount,
+      status: status ?? this.status,
+      uploadStatus: uploadStatus ?? this.uploadStatus,
+      storagePath: storagePath ?? this.storagePath,
+      structuredKnowledge: structuredKnowledge ?? this.structuredKnowledge,
     );
   }
 
@@ -209,7 +237,8 @@ class FirestoreChatSessionModel {
     this.documentId,
   });
 
-  factory FirestoreChatSessionModel.fromMap(Map<String, dynamic> map, String docId) {
+  factory FirestoreChatSessionModel.fromMap(
+      Map<String, dynamic> map, String docId) {
     return FirestoreChatSessionModel(
       id: docId,
       ownerId: (map['ownerId'] as String?) ?? '',
@@ -266,7 +295,8 @@ class FirestoreChatMessageModel {
     required this.timestamp,
   });
 
-  factory FirestoreChatMessageModel.fromMap(Map<String, dynamic> map, String docId) {
+  factory FirestoreChatMessageModel.fromMap(
+      Map<String, dynamic> map, String docId) {
     return FirestoreChatMessageModel(
       id: docId,
       role: (map['role'] as String?) ?? 'user',
@@ -325,7 +355,8 @@ class FirestoreStudyProgressModel {
     this.lastStudyDate,
   });
 
-  factory FirestoreStudyProgressModel.fromMap(Map<String, dynamic> map, String docId) {
+  factory FirestoreStudyProgressModel.fromMap(
+      Map<String, dynamic> map, String docId) {
     return FirestoreStudyProgressModel(
       uid: docId,
       totalMinutes: (map['totalMinutes'] as num?)?.toInt() ?? 0,
@@ -344,7 +375,8 @@ class FirestoreStudyProgressModel {
       'conceptsLearned': conceptsLearned,
       'flashcardsReviewed': flashcardsReviewed,
       'quizzesCompleted': quizzesCompleted,
-      if (lastStudyDate != null) 'lastStudyDate': Timestamp.fromDate(lastStudyDate!),
+      if (lastStudyDate != null)
+        'lastStudyDate': Timestamp.fromDate(lastStudyDate!),
     };
   }
 

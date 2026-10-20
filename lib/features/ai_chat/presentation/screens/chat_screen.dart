@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/ai/services/real_ai_chat_service.dart';
-import '../../../../core/ai/services/gemini_api_key_provider.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -274,99 +273,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  void _showApiKeyDialog() {
-    final currentKey = ref.read(aiApiKeyProvider) ?? '';
-    final controller = TextEditingController(text: currentKey);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.darkSurface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.vpn_key_rounded,
-                color: AppColors.electricViolet, size: 22),
-            SizedBox(width: 10),
-            Text('Connect AI access key',
-                style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Add an access key to enable AI study assistance.',
-              style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 12,
-                  color: Colors.white.withOpacity(0.7),
-                  height: 1.4),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              obscureText: true,
-              style: const TextStyle(color: Colors.white, fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'AIzaSy...',
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                filled: true,
-                fillColor: AppColors.darkSurfaceVariant,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none),
-                prefixIcon: const Icon(Icons.key,
-                    color: AppColors.electricViolet, size: 18),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          if (currentKey.isNotEmpty)
-            TextButton(
-              onPressed: () {
-                ref.read(aiApiKeyProvider.notifier).setApiKey('');
-                Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('API Key cleared.')));
-              },
-              child: const Text('Clear Key',
-                  style: TextStyle(color: AppColors.error)),
-            ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child:
-                const Text('Cancel', style: TextStyle(color: Colors.white60)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              ref.read(aiApiKeyProvider.notifier).setApiKey(controller.text);
-              Navigator.of(ctx).pop();
-              ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('AI key saved.')));
-            },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.electricViolet),
-            child: const Text('Save Key',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w600)),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final activeDoc = ref.watch(activeDocumentProvider);
-    final apiKey = ref.watch(aiApiKeyProvider);
-    final hasKey = apiKey != null && apiKey.isNotEmpty;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -416,28 +325,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ],
         ),
         actions: [
-          // API Key status button
-          TextButton.icon(
-            onPressed: _showApiKeyDialog,
-            icon: Icon(
-              hasKey ? Icons.check_circle_rounded : Icons.vpn_key_outlined,
-              size: 15,
-              color: hasKey ? AppColors.teal : AppColors.amber,
-            ),
-            label: Text(
-              hasKey ? 'AI Ready' : 'Set Key',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: hasKey ? AppColors.teal : AppColors.amber,
-              ),
-            ),
-          ),
           IconButton(
-            icon: const Icon(Icons.upload_file_rounded),
-            tooltip: 'Upload material',
-            onPressed: () => context.push(AppRoutes.uploadCenter),
+            icon: const Icon(Icons.folder_open_rounded),
+            tooltip: 'Library',
+            onPressed: () => context.go(AppRoutes.library),
           ),
         ],
       ),

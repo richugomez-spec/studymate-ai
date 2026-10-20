@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -122,11 +121,12 @@ class FirebaseUploadService {
 
     final timestamp = DateTime.now();
     final ext = (file.extension ?? 'bin').toLowerCase();
+    final docRef = _firestore.collection('documents').doc();
     final storagePath =
-        'uploads/$uid/${timestamp.millisecondsSinceEpoch}_${file.name}';
+        'uploads/$uid/${timestamp.millisecondsSinceEpoch}_${docRef.id}_${file.name}';
 
     // Persist the source record before starting the Storage transfer.
-    final docRef = await _firestore.collection('documents').add({
+    await docRef.set({
       'title': file.name,
       'ownerId': uid,
       'fileName': file.name,
@@ -135,7 +135,8 @@ class FirebaseUploadService {
       'storagePath': storagePath,
       'downloadUrl': '',
       'uploadedAt': FieldValue.serverTimestamp(),
-      'status': 'queued',
+      'status': 'uploading',
+      'uploadStatus': 'uploading',
       'subject': subject,
       'topic': topic,
       'subtopic': subtopic,
@@ -149,7 +150,7 @@ class FirebaseUploadService {
       'lastLogin': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    unawaited(_uploadInBackground(
+    final downloadUrl = await _uploadInBackground(
       bytes: bytes,
       uid: uid,
       fileName: file.name,
@@ -158,16 +159,16 @@ class FirebaseUploadService {
       documentId: docRef.id,
       uploadedAt: timestamp,
       onProgress: onProgress,
-    ));
+    );
 
     return UploadResult(
-      downloadUrl: '',
+      downloadUrl: downloadUrl,
       storagePath: storagePath,
       firestoreDocId: docRef.id,
     );
   }
 
-  Future<void> _uploadInBackground(
+  Future<String> _uploadInBackground(
       {required Uint8List bytes,
       required String uid,
       required String fileName,
@@ -196,14 +197,28 @@ class FirebaseUploadService {
         'downloadUrl': url,
         'fileUrl': url,
         'uploadStatus': 'uploaded',
+        'status': 'processing',
       });
+      return url;
     } catch (error) {
       await _firestore.collection('documents').doc(documentId).update({
         'uploadStatus': 'error',
-        'uploadError': error.toString(),
+        'status': 'upload_error',
       });
       debugPrint('Background upload failed: $error');
+      rethrow;
     }
+  }
+
+  Future<Uint8List> downloadDocument(String storagePath) async {
+    final data = await _storage.ref(storagePath).getData(kMaxFileSizeBytes);
+    if (data == null) throw StateError('Document could not be downloaded.');
+    return data;
+  }
+
+  Future<void> deleteStoredDocument(String storagePath) async {
+    if (storagePath.isEmpty) return;
+    await _storage.ref(storagePath).delete();
   }
 
   /// MIME type resolver

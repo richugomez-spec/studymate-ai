@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +23,25 @@ String _mimeTypeFor(String? extension) => switch (extension?.toLowerCase()) {
       'webp' => 'image/webp',
       _ => 'application/octet-stream',
     };
+
+String _statusLabel(FirestoreDocumentModel doc) {
+  if (doc.uploadStatus == 'uploading' || doc.status == 'uploading') {
+    return 'Uploading';
+  }
+  if (doc.status == 'indexed') return 'AI Ready';
+  if (doc.status == 'upload_error' || doc.status == 'index_error') {
+    return 'Needs retry';
+  }
+  return 'Processing';
+}
+
+Color _statusColor(FirestoreDocumentModel doc) {
+  return doc.status == 'indexed'
+      ? AppColors.teal
+      : (doc.status == 'upload_error' || doc.status == 'index_error')
+          ? AppColors.amber
+          : AppColors.electricVioletLight;
+}
 
 /// Library Workspace — NotebookLM-inspired 3-column workspace
 /// Left sidebar (in MainShell) | Center document folio | Right AI Tools Studio
@@ -46,6 +67,29 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ? ref.watch(userDocumentsStreamProvider(userId))
         : null;
     final firestoreDocs = firestoreDocsAsync?.asData?.value ?? [];
+    FirestoreDocumentModel? activeRecord;
+    for (final doc in firestoreDocs) {
+      if (doc.id == activeDoc?.id) {
+        activeRecord = doc;
+        break;
+      }
+    }
+    final selectedRecord = activeRecord;
+    if (activeDoc != null &&
+        selectedRecord != null &&
+        selectedRecord.status == 'indexed' &&
+        selectedRecord.conceptCount != activeDoc.concepts.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final current = ref.read(activeDocumentProvider);
+        if (current?.id != selectedRecord.id || current == null) return;
+        if (current.concepts.length != selectedRecord.conceptCount) {
+          ref
+              .read(activeDocumentProvider.notifier)
+              .setDocument(_buildFallback(selectedRecord));
+        }
+      });
+    }
     final workspaceItems = userId.isNotEmpty
         ? ref.watch(userKnowledgeStreamProvider(userId)).asData?.value ??
             const <Map<String, dynamic>>[]
@@ -111,6 +155,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           onDocSelect: _onDocSelect,
                           onQuickAction: _onQuickAction,
                           onDocDelete: (doc) => _onDocDelete(doc, userId),
+                          onDocRename: _onDocRename,
+                          onDocReindex: _onDocReindex,
                         ),
                 ),
                 _WorkspaceShelf(items: workspaceItems),
@@ -205,6 +251,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       ),
     );
     if (confirm != true) return;
+    try {
+      await ref
+          .read(firebaseUploadServiceProvider)
+          .deleteStoredDocument(doc.storagePath);
+    } catch (_) {
+      debugPrint('Stored file cleanup did not complete.');
+    }
     await ref.read(firestoreServiceProvider).deleteDocument(
           documentId: doc.id,
           ownerId: userId.isNotEmpty ? userId : doc.ownerId,
@@ -213,6 +266,63 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final activeDoc = ref.read(activeDocumentProvider);
     if (activeDoc?.id == doc.id) {
       ref.read(activeDocumentProvider.notifier).clearDocument();
+    }
+  }
+
+  Future<void> _onDocRename(FirestoreDocumentModel doc) async {
+    final controller = TextEditingController(text: doc.title);
+    final title = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename file'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (title == null || title.isEmpty) return;
+    await ref.read(firestoreServiceProvider).renameDocument(doc.id, title);
+  }
+
+  Future<void> _onDocReindex(FirestoreDocumentModel doc) async {
+    try {
+      final firestore = ref.read(firestoreServiceProvider);
+      final upload = ref.read(firebaseUploadServiceProvider);
+      final processing = ref.read(documentProcessingServiceProvider);
+      await firestore.setDocumentStatus(doc.id, 'processing');
+      final bytes = doc.storagePath.isEmpty
+          ? null
+          : await upload.downloadDocument(doc.storagePath);
+      final text = bytes == null
+          ? (doc.extractedText ?? '')
+          : await processing.extractText(PlatformFile(
+              name: doc.fileName, size: bytes.length, bytes: bytes));
+      if (text.trim().isEmpty && bytes == null) {
+        throw StateError('No source content is available.');
+      }
+      await ref.read(knowledgeEngineProvider).index(
+            sourceId: doc.id,
+            title: doc.title,
+            content: text,
+            subject: doc.subject,
+            sourceBytes: bytes,
+            mimeType: _mimeTypeFor(doc.fileType),
+          );
+    } catch (error) {
+      debugPrint('Document re-indexing did not complete.');
+      await ref
+          .read(firestoreServiceProvider)
+          .setDocumentIndexError(doc.id, 'unavailable');
     }
   }
 
@@ -372,13 +482,33 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   UploadedDocument _buildFallback(FirestoreDocumentModel doc) {
+    final indexedConcepts =
+        (doc.structuredKnowledge?['concepts'] as List? ?? const [])
+            .whereType<Map>()
+            .toList();
     return UploadedDocument(
       id: doc.id,
       fileName: doc.fileName,
       fileType: doc.fileType,
       byteSize: 1024 * 50,
       fullText: doc.extractedText ?? doc.title,
-      concepts: const [],
+      concepts: [
+        for (var i = 0; i < indexedConcepts.length; i++)
+          ExtractedConcept(
+            id: (indexedConcepts[i]['id'] ?? '$i').toString(),
+            title: (indexedConcepts[i]['name'] ??
+                    indexedConcepts[i]['title'] ??
+                    'Concept ${i + 1}')
+                .toString(),
+            description: (indexedConcepts[i]['description'] ??
+                    indexedConcepts[i]['definition'] ??
+                    '')
+                .toString(),
+            keyPoints: (indexedConcepts[i]['keyPoints'] as List? ?? const [])
+                .map((value) => value.toString())
+                .toList(),
+          ),
+      ],
       flashcards: const [],
       quizzes: const [],
       summary: ExtractedSummary(
@@ -765,6 +895,8 @@ class _LibraryDocumentFolio extends StatelessWidget {
   final ValueChanged<String> onDocSelect;
   final void Function(FirestoreDocumentModel, String) onQuickAction;
   final ValueChanged<FirestoreDocumentModel> onDocDelete;
+  final ValueChanged<FirestoreDocumentModel> onDocRename;
+  final ValueChanged<FirestoreDocumentModel> onDocReindex;
 
   const _LibraryDocumentFolio({
     required this.docs,
@@ -775,6 +907,8 @@ class _LibraryDocumentFolio extends StatelessWidget {
     required this.onDocSelect,
     required this.onQuickAction,
     required this.onDocDelete,
+    required this.onDocRename,
+    required this.onDocReindex,
   });
 
   @override
@@ -878,6 +1012,8 @@ class _LibraryDocumentFolio extends StatelessWidget {
                     onSelect: () => onDocSelect(d.id),
                     onQuickAction: (route) => onQuickAction(d, route),
                     onDelete: () => onDocDelete(d),
+                    onRename: () => onDocRename(d),
+                    onReindex: () => onDocReindex(d),
                   );
                 },
               );
@@ -898,6 +1034,8 @@ class _LibraryDocumentFolio extends StatelessWidget {
                   onSelect: () => onDocSelect(d.id),
                   onQuickAction: (route) => onQuickAction(d, route),
                   onDelete: () => onDocDelete(d),
+                  onRename: () => onDocRename(d),
+                  onReindex: () => onDocReindex(d),
                 ),
               );
             }).toList(),
@@ -918,6 +1056,8 @@ class _DocumentCard extends StatefulWidget {
   final VoidCallback onSelect;
   final ValueChanged<String> onQuickAction;
   final VoidCallback onDelete;
+  final VoidCallback onRename;
+  final VoidCallback onReindex;
 
   const _DocumentCard({
     required this.doc,
@@ -928,6 +1068,8 @@ class _DocumentCard extends StatefulWidget {
     required this.onSelect,
     required this.onQuickAction,
     required this.onDelete,
+    required this.onRename,
+    required this.onReindex,
   });
 
   @override
@@ -1089,6 +1231,8 @@ class _DocumentCardState extends State<_DocumentCard> {
                   _MetaPill(
                       label: '${doc.quizCount} quizzes',
                       color: AppColors.skyBlue),
+                  const SizedBox(width: 5),
+                  _MetaPill(label: _statusLabel(doc), color: _statusColor(doc)),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1101,18 +1245,18 @@ class _DocumentCardState extends State<_DocumentCard> {
                       color: AppColors.teal.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.check_circle_rounded,
                             size: 9, color: AppColors.teal),
                         SizedBox(width: 3),
-                        Text('AI Ready',
+                        Text(_statusLabel(doc),
                             style: TextStyle(
                                 fontFamily: 'Inter',
                                 fontSize: 9.5,
                                 fontWeight: FontWeight.w600,
-                                color: AppColors.teal)),
+                                color: _statusColor(doc))),
                       ],
                     ),
                   ),
@@ -1138,6 +1282,16 @@ class _DocumentCardState extends State<_DocumentCard> {
                             color: AppColors.skyBlue,
                             onTap: () =>
                                 widget.onQuickAction(AppRoutes.summary)),
+                        _HoverAction(
+                            icon: Icons.edit_outlined,
+                            tooltip: 'Rename',
+                            color: AppColors.skyBlue,
+                            onTap: widget.onRename),
+                        _HoverAction(
+                            icon: Icons.refresh_rounded,
+                            tooltip: 'Re-index',
+                            color: AppColors.amber,
+                            onTap: widget.onReindex),
                         _HoverAction(
                             icon: Icons.delete_outline_rounded,
                             tooltip: 'Delete',
@@ -1172,6 +1326,8 @@ class _DocumentListRow extends StatefulWidget {
   final VoidCallback onSelect;
   final ValueChanged<String> onQuickAction;
   final VoidCallback onDelete;
+  final VoidCallback onRename;
+  final VoidCallback onReindex;
 
   const _DocumentListRow({
     required this.doc,
@@ -1182,6 +1338,8 @@ class _DocumentListRow extends StatefulWidget {
     required this.onSelect,
     required this.onQuickAction,
     required this.onDelete,
+    required this.onRename,
+    required this.onReindex,
   });
 
   @override
@@ -1292,6 +1450,8 @@ class _DocumentListRowState extends State<_DocumentListRow> {
               const SizedBox(width: 6),
               _MetaPill(
                   label: '${doc.flashcardCount} cards', color: AppColors.teal),
+              const SizedBox(width: 6),
+              _MetaPill(label: _statusLabel(doc), color: _statusColor(doc)),
               const SizedBox(width: 12),
               if (_hovered) ...[
                 _HoverAction(
@@ -1309,6 +1469,16 @@ class _DocumentListRowState extends State<_DocumentListRow> {
                     tooltip: 'Summary',
                     color: AppColors.skyBlue,
                     onTap: () => widget.onQuickAction(AppRoutes.summary)),
+                _HoverAction(
+                    icon: Icons.edit_outlined,
+                    tooltip: 'Rename',
+                    color: AppColors.skyBlue,
+                    onTap: widget.onRename),
+                _HoverAction(
+                    icon: Icons.refresh_rounded,
+                    tooltip: 'Re-index',
+                    color: AppColors.amber,
+                    onTap: widget.onReindex),
                 _HoverAction(
                     icon: Icons.delete_outline_rounded,
                     tooltip: 'Delete',
@@ -1547,10 +1717,12 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
     super.dispose();
   }
 
-  Future<void> _pickAndUpload({List<String>? extensions}) async {
+  Future<void> _pickAndUpload(
+      {List<String>? extensions, List<PlatformFile>? selectedFiles}) async {
     final processingService = ref.read(documentProcessingServiceProvider);
     final uploadService = ref.read(firebaseUploadServiceProvider);
     final knowledgeEngine = ref.read(knowledgeEngineProvider);
+    final firestore = ref.read(firestoreServiceProvider);
     final subject = _subjectController.text.trim().isEmpty
         ? 'General'
         : _subjectController.text.trim();
@@ -1570,8 +1742,9 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
     });
 
     try {
-      final files = await processingService.pickMultipleFiles(
-          allowedExtensions: extensions);
+      final files = selectedFiles ??
+          await processingService.pickMultipleFiles(
+              allowedExtensions: extensions);
       if (files.isEmpty) {
         setState(() => _isProcessing = false);
         return;
@@ -1625,8 +1798,10 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
               sourceBytes: file.bytes,
               mimeType: _mimeTypeFor(file.extension),
             );
-          } catch (error) {
-            debugPrint('Background indexing failed for ${file.name}: $error');
+          } catch (_) {
+            debugPrint('Background indexing did not complete.');
+            await firestore.setDocumentIndexError(
+                result.firestoreDocId, 'unavailable');
           }
         }());
       }
@@ -1640,12 +1815,12 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
         widget.onFilesUploaded(completedDocs);
         Navigator.of(context).pop();
       }
-    } catch (e) {
+    } catch (_) {
       setState(() => _isProcessing = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Upload failed: $e'),
+          const SnackBar(
+              content: Text('Upload could not be completed. Please try again.'),
               backgroundColor: AppColors.error),
         );
       }
@@ -1775,85 +1950,96 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
             const SizedBox(height: 14),
 
             // Drop zone
-            GestureDetector(
-              onTap: _isProcessing ? null : _pickAndUpload,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                height: 148,
-                decoration: BoxDecoration(
-                  color: AppColors.darkSurfaceVariant.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _isProcessing
-                        ? AppColors.electricViolet.withOpacity(0.4)
-                        : AppColors.darkBorder,
-                    width: 1.5,
+            DropTarget(
+              onDragDone: (detail) async {
+                if (_isProcessing) return;
+                final files = await Future.wait(detail.files.map((file) async {
+                  final bytes = await file.readAsBytes();
+                  return PlatformFile(
+                      name: file.name, size: bytes.length, bytes: bytes);
+                }));
+                if (mounted) await _pickAndUpload(selectedFiles: files);
+              },
+              child: GestureDetector(
+                onTap: _isProcessing ? null : _pickAndUpload,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  height: 148,
+                  decoration: BoxDecoration(
+                    color: AppColors.darkSurfaceVariant.withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _isProcessing
+                          ? AppColors.electricViolet.withOpacity(0.4)
+                          : AppColors.darkBorder,
+                      width: 1.5,
+                    ),
                   ),
-                ),
-                child: Center(
-                  child: _isProcessing
-                      ? Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 36,
-                              height: 36,
-                              child: CircularProgressIndicator(
-                                value: _progress,
-                                strokeWidth: 3,
-                                color: AppColors.electricViolet,
-                                backgroundColor:
-                                    AppColors.electricViolet.withOpacity(0.12),
+                  child: Center(
+                    child: _isProcessing
+                        ? Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 36,
+                                height: 36,
+                                child: CircularProgressIndicator(
+                                  value: _progress,
+                                  strokeWidth: 3,
+                                  color: AppColors.electricViolet,
+                                  backgroundColor: AppColors.electricViolet
+                                      .withOpacity(0.12),
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              _currentStep,
-                              style: const TextStyle(
-                                  fontFamily: 'Inter',
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.electricVioletLight),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              '${(_progress * 100).toInt()}%',
-                              style: const TextStyle(
-                                  fontFamily: 'JetBrains Mono',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.darkTextSecondary),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color:
-                                    AppColors.electricViolet.withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.upload_file_rounded,
-                                  size: 26, color: AppColors.electricViolet),
-                            ),
-                            const SizedBox(height: 10),
-                            const Text('Click to browse or drag files here',
-                                style: TextStyle(
+                              const SizedBox(height: 12),
+                              Text(
+                                _currentStep,
+                                style: const TextStyle(
                                     fontFamily: 'Inter',
-                                    fontSize: 13,
+                                    fontSize: 12.5,
                                     fontWeight: FontWeight.w600,
-                                    color: AppColors.darkTextPrimary)),
-                            const SizedBox(height: 3),
-                            Text('PDF, PPTX, DOCX, TXT, Markdown',
-                                style: TextStyle(
-                                    fontFamily: 'Inter',
-                                    fontSize: 11,
-                                    color: Colors.white.withOpacity(0.32))),
-                          ],
-                        ),
+                                    color: AppColors.electricVioletLight),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${(_progress * 100).toInt()}%',
+                                style: const TextStyle(
+                                    fontFamily: 'JetBrains Mono',
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.darkTextSecondary),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color:
+                                      AppColors.electricViolet.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.upload_file_rounded,
+                                    size: 26, color: AppColors.electricViolet),
+                              ),
+                              const SizedBox(height: 10),
+                              const Text('Click to browse or drag files here',
+                                  style: TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.darkTextPrimary)),
+                              const SizedBox(height: 3),
+                              Text('PDF, PPTX, DOCX, TXT, Markdown',
+                                  style: TextStyle(
+                                      fontFamily: 'Inter',
+                                      fontSize: 11,
+                                      color: Colors.white.withOpacity(0.32))),
+                            ],
+                          ),
+                  ),
                 ),
               ),
             ),
