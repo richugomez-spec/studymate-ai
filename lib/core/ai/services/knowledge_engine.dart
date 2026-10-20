@@ -29,10 +29,10 @@ class KnowledgeEngine {
     Map<String, dynamic> options = const {},
   }) async {
     final firestore = _ref.read(firestoreServiceProvider);
-    final scopedIds = subjectId != null && subjectId.isNotEmpty
-        ? const <String>[]
-        : sourceIds.isNotEmpty
-            ? sourceIds
+    final scopedIds = sourceIds.isNotEmpty
+        ? sourceIds
+        : subjectId != null && subjectId.isNotEmpty
+            ? const <String>[]
             : (topicId != null && topicId.contains(',')
                 ? topicId
                     .split(',')
@@ -47,7 +47,8 @@ class KnowledgeEngine {
     final relevant = _prioritize(records,
         subjectId != null && subjectId.isNotEmpty ? null : topicId, prompt,
         sourceIds: scopedIds,
-        includeAll: subjectId != null && subjectId.isNotEmpty);
+        includeAll:
+            subjectId != null && subjectId.isNotEmpty && scopedIds.isEmpty);
     final sourceSignature = relevant
         .map((r) => '${r['id']}:${r['updatedAt']}:${r['indexedAt']}')
         .join('|');
@@ -443,12 +444,14 @@ class KnowledgeEngine {
   Future<Map<String, dynamic>> generateFlashcards(
           {String? topicId,
           String? subjectId,
+          List<String> sourceIds = const [],
           String prompt = 'Create useful active recall flashcards.'}) =>
       generate(
           task: 'flashcards',
           prompt: prompt,
           topicId: topicId,
           subjectId: subjectId,
+          sourceIds: sourceIds,
           options: {
             'shape': {
               'cards': [
@@ -459,6 +462,7 @@ class KnowledgeEngine {
   Future<Map<String, dynamic>> generateQuiz(
           {String? topicId,
           String? subjectId,
+          List<String> sourceIds = const [],
           String prompt =
               'Create a varied practice quiz with answers, explanations, confidence guidance, and weak-topic labels.'}) =>
       generate(
@@ -466,6 +470,7 @@ class KnowledgeEngine {
           prompt: prompt,
           topicId: topicId,
           subjectId: subjectId,
+          sourceIds: sourceIds,
           options: {
             'shape': {
               'questions': [
@@ -484,6 +489,7 @@ class KnowledgeEngine {
   Future<Map<String, dynamic>> generateMindMap(
           {String? topicId,
           String? subjectId,
+          List<String> sourceIds = const [],
           bool forceRefresh = false,
           String prompt =
               'Build a substantial hierarchical mind map from all retrieved source chunks. Identify at least 12 distinct concepts when the material supports them, organize them beneath meaningful parent branches, and return at least 12 nodes and 12 parent-child edges. Add cross-links between related branches using labeled edges. Include concise descriptions and stable unique IDs. Never return an empty map or a root-only result; use the strongest available concepts if the source is sparse.'}) =>
@@ -492,6 +498,7 @@ class KnowledgeEngine {
           prompt: prompt,
           topicId: topicId,
           subjectId: subjectId,
+          sourceIds: sourceIds,
           forceRefresh: forceRefresh,
           options: {
             'shape': {
@@ -516,6 +523,7 @@ class KnowledgeEngine {
   Future<Map<String, dynamic>> generateSummary(
           {String? topicId,
           String? subjectId,
+          List<String> sourceIds = const [],
           bool forceRefresh = false,
           String prompt = 'Write a concise, accurate study summary.'}) =>
       generate(
@@ -523,6 +531,7 @@ class KnowledgeEngine {
           prompt: prompt,
           topicId: topicId,
           subjectId: subjectId,
+          sourceIds: sourceIds,
           forceRefresh: forceRefresh,
           options: {
             'shape': {
@@ -539,12 +548,14 @@ class KnowledgeEngine {
   Future<Map<String, dynamic>> generateExam(
           {String? topicId,
           String? subjectId,
+          List<String> sourceIds = const [],
           String prompt = 'Create a balanced mock exam with an answer key.'}) =>
       generate(
           task: 'exam',
           prompt: prompt,
           topicId: topicId,
           subjectId: subjectId,
+          sourceIds: sourceIds,
           options: {
             'shape': {
               'title': '',
@@ -562,6 +573,7 @@ class KnowledgeEngine {
   Future<Map<String, dynamic>> generatePYQ(
           {String? topicId,
           String? subjectId,
+          List<String> sourceIds = const [],
           String prompt =
               'Analyze uploaded previous-year questions for patterns. Do not claim frequency without evidence.'}) =>
       generate(
@@ -569,6 +581,7 @@ class KnowledgeEngine {
           prompt: prompt,
           topicId: topicId,
           subjectId: subjectId,
+          sourceIds: sourceIds,
           options: {
             'shape': {
               'frequently_repeated_questions': [],
@@ -600,14 +613,13 @@ class KnowledgeEngine {
       List<String> sourceIds = const [],
       String history = ''}) async* {
     final firestore = _ref.read(firestoreServiceProvider);
-    final selectedIds = subjectId != null && subjectId.isNotEmpty
-        ? const <String>[]
-        : sourceIds;
+    final selectedIds = sourceIds;
     final records = await firestore.loadKnowledge(
         subjectId: subjectId, sourceIds: selectedIds);
     final sources = _prioritize(records, null, prompt,
         sourceIds: selectedIds,
-        includeAll: subjectId != null && subjectId.isNotEmpty);
+        includeAll:
+            subjectId != null && subjectId.isNotEmpty && selectedIds.isEmpty);
     final context = _rankedContexts(sources, prompt);
     var web = const <Map<String, String>>[];
     if (_needsWeb(prompt, sources)) {

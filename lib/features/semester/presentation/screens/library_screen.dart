@@ -68,15 +68,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final id = await ref.read(firestoreServiceProvider).getActiveSubjectId();
       if (!mounted || id == null || id.isEmpty) return;
-      setState(() {
-        _activeSubjectId = id;
-      });
       ref.read(activeKnowledgeSubjectIdProvider.notifier).state = id;
-      ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = id;
-      final active = ref.read(activeDocumentProvider);
-      if (active != null && active.subjectId != id) {
-        ref.read(activeDocumentProvider.notifier).clearDocument();
-      }
     });
   }
 
@@ -121,6 +113,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ? ref.watch(userSubjectsStreamProvider(userId)).asData?.value ??
             const <Map<String, dynamic>>[]
         : const <Map<String, dynamic>>[];
+    final chatSessions = userId.isNotEmpty
+        ? ref.watch(userChatSessionsStreamProvider(userId)).asData?.value ??
+            const <FirestoreChatSessionModel>[]
+        : const <FirestoreChatSessionModel>[];
+    final selectedWorkspaceSubjectId =
+        ref.watch(activeKnowledgeSubjectIdProvider);
+    if (selectedWorkspaceSubjectId != null &&
+        ref.read(activeKnowledgeSubjectNameProvider) == null) {
+      final selected =
+          subjects.where((s) => s['id'] == selectedWorkspaceSubjectId);
+      if (selected.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            ref.read(activeKnowledgeSubjectNameProvider.notifier).state =
+                selected.first['name']?.toString() ?? 'Subject';
+          }
+        });
+      }
+    }
     if (_activeSubjectId != null && _activeSubjectName == 'General') {
       final restored = subjects.where((s) => s['id'] == _activeSubjectId);
       if (restored.isNotEmpty) {
@@ -138,7 +149,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final restoreDocs = _activeFolderId != null
         ? firestoreDocs.where((doc) => doc.folderId == _activeFolderId).toList()
         : _activeSubjectId == null
-            ? firestoreDocs
+            ? const <FirestoreDocumentModel>[]
             : firestoreDocs
                 .where((doc) => doc.subjectId == _activeSubjectId)
                 .toList();
@@ -182,7 +193,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _LibraryHeader(
-                  totalDocs: firestoreDocs.length,
+                  totalDocs: _activeSubjectId == null ? 0 : filteredDocs.length,
                   searchQuery: _searchQuery,
                   viewMode: _viewMode,
                   onSearchChanged: (val) =>
@@ -193,39 +204,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   onAddFolder: _addFolder,
                   subjects: subjects,
                   activeSubjectId: _activeSubjectId,
-                  onSubjectSelected: (subject) => setState(() {
-                    _activeSubjectId = subject?['id'] as String?;
-                    _activeSubjectName =
-                        subject?['name']?.toString() ?? 'General';
-                    ref.read(activeKnowledgeSubjectIdProvider.notifier).state =
-                        _activeSubjectId;
-                    ref
-                        .read(activeKnowledgeSubjectNameProvider.notifier)
-                        .state = _activeSubjectName;
-                    _activeFolderId = null;
-                    _activeFolderName = null;
-                    _activeFolderParentId = null;
-                    ref
-                        .read(activeKnowledgeWorkspaceIdProvider.notifier)
-                        .state = _activeSubjectId;
-                    _selectedDocIds.clear();
-                    if (_activeSubjectId != null) {
-                      _selectedDocIds.addAll(firestoreDocs
-                          .where((doc) => doc.subjectId == _activeSubjectId)
-                          .map((doc) => doc.id));
-                    }
-                    ref
-                        .read(selectedKnowledgeSourceIdsProvider.notifier)
-                        .state = List.unmodifiable(_selectedDocIds);
-                    if (activeDoc != null &&
-                        _activeSubjectId != null &&
-                        activeDoc.subjectId != _activeSubjectId) {
-                      ref.read(activeDocumentProvider.notifier).clearDocument();
-                    }
-                    unawaited(ref
-                        .read(firestoreServiceProvider)
-                        .setActiveSubjectId(_activeSubjectId));
-                  }),
+                  activeSubjectName: _activeSubjectName,
+                  activeFolderName: _activeFolderName,
+                  onNavigateRoot: _navigateLibraryRoot,
+                  onNavigateSubject: _navigateSubjectRoot,
                   onSubjectCreate: _createSubject,
                   onSubjectRename: (subject) => _renameSubject(subject),
                   onSubjectDelete: (subject) => _deleteSubject(subject),
@@ -233,40 +215,56 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 const Divider(
                     height: 1, thickness: 1, color: AppColors.darkBorderSubtle),
                 Expanded(
-                  child: filteredDocs.isEmpty && activeDoc == null
-                      ? _LibraryEmptyState(
-                          onUpload: () => _openUploadModal(context))
-                      : _LibraryDocumentFolio(
-                          docs: filteredDocs,
-                          activeDoc: activeDoc,
-                          selectedDocIds: _selectedDocIds,
-                          viewMode: _viewMode,
-                          onDocTap: _onDocTap,
-                          onDocSelect: _onDocSelect,
-                          onQuickAction: _onQuickAction,
-                          onDocDelete: (doc) => _onDocDelete(doc, userId),
-                          onDocRename: _onDocRename,
-                          onDocReindex: _onDocReindex,
-                        ),
+                  child: _activeSubjectId == null
+                      ? _SubjectExplorer(
+                          subjects: subjects,
+                          documents: firestoreDocs,
+                          workspaceItems: workspaceItems,
+                          chatSessions: chatSessions,
+                          onOpen: _openSubject,
+                          onRename: _renameSubject,
+                          onDelete: _deleteSubject,
+                          onCreate: _createSubject,
+                        )
+                      : filteredDocs.isEmpty && activeDoc == null
+                          ? _LibraryEmptyState(
+                              onUpload: () => _openUploadModal(context),
+                              onAddFolder: _addFolder,
+                              onAddNote: _addNote,
+                            )
+                          : _LibraryDocumentFolio(
+                              docs: filteredDocs,
+                              activeDoc: activeDoc,
+                              selectedDocIds: _selectedDocIds,
+                              viewMode: _viewMode,
+                              onDocTap: _onDocTap,
+                              onDocSelect: _onDocSelect,
+                              onQuickAction: _onQuickAction,
+                              onDocDelete: (doc) => _onDocDelete(doc, userId),
+                              onDocRename: _onDocRename,
+                              onDocReindex: _onDocReindex,
+                            ),
                 ),
-                _WorkspaceShelf(
-                    items: _activeFolderId != null
-                        ? workspaceItems
-                            .where(
-                                (item) => item['subjectId'] == _activeFolderId)
-                            .toList()
-                        : _activeSubjectId == null
-                            ? workspaceItems
-                            : workspaceItems
-                                .where((item) =>
-                                    item['subjectId'] == _activeSubjectId)
-                                .toList(),
-                    onOpenFolder: _openFolder,
-                    onRenameFolder: _renameFolder,
-                    onDeleteFolder: _deleteFolder,
-                    onMoveToFolder: _moveSelectedToFolder,
-                    showUp: _activeFolderId != null,
-                    onNavigateUp: () => _navigateFolderUp(workspaceItems)),
+                if (_activeSubjectId != null)
+                  _WorkspaceShelf(
+                      items: workspaceItems.where((item) {
+                        if (_activeFolderId != null) {
+                          if (item['kind'] == 'folder') {
+                            return item['parentId'] == _activeFolderId;
+                          }
+                          return item['folderId'] == _activeFolderId;
+                        }
+                        return item['subjectId'] == _activeSubjectId &&
+                            (item['parentId'] == null ||
+                                item['parentId'] == '' ||
+                                item['parentId'] == _activeSubjectId);
+                      }).toList(),
+                      onOpenFolder: _openFolder,
+                      onRenameFolder: _renameFolder,
+                      onDeleteFolder: _deleteFolder,
+                      onMoveToFolder: _moveSelectedToFolder,
+                      showUp: _activeFolderId != null,
+                      onNavigateUp: () => _navigateFolderUp(workspaceItems)),
               ],
             ),
           ),
@@ -281,11 +279,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 activeDoc: activeDoc,
                 onToolTap: (route) => _openTool(context, activeDoc, route),
                 onAiChat: () {
-                  final ids = _selectedDocIds.isNotEmpty
-                      ? _selectedDocIds.toList(growable: false)
-                      : activeDoc == null
-                          ? const <String>[]
-                          : <String>[activeDoc.id];
+                  final ids = _selectedDocIds.toList(growable: false);
                   ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
                       ids;
                   context.go(AppRoutes.aiChat);
@@ -296,6 +290,102 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ],
       ),
     );
+  }
+
+  Set<String> _folderIdsForSubject(
+      String subjectId, List<Map<String, dynamic>> items) {
+    final ids = <String>{
+      for (final item in items)
+        if (item['kind'] == 'folder' && item['subjectId'] == subjectId)
+          item['id'].toString(),
+    };
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final item in items) {
+        if (item['kind'] == 'folder' &&
+            ids.contains(item['parentId']) &&
+            ids.add(item['id'].toString())) changed = true;
+      }
+    }
+    return ids;
+  }
+
+  List<FirestoreDocumentModel> _documentsForSubject(
+      String subjectId,
+      List<FirestoreDocumentModel> documents,
+      List<Map<String, dynamic>> items) {
+    final folders = _folderIdsForSubject(subjectId, items);
+    return documents
+        .where((doc) =>
+            doc.subjectId == subjectId ||
+            folders.contains(doc.subjectId) ||
+            folders.contains(doc.folderId))
+        .toList();
+  }
+
+  void _openSubject(Map<String, dynamic> subject) {
+    final id = subject['id'] as String;
+    final name = subject['name']?.toString() ?? 'Subject';
+    final userId = ref.read(currentUserProvider)?.id ??
+        ref.read(firestoreServiceProvider).currentUserId ??
+        '';
+    final documents = userId.isEmpty
+        ? const <FirestoreDocumentModel>[]
+        : ref.read(userDocumentsStreamProvider(userId)).asData?.value ??
+            const <FirestoreDocumentModel>[];
+    final items = userId.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : ref.read(userKnowledgeStreamProvider(userId)).asData?.value ??
+            const <Map<String, dynamic>>[];
+    final ids =
+        _documentsForSubject(id, documents, items).map((doc) => doc.id).toSet();
+    setState(() {
+      _activeSubjectId = id;
+      _activeSubjectName = name;
+      _activeFolderId = null;
+      _activeFolderName = null;
+      _activeFolderParentId = null;
+      _selectedDocIds.clear();
+    });
+    ref.read(activeKnowledgeSubjectIdProvider.notifier).state = id;
+    ref.read(activeKnowledgeSubjectNameProvider.notifier).state = name;
+    ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = id;
+    ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
+    if (!ids.contains(ref.read(activeDocumentProvider)?.id)) {
+      ref.read(activeDocumentProvider.notifier).clearDocument();
+    }
+    unawaited(ref.read(firestoreServiceProvider).setActiveSubjectId(id));
+  }
+
+  void _navigateSubjectRoot() {
+    if (_activeSubjectId == null) return;
+    setState(() {
+      _activeFolderId = null;
+      _activeFolderName = null;
+      _activeFolderParentId = null;
+      _selectedDocIds.clear();
+    });
+    ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state =
+        _activeSubjectId;
+    ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
+  }
+
+  void _navigateLibraryRoot() {
+    setState(() {
+      _activeSubjectId = null;
+      _activeSubjectName = 'General';
+      _activeFolderId = null;
+      _activeFolderName = null;
+      _activeFolderParentId = null;
+      _selectedDocIds.clear();
+    });
+    ref.read(activeKnowledgeSubjectIdProvider.notifier).state = null;
+    ref.read(activeKnowledgeSubjectNameProvider.notifier).state = null;
+    ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = null;
+    ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
+    ref.read(activeDocumentProvider.notifier).clearDocument();
+    unawaited(ref.read(firestoreServiceProvider).setActiveSubjectId(null));
   }
 
   void _onDocTap(FirestoreDocumentModel doc) {
@@ -329,14 +419,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   void _onQuickAction(FirestoreDocumentModel doc, String route) {
     final active = _buildFallback(doc);
     ref.read(activeDocumentProvider.notifier).setDocument(active);
-    final ids = _selectedDocIds.length > 1
-        ? _selectedDocIds.toList(growable: false)
-        : <String>[doc.id];
+    final ids = _selectedDocIds.toList(growable: false);
     ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = ids;
+    final target =
+        route.replaceFirst(':topicId', ids.isEmpty ? 'current' : ids.join(','));
     if (route == AppRoutes.aiChat) {
       context.go(route);
     } else {
-      context.push(route.replaceFirst(':topicId', ids.join(',')));
+      context.push(target);
     }
   }
 
@@ -460,7 +550,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   void _openTool(
       BuildContext context, UploadedDocument? activeDoc, String routeTemplate) {
-    if (activeDoc == null) {
+    if (activeDoc == null && _activeSubjectId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select or upload a document first.'),
@@ -470,11 +560,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       );
       return;
     }
-    final ids = _selectedDocIds.length > 1
-        ? _selectedDocIds.toList(growable: false)
-        : <String>[activeDoc.id];
+    final ids = _selectedDocIds.toList(growable: false);
     ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = ids;
-    context.push(routeTemplate.replaceFirst(':topicId', ids.join(',')));
+    context.push(routeTemplate.replaceFirst(
+        ':topicId', ids.isEmpty ? 'current' : ids.join(',')));
   }
 
   void _openUploadModal(BuildContext context) {
@@ -493,7 +582,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       context: context,
       barrierColor: Colors.black.withOpacity(0.75),
       builder: (ctx) => _UploadModal(
-        defaultSubject: _activeFolderName ?? _activeSubjectName,
+        defaultSubject: _activeSubjectName,
+        subjectId: _activeSubjectId,
         folderId: _activeFolderId,
         onFilesUploaded: (docs) {
           if (docs.isNotEmpty) {
@@ -690,6 +780,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               content: noteContent,
                               subject: noteSubject,
                               subjectId: subjectId,
+                              folderId: _activeFolderId ?? '',
                               topic: noteTopic);
                       final engine = ref.read(knowledgeEngineProvider);
                       unawaited(() async {
@@ -747,9 +838,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           .createWorkspaceFolder(
                               name: name.text.trim(),
                               parentId: _activeFolderId ?? '',
-                              subject: _activeFolderName ?? _activeSubjectName,
-                              subjectId:
-                                  _activeFolderId ?? _activeSubjectId ?? '');
+                              subject: _activeSubjectName,
+                              subjectId: _activeSubjectId ?? '');
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
                     child: const Text('Create'))
@@ -778,9 +868,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state =
           _activeFolderId;
       _selectedDocIds.clear();
-      _selectedDocIds.addAll(folderDocs.map((doc) => doc.id));
-      ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
-          List.unmodifiable(_selectedDocIds);
+      ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
       final active = ref.read(activeDocumentProvider);
       if (active != null && active.subjectId != _activeFolderId) {
         ref.read(activeDocumentProvider.notifier).clearDocument();
@@ -885,27 +973,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         return;
       }
     }
-    final userId = ref.read(currentUserProvider)?.id ??
-        ref.read(firestoreServiceProvider).currentUserId ??
-        '';
-    final docs = userId.isEmpty
-        ? const <FirestoreDocumentModel>[]
-        : ref.read(userDocumentsStreamProvider(userId)).asData?.value ??
-            const <FirestoreDocumentModel>[];
     setState(() {
       _activeFolderId = null;
       _activeFolderName = null;
       _activeFolderParentId = null;
       ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state =
           _activeSubjectId;
-      _selectedDocIds
-        ..clear()
-        ..addAll(docs
-            .where((doc) =>
-                _activeSubjectId == null || doc.subjectId == _activeSubjectId)
-            .map((doc) => doc.id));
-      ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
-          List.unmodifiable(_selectedDocIds);
+      _selectedDocIds.clear();
+      ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
     });
   }
 
@@ -955,6 +1030,124 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 }
 
 // ── Library Header ────────────────────────────────────────────────────────────
+
+class _SubjectExplorer extends StatelessWidget {
+  const _SubjectExplorer({
+    required this.subjects,
+    required this.documents,
+    required this.workspaceItems,
+    required this.chatSessions,
+    required this.onOpen,
+    required this.onRename,
+    required this.onDelete,
+    required this.onCreate,
+  });
+  final List<Map<String, dynamic>> subjects;
+  final List<FirestoreDocumentModel> documents;
+  final List<Map<String, dynamic>> workspaceItems;
+  final List<FirestoreChatSessionModel> chatSessions;
+  final ValueChanged<Map<String, dynamic>> onOpen;
+  final ValueChanged<Map<String, dynamic>> onRename;
+  final ValueChanged<Map<String, dynamic>> onDelete;
+  final VoidCallback onCreate;
+
+  Set<String> _folderIds(String subjectId) {
+    final ids = <String>{
+      for (final item in workspaceItems)
+        if (item['kind'] == 'folder' && item['subjectId'] == subjectId)
+          item['id'].toString(),
+    };
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final item in workspaceItems) {
+        if (item['kind'] == 'folder' &&
+            ids.contains(item['parentId']) &&
+            ids.add(item['id'].toString())) changed = true;
+      }
+    }
+    return ids;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (subjects.isEmpty) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Create a subject to organize your study workspace.'),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+              onPressed: onCreate,
+              icon: const Icon(Icons.create_new_folder_outlined),
+              label: const Text('Create Subject')),
+        ]),
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.all(20),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 340,
+          mainAxisExtent: 126,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12),
+      itemCount: subjects.length,
+      itemBuilder: (context, index) {
+        final subject = subjects[index];
+        final id = subject['id'].toString();
+        final folders = _folderIds(id);
+        final files = documents
+            .where((doc) =>
+                doc.subjectId == id ||
+                folders.contains(doc.subjectId) ||
+                folders.contains(doc.folderId))
+            .length;
+        final chats =
+            chatSessions.where((session) => session.subjectId == id).length;
+        return Card(
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => onOpen(subject),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(children: [
+                const Icon(Icons.folder_rounded,
+                    size: 34, color: AppColors.electricVioletLight),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(subject['name']?.toString() ?? 'Subject',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 5),
+                    Text(
+                        '$files files · ${folders.length} folders · $chats chats',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ],
+                )),
+                PopupMenuButton<String>(
+                  onSelected: (action) {
+                    if (action == 'rename') onRename(subject);
+                    if (action == 'delete') onDelete(subject);
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'rename', child: Text('Rename')),
+                    PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  ],
+                ),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
 
 class _WorkspaceShelf extends StatelessWidget {
   const _WorkspaceShelf({
@@ -1069,7 +1262,10 @@ class _LibraryHeader extends StatelessWidget {
   final VoidCallback onAddFolder;
   final List<Map<String, dynamic>> subjects;
   final String? activeSubjectId;
-  final ValueChanged<Map<String, dynamic>?> onSubjectSelected;
+  final String activeSubjectName;
+  final String? activeFolderName;
+  final VoidCallback onNavigateRoot;
+  final VoidCallback onNavigateSubject;
   final VoidCallback onSubjectCreate;
   final ValueChanged<Map<String, dynamic>> onSubjectRename;
   final ValueChanged<Map<String, dynamic>> onSubjectDelete;
@@ -1085,7 +1281,10 @@ class _LibraryHeader extends StatelessWidget {
     required this.onAddFolder,
     required this.subjects,
     required this.activeSubjectId,
-    required this.onSubjectSelected,
+    required this.activeSubjectName,
+    required this.activeFolderName,
+    required this.onNavigateRoot,
+    required this.onNavigateSubject,
     required this.onSubjectCreate,
     required this.onSubjectRename,
     required this.onSubjectDelete,
@@ -1145,22 +1344,18 @@ class _LibraryHeader extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Row(mainAxisSize: MainAxisSize.min, children: [
-                DropdownButton<String?>(
-                  value: activeSubjectId,
-                  hint: const Text('All subjects'),
-                  underline: const SizedBox.shrink(),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                        value: null, child: Text('All subjects')),
-                    ...subjects.map((subject) => DropdownMenuItem<String?>(
-                          value: subject['id'] as String,
-                          child: Text(subject['name']?.toString() ?? 'Subject'),
-                        )),
-                  ],
-                  onChanged: (id) => onSubjectSelected(id == null
-                      ? null
-                      : subjects.where((s) => s['id'] == id).first),
-                ),
+                TextButton(
+                    onPressed: onNavigateRoot, child: const Text('Library')),
+                if (activeSubjectId != null) ...[
+                  const Icon(Icons.chevron_right, size: 16),
+                  TextButton(
+                      onPressed: onNavigateSubject,
+                      child: Text(activeSubjectName)),
+                ],
+                if (activeFolderName != null) ...[
+                  const Icon(Icons.chevron_right, size: 16),
+                  Text(activeFolderName!),
+                ],
                 IconButton(
                     tooltip: 'Create subject',
                     onPressed: onSubjectCreate,
@@ -1246,36 +1441,32 @@ class _LibraryHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          OutlinedButton.icon(
-              onPressed: onAddNote,
-              icon: const Icon(Icons.note_add_outlined, size: 15),
-              label: const Text('Add Note')),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-              onPressed: onAddFolder,
-              icon: const Icon(Icons.create_new_folder_outlined, size: 15),
-              label: const Text('Folder')),
-          const SizedBox(width: 8),
-          // Upload
-          ElevatedButton.icon(
-            onPressed: onUpload,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.electricViolet,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+          if (activeSubjectId != null) ...[
+            OutlinedButton.icon(
+                onPressed: onAddNote,
+                icon: const Icon(Icons.note_add_outlined, size: 15),
+                label: const Text('New Note')),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+                onPressed: onAddFolder,
+                icon: const Icon(Icons.create_new_folder_outlined, size: 15),
+                label: const Text('New Folder')),
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: onUpload,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.electricViolet,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 15),
+              label: const Text('Upload'),
             ),
-            icon: const Icon(Icons.add_rounded, size: 15),
-            label: const Text(
-              'Add Sources',
-              style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600),
-            ),
-          ),
+          ],
         ],
       ),
     );
@@ -1315,100 +1506,34 @@ class _ViewBtn extends StatelessWidget {
 
 class _LibraryEmptyState extends StatelessWidget {
   final VoidCallback onUpload;
-  const _LibraryEmptyState({required this.onUpload});
+  final VoidCallback onAddFolder;
+  final VoidCallback onAddNote;
+  const _LibraryEmptyState(
+      {required this.onUpload,
+      required this.onAddFolder,
+      required this.onAddNote});
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: AppColors.electricViolet.withOpacity(0.08),
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: AppColors.electricViolet.withOpacity(0.2), width: 1.5),
-            ),
-            child: const Icon(Icons.cloud_upload_outlined,
-                size: 38, color: AppColors.electricViolet),
-          ).animate().fadeIn(duration: 500.ms).scaleXY(
-              begin: 0.8, end: 1.0, duration: 500.ms, curve: Curves.easeOut),
-          const SizedBox(height: 22),
-          const Text(
-            'No Study Materials Yet',
-            style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 19,
-                fontWeight: FontWeight.w700,
-                color: AppColors.darkTextPrimary,
-                letterSpacing: -0.3),
-          )
-              .animate(delay: 100.ms)
-              .fadeIn(duration: 400.ms)
-              .slideY(begin: 0.2, end: 0),
-          const SizedBox(height: 10),
-          Text(
-            'Upload lecture notes, textbooks, or assignments.\nStudyMate AI extracts concepts, summaries, flashcards & quizzes.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 13.5,
-                color: AppColors.darkTextSecondary.withOpacity(0.75),
-                height: 1.55),
-          ).animate(delay: 150.ms).fadeIn(duration: 400.ms),
-          const SizedBox(height: 28),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ElevatedButton.icon(
-                onPressed: onUpload,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.electricViolet,
-                  foregroundColor: Colors.white,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  elevation: 0,
-                ),
-                icon: const Icon(Icons.file_upload_outlined, size: 17),
-                label: const Text('Upload Documents',
-                    style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600)),
-              ),
-            ],
-          )
-              .animate(delay: 200.ms)
-              .fadeIn(duration: 400.ms)
-              .slideY(begin: 0.15, end: 0),
-          const SizedBox(height: 28),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            alignment: WrapAlignment.center,
-            children: ['PDF', 'PPTX', 'DOCX', 'TXT', 'Markdown']
-                .map((f) => Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AppColors.darkSurfaceVariant,
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppColors.darkBorderSubtle),
-                      ),
-                      child: Text(f,
-                          style: const TextStyle(
-                              fontFamily: 'JetBrains Mono',
-                              fontSize: 10.5,
-                              color: AppColors.darkTextSecondary)),
-                    ))
-                .toList(),
-          ).animate(delay: 300.ms).fadeIn(duration: 400.ms),
-        ],
-      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('This subject has no files.'),
+        const SizedBox(height: 14),
+        Wrap(spacing: 8, children: [
+          FilledButton.icon(
+              onPressed: onUpload,
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Upload')),
+          OutlinedButton.icon(
+              onPressed: onAddFolder,
+              icon: const Icon(Icons.create_new_folder_outlined),
+              label: const Text('New Folder')),
+          OutlinedButton.icon(
+              onPressed: onAddNote,
+              icon: const Icon(Icons.note_add_outlined),
+              label: const Text('New Note')),
+        ]),
+      ]),
     );
   }
 }
@@ -2221,10 +2346,12 @@ class _StudyToolsStudio extends StatelessWidget {
 class _UploadModal extends ConsumerStatefulWidget {
   final ValueChanged<List<UploadedDocument>> onFilesUploaded;
   final String defaultSubject;
+  final String? subjectId;
   final String? folderId;
   const _UploadModal(
       {required this.onFilesUploaded,
       required this.defaultSubject,
+      this.subjectId,
       this.folderId});
 
   @override
@@ -2291,7 +2418,7 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
       }
 
       final subjectId =
-          widget.folderId ?? await firestore.getOrCreateSubject(subject);
+          widget.subjectId ?? await firestore.getOrCreateSubject(subject);
 
       setState(() {
         _currentStep = 'Saving sources to your workspace…';

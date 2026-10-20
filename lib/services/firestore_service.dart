@@ -40,6 +40,11 @@ final userSubjectsStreamProvider =
   return ref.watch(firestoreServiceProvider).streamSubjects(uid);
 });
 
+final userChatSessionsStreamProvider =
+    StreamProvider.family<List<FirestoreChatSessionModel>, String>((ref, uid) {
+  return ref.watch(firestoreServiceProvider).streamUserChatSessions(uid);
+});
+
 /// Production Firestore Service Layer
 ///
 /// Encapsulates all Firestore CRUD operations and data synchronization:
@@ -91,6 +96,15 @@ class FirestoreService {
       _subjectsCol.where('ownerId', isEqualTo: ownerId).snapshots().map(
             (snapshot) =>
                 snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList(),
+          );
+
+  Stream<List<FirestoreChatSessionModel>> streamUserChatSessions(
+          String ownerId) =>
+      _chatSessionsCol.where('ownerId', isEqualTo: ownerId).snapshots().map(
+            (snapshot) => snapshot.docs
+                .map((doc) =>
+                    FirestoreChatSessionModel.fromMap(doc.data(), doc.id))
+                .toList(),
           );
 
   Future<String> createSubject(String name) async {
@@ -352,6 +366,9 @@ class FirestoreService {
       }
     }
     bool inScope(Map<String, dynamic> data, String id) {
+      // An explicit source list represents a user's deliberate selection.
+      // Ownership was verified while loading those records above.
+      if (sourceIds.isNotEmpty) return true;
       if (subjectId != null && subjectId.isNotEmpty) {
         return data['subjectId'] == subjectId ||
             folderIds.contains(data['subjectId']) ||
@@ -497,10 +514,8 @@ class FirestoreService {
       return;
     await _docsCol.doc(documentId).update({
       'folderId': folderId,
-      'subjectId': folderId,
-      'subject': folderName.isNotEmpty
-          ? folderName
-          : folder.data()?['title'] ?? 'Folder',
+      'subjectId': folder.data()?['subjectId'] ?? folderId,
+      'subject': folder.data()?['subject'] ?? folderName,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }

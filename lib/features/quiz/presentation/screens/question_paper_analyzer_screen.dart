@@ -50,6 +50,7 @@ class _QuestionPaperAnalyzerScreenState
             topicId: widget.topicId,
             subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
                 ref.read(activeKnowledgeWorkspaceIdProvider),
+            sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
             prompt:
                 'Answer this manually entered exam question using available workspace notes when relevant; otherwise use general knowledge. Question: $question. Marks: $marks. Return JSON with question, marks, model_answer, marking_scheme, and common_mistakes.',
           );
@@ -156,6 +157,7 @@ class _QuestionPaperAnalyzerScreenState
             topicId: id,
             subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
                 ref.read(activeKnowledgeWorkspaceIdProvider),
+            sourceIds: [id],
             prompt:
                 'Analyze only this uploaded previous-year question paper. Return JSON with frequently_repeated_questions (list, only evidence present in the paper), topic_frequency (list of topic and count), marks_distribution (list), important_units (list), and predicted_questions (list grounded in observed patterns). Do not invent repeated questions, frequencies, or marks.',
           );

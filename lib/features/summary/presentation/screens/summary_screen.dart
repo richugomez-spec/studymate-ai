@@ -30,6 +30,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
             topicId: widget.topicId,
             subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
                 ref.read(activeKnowledgeWorkspaceIdProvider),
+            sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
             forceRefresh: forceRefresh,
             prompt: switch (_mode) {
               SummaryMode.short =>

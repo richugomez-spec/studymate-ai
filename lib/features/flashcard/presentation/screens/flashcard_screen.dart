@@ -80,6 +80,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           topicId: widget.topicId,
           subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
               ref.read(activeKnowledgeWorkspaceIdProvider),
+          sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
           prompt:
               'Create useful active recall cards. Return cards as a list of objects with a concise front question and a correct, clear back answer.');
       final generated = result['cards'];

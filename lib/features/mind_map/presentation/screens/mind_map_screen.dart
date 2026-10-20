@@ -26,6 +26,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
           topicId: widget.topicId,
           subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
               ref.read(activeKnowledgeWorkspaceIdProvider),
+          sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
           forceRefresh: forceRefresh);
 
   @override
