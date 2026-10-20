@@ -21,11 +21,26 @@ class KnowledgeEngine {
     required String task,
     required String prompt,
     String? topicId,
+    String? subjectId,
+    List<String> sourceIds = const [],
     Map<String, dynamic> options = const {},
   }) async {
     final firestore = _ref.read(firestoreServiceProvider);
-    final records = await firestore.loadKnowledge();
-    final relevant = _prioritize(records, topicId);
+    final scopedIds = sourceIds.isNotEmpty
+        ? sourceIds
+        : (topicId != null && topicId.contains(',')
+            ? topicId
+                .split(',')
+                .map((id) => id.trim())
+                .where((id) => id.isNotEmpty)
+                .toList()
+            : const <String>[]);
+    final records = await firestore.loadKnowledge(
+      subjectId: subjectId,
+      sourceIds: scopedIds,
+    );
+    final relevant =
+        _prioritize(records, topicId, prompt, sourceIds: scopedIds);
     final sourceSignature = relevant
         .map((r) => '${r['id']}:${r['updatedAt']}:${r['indexedAt']}')
         .join('|');
@@ -33,7 +48,7 @@ class KnowledgeEngine {
         ? DateTime.now().toIso8601String().substring(0, 10)
         : '';
     final cacheKey = _stableKey(
-      '${task.toLowerCase()}|${topicId ?? ''}|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|$dateSignature',
+      '${task.toLowerCase()}|${subjectId ?? ''}|${topicId ?? ''}|${scopedIds.join(',')}|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|$dateSignature',
     );
     final cached = await firestore.getGenerationCache(cacheKey);
     if (cached != null) {
@@ -53,11 +68,10 @@ class KnowledgeEngine {
         .map((r) {
           final type = r['kind'] ?? 'document';
           final title = r['title'] ?? r['fileName'] ?? 'Untitled source';
-          final body = [r['content'], r['extractedText']]
-              .whereType<String>()
-              .where((text) => text.trim().isNotEmpty)
-              .join('\n\n');
-          return '[$type: $title | ${r['subject'] ?? ''} / ${r['topic'] ?? ''}]\n$body';
+          final body = _rankedContext(r, prompt);
+          return body.isEmpty
+              ? ''
+              : '[$type: $title | ${r['subject'] ?? ''} / ${r['topic'] ?? ''}]\n$body';
         })
         .where((s) => s.trim().isNotEmpty)
         .join('\n\n');
@@ -106,7 +120,10 @@ class KnowledgeEngine {
     String? topicId,
     Map<String, dynamic> result,
   ) async {
-    if (topicId == null || topicId.isEmpty || topicId == 'current') return;
+    if (topicId == null ||
+        topicId.isEmpty ||
+        topicId == 'current' ||
+        topicId.contains(',')) return;
     if (task == 'flashcards') {
       final cards = result['cards'];
       if (cards is List) {
@@ -127,6 +144,7 @@ class KnowledgeEngine {
     required String content,
     String sourceKind = 'document',
     String subject = '',
+    String subjectId = '',
     String topic = '',
     String subtopic = '',
     Uint8List? sourceBytes,
@@ -151,7 +169,7 @@ class KnowledgeEngine {
     );
     await _ref.read(firestoreServiceProvider).saveKnowledgeIndex(
         sourceId, structured,
-        sourceText: content, sourceKind: sourceKind);
+        sourceText: content, sourceKind: sourceKind, subjectId: subjectId);
     if (sourceKind == 'document') {
       unawaited(_prepareDocumentStudyCounts(sourceId));
     }
@@ -159,16 +177,19 @@ class KnowledgeEngine {
   }
 
   Future<void> _prepareDocumentStudyCounts(String sourceId) async {
-    try {
-      await generateFlashcards(topicId: sourceId);
-    } catch (_) {
-      debugPrint('Flashcard count preparation did not complete.');
-    }
-    try {
-      await generateQuiz(topicId: sourceId);
-    } catch (_) {
-      debugPrint('Quiz count preparation did not complete.');
-    }
+    final jobs = <String, Future<Map<String, dynamic>> Function()>{
+      'flashcards': () => generateFlashcards(topicId: sourceId),
+      'quiz': () => generateQuiz(topicId: sourceId),
+      'summary': () => generateSummary(topicId: sourceId),
+      'mind_map': () => generateMindMap(topicId: sourceId),
+    };
+    await Future.wait(jobs.entries.map((job) async {
+      try {
+        await job.value();
+      } catch (_) {
+        debugPrint('${job.key} pre-generation did not complete.');
+      }
+    }));
   }
 
   Future<Map<String, dynamic>> _generateUncached(
@@ -202,26 +223,82 @@ class KnowledgeEngine {
   }
 
   List<Map<String, dynamic>> _prioritize(
-      List<Map<String, dynamic>> records, String? topicId) {
-    final scoped = topicId == null || topicId == 'current'
+      List<Map<String, dynamic>> records, String? topicId, String prompt,
+      {List<String> sourceIds = const []}) {
+    final scoped = sourceIds.isNotEmpty
         ? records
-        : records
-            .where((r) =>
-                r['id'] == topicId ||
-                r['sourceId'] == topicId ||
-                r['topicId'] == topicId ||
-                r['folderId'] == topicId)
-            .toList();
-    final ordered =
-        List<Map<String, dynamic>>.from(scoped.isEmpty ? records : scoped);
+        : topicId == null || topicId == 'current'
+            ? records
+            : records
+                .where((r) =>
+                    r['id'] == topicId ||
+                    r['sourceId'] == topicId ||
+                    r['topicId'] == topicId ||
+                    r['folderId'] == topicId)
+                .toList();
+    if ((sourceIds.isNotEmpty || (topicId != null && topicId != 'current')) &&
+        scoped.isEmpty) {
+      return const [];
+    }
+    final queryTerms = prompt
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((term) => term.length > 2)
+        .toSet();
+    int relevance(Map<String, dynamic> r) {
+      final text =
+          '${r['title'] ?? ''} ${r['topic'] ?? ''} ${r['content'] ?? ''} ${r['extractedText'] ?? ''}'
+              .toLowerCase();
+      return queryTerms.fold<int>(
+          0, (score, term) => score + (text.contains(term) ? 1 : 0));
+    }
+
+    final hasParentSource = scoped.any((r) => r['kind'] != 'concept');
+    final ordered = List<Map<String, dynamic>>.from(
+        hasParentSource ? scoped.where((r) => r['kind'] != 'concept') : scoped);
     int priority(Map<String, dynamic> r) => switch (r['kind']) {
           'note' => 0,
           'concept' => 1,
           'document' => 2,
           _ => 3
         };
-    ordered.sort((a, b) => priority(a).compareTo(priority(b)));
-    return ordered;
+    ordered.sort((a, b) {
+      final score = relevance(b).compareTo(relevance(a));
+      return score != 0 ? score : priority(a).compareTo(priority(b));
+    });
+    return sourceIds.isNotEmpty ? ordered : ordered.take(24).toList();
+  }
+
+  String _rankedContext(Map<String, dynamic> record, String prompt) {
+    final raw = <String>[
+      if (record['content'] is String) record['content'] as String,
+      if (record['structuredKnowledge'] is Map)
+        jsonEncode(record['structuredKnowledge']),
+      if (record['extractedText'] is String) record['extractedText'] as String,
+    ].where((part) => part.trim().isNotEmpty).join('\n\n');
+    if (raw.isEmpty) return '';
+    final terms = prompt
+        .toLowerCase()
+        .split(RegExp(r'[^a-z0-9]+'))
+        .where((term) => term.length > 2)
+        .toSet();
+    final paragraphs = raw
+        .split(RegExp(r'\n\s*\n|(?<=[.!?])\s+(?=[A-Z0-9])'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .toSet()
+        .toList();
+    paragraphs.sort((a, b) {
+      int score(String text) {
+        final lower = text.toLowerCase();
+        return terms.fold<int>(
+            0, (n, term) => n + (lower.contains(term) ? 1 : 0));
+      }
+
+      return score(b).compareTo(score(a));
+    });
+    final selected = paragraphs.take(5).join('\n');
+    return selected.length <= 5000 ? selected : selected.substring(0, 5000);
   }
 
   bool _needsWeb(String prompt, List<Map<String, dynamic>> sources) {
@@ -378,11 +455,17 @@ class KnowledgeEngine {
         }
       });
   Future<Map<String, dynamic>> answer(
-          {required String prompt, String? topicId, String history = ''}) =>
+          {required String prompt,
+          String? topicId,
+          String? subjectId,
+          List<String> sourceIds = const [],
+          String history = ''}) =>
       generate(
           task: 'chat',
           prompt: '$history\n$prompt',
           topicId: topicId,
+          subjectId: subjectId,
+          sourceIds: sourceIds,
           options: const {
             'shape': {'answer': '', 'citations': []}
           });

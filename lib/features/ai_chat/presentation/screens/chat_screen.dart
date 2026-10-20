@@ -45,7 +45,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (ownerId != null && ownerId.isNotEmpty) {
         final session = await firestoreService.getOrCreateChatSession(
           ownerId: ownerId,
-          documentId: activeDoc?.id,
+          subjectId: activeDoc?.subjectId,
         );
         _currentSessionId = session.id;
 
@@ -208,7 +208,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         if (_currentSessionId == null) {
           final session = await firestoreService.getOrCreateChatSession(
             ownerId: ownerId,
-            documentId: activeDoc?.id,
+            subjectId: activeDoc?.subjectId,
           );
           _currentSessionId = session.id;
         }
@@ -228,6 +228,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final responseText = await chatService.askAI(
         prompt: clean,
         conversationHistory: _messages.where((m) => !m.isThinking).toList(),
+        subjectId: activeDoc?.subjectId,
+        sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
       );
 
       final aiTimestamp = DateTime.now();

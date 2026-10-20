@@ -101,6 +101,7 @@ class FirebaseUploadService {
     PlatformFile file, {
     void Function(double)? onProgress,
     String subject = 'General',
+    String subjectId = '',
     String topic = '',
     String subtopic = '',
     String notes = '',
@@ -138,6 +139,7 @@ class FirebaseUploadService {
       'status': 'uploading',
       'uploadStatus': 'uploading',
       'subject': subject,
+      'subjectId': subjectId,
       'topic': topic,
       'subtopic': subtopic,
       'notes': notes,

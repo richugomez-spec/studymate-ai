@@ -89,6 +89,7 @@ class FirestoreDocumentModel {
   final String ownerId;
   final String title;
   final String subject;
+  final String subjectId;
   final String fileName;
   final String fileUrl;
   final DateTime uploadedAt;
@@ -109,6 +110,7 @@ class FirestoreDocumentModel {
     required this.ownerId,
     required this.title,
     required this.subject,
+    this.subjectId = '',
     required this.fileName,
     required this.fileUrl,
     required this.uploadedAt,
@@ -132,6 +134,7 @@ class FirestoreDocumentModel {
       ownerId: (map['ownerId'] as String?) ?? '',
       title: (map['title'] as String?) ?? '',
       subject: (map['subject'] as String?) ?? 'General',
+      subjectId: (map['subjectId'] as String?) ?? '',
       fileName: (map['fileName'] as String?) ?? '',
       fileUrl: (map['fileUrl'] as String?) ?? '',
       uploadedAt: _parseDateTime(map['uploadedAt']) ?? DateTime.now(),
@@ -159,6 +162,7 @@ class FirestoreDocumentModel {
       'ownerId': ownerId,
       'title': title,
       'subject': subject,
+      'subjectId': subjectId,
       'fileName': fileName,
       'fileUrl': fileUrl,
       'uploadedAt': Timestamp.fromDate(uploadedAt),
@@ -182,6 +186,7 @@ class FirestoreDocumentModel {
     String? ownerId,
     String? title,
     String? subject,
+    String? subjectId,
     String? fileName,
     String? fileUrl,
     DateTime? uploadedAt,
@@ -199,6 +204,7 @@ class FirestoreDocumentModel {
       ownerId: ownerId ?? this.ownerId,
       title: title ?? this.title,
       subject: subject ?? this.subject,
+      subjectId: subjectId ?? this.subjectId,
       fileName: fileName ?? this.fileName,
       fileUrl: fileUrl ?? this.fileUrl,
       uploadedAt: uploadedAt ?? this.uploadedAt,
@@ -226,6 +232,7 @@ class FirestoreChatSessionModel {
   final String id;
   final String ownerId;
   final String? documentId;
+  final String subjectId;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -235,6 +242,7 @@ class FirestoreChatSessionModel {
     required this.createdAt,
     required this.updatedAt,
     this.documentId,
+    this.subjectId = '',
   });
 
   factory FirestoreChatSessionModel.fromMap(
@@ -243,6 +251,7 @@ class FirestoreChatSessionModel {
       id: docId,
       ownerId: (map['ownerId'] as String?) ?? '',
       documentId: map['documentId'] as String?,
+      subjectId: (map['subjectId'] as String?) ?? '',
       createdAt: _parseDateTime(map['createdAt']) ?? DateTime.now(),
       updatedAt: _parseDateTime(map['updatedAt']) ?? DateTime.now(),
     );
@@ -252,6 +261,7 @@ class FirestoreChatSessionModel {
     return {
       'ownerId': ownerId,
       'documentId': documentId,
+      'subjectId': subjectId,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
     };
@@ -261,6 +271,7 @@ class FirestoreChatSessionModel {
     String? id,
     String? ownerId,
     String? documentId,
+    String? subjectId,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -268,6 +279,7 @@ class FirestoreChatSessionModel {
       id: id ?? this.id,
       ownerId: ownerId ?? this.ownerId,
       documentId: documentId ?? this.documentId,
+      subjectId: subjectId ?? this.subjectId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

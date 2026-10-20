@@ -89,6 +89,8 @@ class UploadedDocument {
 
   /// Firebase Storage download URL — populated after cloud upload
   final String? downloadUrl;
+  final String subjectId;
+  final String subject;
 
   const UploadedDocument({
     required this.id,
@@ -102,6 +104,8 @@ class UploadedDocument {
     required this.summary,
     required this.uploadedAt,
     this.downloadUrl,
+    this.subjectId = '',
+    this.subject = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -148,6 +152,8 @@ class UploadedDocument {
         },
         'uploadedAt': uploadedAt.toIso8601String(),
         'downloadUrl': downloadUrl,
+        'subjectId': subjectId,
+        'subject': subject,
       };
 
   factory UploadedDocument.fromJson(Map<String, dynamic> json) {
@@ -170,6 +176,8 @@ class UploadedDocument {
           examTraps: const []),
       uploadedAt: DateTime.tryParse(json['uploadedAt'] ?? '') ?? DateTime.now(),
       downloadUrl: json['downloadUrl'],
+      subjectId: json['subjectId'] ?? '',
+      subject: json['subject'] ?? '',
     );
   }
 }
@@ -224,6 +232,10 @@ final activeDocumentFamilyProvider = StateNotifierProvider.family<
     ActiveDocumentNotifier, UploadedDocument?, String>(
   (ref, userId) => ActiveDocumentNotifier(userId),
 );
+
+/// Explicit multi-source selection shared by the library and knowledge tools.
+final selectedKnowledgeSourceIdsProvider =
+    StateProvider<List<String>>((ref) => const []);
 
 /// Service responsible for real file parsing, text extraction,
 /// and AI micro-concept synthesis.

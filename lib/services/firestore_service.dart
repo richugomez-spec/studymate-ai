@@ -35,6 +35,11 @@ final userKnowledgeStreamProvider =
   return ref.watch(firestoreServiceProvider).streamWorkspaceItems(uid);
 });
 
+final userSubjectsStreamProvider =
+    StreamProvider.family<List<Map<String, dynamic>>, String>((ref, uid) {
+  return ref.watch(firestoreServiceProvider).streamSubjects(uid);
+});
+
 /// Production Firestore Service Layer
 ///
 /// Encapsulates all Firestore CRUD operations and data synchronization:
@@ -77,57 +82,241 @@ class FirestoreService {
   CollectionReference<Map<String, dynamic>> get _knowledgeCol =>
       _firestore.collection('knowledge_items');
 
-  Future<List<Map<String, dynamic>>> loadKnowledge({String? ownerId}) async {
+  CollectionReference<Map<String, dynamic>> get _subjectsCol =>
+      _firestore.collection('subjects');
+
+  /// Subjects are user-owned workspace roots. Legacy text-only subject names
+  /// remain readable while new uploads use stable subject IDs.
+  Stream<List<Map<String, dynamic>>> streamSubjects(String ownerId) =>
+      _subjectsCol.where('ownerId', isEqualTo: ownerId).snapshots().map(
+            (snapshot) =>
+                snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList(),
+          );
+
+  Future<String> createSubject(String name) async {
+    final uid = currentUserId;
+    final clean = name.trim();
+    if (uid == null) throw StateError('Sign in to create a subject.');
+    if (clean.isEmpty) throw ArgumentError('Subject name is required.');
+    final ref = await _subjectsCol.add({
+      'ownerId': uid,
+      'name': clean,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    // Adopt legacy items that predate subject IDs when the user creates a
+    // subject with the same name.
+    final legacyItems = await Future.wait([
+      _docsCol.where('ownerId', isEqualTo: uid).get(),
+      _knowledgeCol.where('ownerId', isEqualTo: uid).get(),
+    ]);
+    final updates = <Future<void>>[
+      ...legacyItems[0]
+          .docs
+          .where((d) =>
+              d.data()['subjectId'] == null &&
+              (d.data()['subject'] as String? ?? '').toLowerCase() ==
+                  clean.toLowerCase())
+          .map((d) => d.reference.update({'subjectId': ref.id})),
+      ...legacyItems[1]
+          .docs
+          .where((d) =>
+              d.data()['subjectId'] == null &&
+              (d.data()['subject'] as String? ?? '').toLowerCase() ==
+                  clean.toLowerCase())
+          .map((d) => d.reference.update({'subjectId': ref.id})),
+    ];
+    await Future.wait(updates);
+    return ref.id;
+  }
+
+  Future<String> getOrCreateSubject(String name) async {
+    final uid = currentUserId;
+    final clean = name.trim().isEmpty ? 'General' : name.trim();
+    if (uid == null) throw StateError('Sign in to select a subject.');
+    final existing = await _subjectsCol.where('ownerId', isEqualTo: uid).get();
+    for (final subject in existing.docs) {
+      if ((subject.data()['name'] as String? ?? '').toLowerCase() ==
+          clean.toLowerCase()) {
+        return subject.id;
+      }
+    }
+    return createSubject(clean);
+  }
+
+  Future<String?> getActiveSubjectId() async {
+    final uid = currentUserId;
+    if (uid == null) return null;
+    final snapshot = await _usersCol.doc(uid).get();
+    return snapshot.data()?['activeSubjectId'] as String?;
+  }
+
+  Future<void> setActiveSubjectId(String? subjectId) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    await _usersCol.doc(uid).set({
+      'activeSubjectId': subjectId ?? '',
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> renameSubject(String subjectId, String name) async {
+    final clean = name.trim();
+    if (clean.isEmpty) throw ArgumentError('Subject name is required.');
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to rename a subject.');
+    final subjectRef = _subjectsCol.doc(subjectId);
+    final subject = await subjectRef.get();
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('Subject is not available.');
+    }
+    await subjectRef.update({
+      'name': clean,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    await Future.wait([
+      _docsCol
+          .where('ownerId', isEqualTo: uid)
+          .where('subjectId', isEqualTo: subjectId)
+          .get()
+          .then((s) => Future.wait(
+              s.docs.map((d) => d.reference.update({'subject': clean})))),
+      _knowledgeCol
+          .where('ownerId', isEqualTo: uid)
+          .where('subjectId', isEqualTo: subjectId)
+          .get()
+          .then((s) => Future.wait(
+              s.docs.map((d) => d.reference.update({'subject': clean})))),
+    ]);
+  }
+
+  Future<void> deleteSubject(String subjectId) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to delete a subject.');
+    final subjectRef = _subjectsCol.doc(subjectId);
+    final subject = await subjectRef.get();
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('Subject is not available.');
+    }
+    // Keep documents and notes intact, but detach them from the removed root.
+    await Future.wait([
+      _docsCol
+          .where('ownerId', isEqualTo: uid)
+          .where('subjectId', isEqualTo: subjectId)
+          .get()
+          .then((s) => Future.wait(s.docs.map((d) => d.reference.update({
+                'subjectId': '',
+                'subject': 'General',
+              })))),
+      _knowledgeCol
+          .where('ownerId', isEqualTo: uid)
+          .where('subjectId', isEqualTo: subjectId)
+          .get()
+          .then((s) => Future.wait(s.docs.map((d) => d.reference.update({
+                'subjectId': '',
+                'subject': 'General',
+              })))),
+    ]);
+    final sessions = await _chatSessionsCol
+        .where('ownerId', isEqualTo: uid)
+        .where('subjectId', isEqualTo: subjectId)
+        .get();
+    for (final session in sessions.docs) {
+      await _deleteCollection(session.reference.collection('messages'));
+      await session.reference.delete();
+    }
+    await subjectRef.delete();
+  }
+
+  Future<List<Map<String, dynamic>>> loadKnowledge({
+    String? ownerId,
+    String? subjectId,
+    List<String> sourceIds = const [],
+  }) async {
     final uid = ownerId ?? currentUserId;
     if (uid == null) return const [];
-    final snapshot = await _docsCol.where('ownerId', isEqualTo: uid).get();
-    final notes = await _knowledgeCol.where('ownerId', isEqualTo: uid).get();
+    late final List<Map<String, dynamic>> documents;
+    late final List<Map<String, dynamic>> notes;
+    if (sourceIds.isEmpty) {
+      final snapshots = await Future.wait([
+        _docsCol.where('ownerId', isEqualTo: uid).get(),
+        _knowledgeCol.where('ownerId', isEqualTo: uid).get(),
+      ]);
+      documents =
+          snapshots[0].docs.map((d) => {'id': d.id, ...d.data()}).toList();
+      notes = snapshots[1].docs.map((d) => {'id': d.id, ...d.data()}).toList();
+    } else {
+      final selected = await Future.wait(sourceIds.map((id) async => [
+            await _docsCol.doc(id).get(),
+            await _knowledgeCol.doc(id).get(),
+          ]));
+      documents = [];
+      notes = [];
+      for (final pair in selected) {
+        final document = pair[0];
+        final note = pair[1];
+        if (document.exists && document.data()?['ownerId'] == uid) {
+          documents.add({'id': document.id, ...document.data()!});
+        }
+        if (note.exists && note.data()?['ownerId'] == uid) {
+          notes.add({'id': note.id, ...note.data()!});
+        }
+      }
+    }
+    bool inScope(Map<String, dynamic> data, String id) {
+      if (subjectId != null && subjectId.isNotEmpty) {
+        return data['subjectId'] == subjectId ||
+            (data['subjectId'] == null && data['subject'] == subjectId);
+      }
+      return true;
+    }
+
     final items = <Map<String, dynamic>>[
-      ...notes.docs
-          .where((d) => d.data()['kind'] != 'folder')
-          .map((d) => {'id': d.id, ...d.data(), 'kind': 'note'}),
+      ...notes
+          .where((d) => d['kind'] != 'folder' && inScope(d, d['id'] as String))
+          .map((d) => {...d, 'kind': 'note'}),
     ];
-    for (final note in notes.docs) {
-      final indexed = note.data()['structuredKnowledge'];
+    for (final note in notes.where((d) => inScope(d, d['id'] as String))) {
+      final noteId = note['id'] as String;
+      final indexed = note['structuredKnowledge'];
       if (indexed is Map && indexed['concepts'] is List) {
         for (final concept in indexed['concepts'] as List) {
           if (concept is Map)
             items.add({
-              'id': '${note.id}_${concept['id'] ?? items.length}',
-              'sourceId': note.id,
-              'title':
-                  concept['name'] ?? concept['title'] ?? note.data()['title'],
+              'id': '${noteId}_${concept['id'] ?? items.length}',
+              'sourceId': noteId,
+              'title': concept['name'] ?? concept['title'] ?? note['title'],
               'content': jsonEncode(concept),
-              'subject': note.data()['subject'],
-              'topic': note.data()['topic'],
+              'subject': note['subject'],
+              'topic': note['topic'],
               'kind': 'concept',
-              'updatedAt': note.data()['indexedAt']
+              'updatedAt': note['indexedAt']
             });
         }
       }
     }
-    for (final doc in snapshot.docs) {
-      final data = doc.data();
+    for (final data in documents.where((d) => inScope(d, d['id'] as String))) {
+      final documentId = data['id'] as String;
       final customNotes = (data['notes'] ?? '').toString().trim();
       if (customNotes.isNotEmpty)
         items.add({
-          'id': '${doc.id}_notes',
+          'id': '${documentId}_notes',
           'title': '${data['title'] ?? data['fileName']} notes',
-          'sourceId': doc.id,
+          'sourceId': documentId,
           'content': customNotes,
           'subject': data['subject'],
           'topic': data['topic'],
           'kind': 'note',
           'updatedAt': data['uploadedAt'],
         });
-      items.add({'id': doc.id, ...data, 'kind': 'document'});
+      items.add({...data, 'kind': 'document'});
       final indexed = data['structuredKnowledge'];
       if (indexed is Map && indexed['concepts'] is List) {
         for (final concept in indexed['concepts'] as List) {
           if (concept is Map)
             items.add({
-              'id': '${doc.id}_${concept['id'] ?? items.length}',
-              'sourceId': doc.id,
+              'id': '${documentId}_${concept['id'] ?? items.length}',
+              'sourceId': documentId,
               'title': concept['name'] ?? concept['title'] ?? data['title'],
               'content': jsonEncode(concept),
               'subject': data['subject'],
@@ -145,6 +334,7 @@ class FirestoreService {
       {required String title,
       required String content,
       String subject = '',
+      String subjectId = '',
       String topic = '',
       String subtopic = '',
       String notes = '',
@@ -157,6 +347,7 @@ class FirestoreService {
       'title': title,
       'content': content,
       'subject': subject,
+      'subjectId': subjectId,
       'topic': topic,
       'subtopic': subtopic,
       'notes': notes,
@@ -170,7 +361,10 @@ class FirestoreService {
   }
 
   Future<String> createWorkspaceFolder(
-      {required String name, String parentId = '', String subject = ''}) async {
+      {required String name,
+      String parentId = '',
+      String subject = '',
+      String subjectId = ''}) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to create a workspace folder.');
     final ref = await _knowledgeCol.add({
@@ -179,6 +373,7 @@ class FirestoreService {
       'title': name,
       'parentId': parentId,
       'subject': subject,
+      'subjectId': subjectId,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp()
     });
@@ -191,7 +386,9 @@ class FirestoreService {
               snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList());
 
   Future<void> saveKnowledgeIndex(String documentId, Map<String, dynamic> index,
-      {required String sourceText, String sourceKind = 'document'}) async {
+      {required String sourceText,
+      String sourceKind = 'document',
+      String subjectId = ''}) async {
     final target = sourceKind == 'note'
         ? _knowledgeCol.doc(documentId)
         : _docsCol.doc(documentId);
@@ -202,6 +399,7 @@ class FirestoreService {
           : sourceText,
       'indexedAt': FieldValue.serverTimestamp(),
       'status': 'indexed',
+      if (subjectId.isNotEmpty) 'subjectId': subjectId,
       if (sourceKind == 'document') ...{
         'conceptCount': (index['concepts'] as List?)?.length ?? 0,
         if (index['flashcards'] is List)
@@ -369,6 +567,29 @@ class FirestoreService {
         SetOptions(merge: true),
       );
       await batch.commit();
+      final relatedSessions = await _chatSessionsCol
+          .where('ownerId', isEqualTo: ownerId)
+          .where('documentId', isEqualTo: documentId)
+          .get();
+      for (final session in relatedSessions.docs) {
+        await _deleteCollection(session.reference.collection('messages'));
+        await session.reference.delete();
+      }
+      final relatedNotes = await _knowledgeCol
+          .where('ownerId', isEqualTo: ownerId)
+          .where('sourceId', isEqualTo: documentId)
+          .get();
+      await _deleteDocuments(
+          relatedNotes.docs.map((d) => d.reference).toList());
+      final cache =
+          await _usersCol.doc(ownerId).collection('generation_cache').get();
+      final staleCache = cache.docs.where((d) {
+        final result = d.data()['result'];
+        if (result is! Map || result['sources'] is! List) return false;
+        return (result['sources'] as List)
+            .any((s) => s is Map && s['id'] == documentId);
+      });
+      await _deleteDocuments(staleCache.map((d) => d.reference).toList());
     } catch (e) {
       debugPrint('FirestoreService.deleteDocument error: $e');
     }
@@ -407,10 +628,14 @@ class FirestoreService {
   Future<FirestoreChatSessionModel> getOrCreateChatSession({
     required String ownerId,
     String? documentId,
+    String? subjectId,
   }) async {
     try {
       Query<Map<String, dynamic>> query =
           _chatSessionsCol.where('ownerId', isEqualTo: ownerId);
+      if (subjectId != null && subjectId.isNotEmpty) {
+        query = query.where('subjectId', isEqualTo: subjectId);
+      }
 
       if (documentId != null && documentId.isNotEmpty) {
         query = query.where('documentId', isEqualTo: documentId);
@@ -429,6 +654,7 @@ class FirestoreService {
         id: newSessionRef.id,
         ownerId: ownerId,
         documentId: documentId,
+        subjectId: subjectId ?? '',
         createdAt: now,
         updatedAt: now,
       );
@@ -438,6 +664,23 @@ class FirestoreService {
     } catch (e) {
       debugPrint('FirestoreService.getOrCreateChatSession error: $e');
       rethrow;
+    }
+  }
+
+  Future<void> _deleteCollection(
+      CollectionReference<Map<String, dynamic>> collection) async {
+    final snapshot = await collection.get();
+    await _deleteDocuments(snapshot.docs.map((d) => d.reference).toList());
+  }
+
+  Future<void> _deleteDocuments(
+      List<DocumentReference<Map<String, dynamic>>> refs) async {
+    for (var i = 0; i < refs.length; i += 450) {
+      final batch = _firestore.batch();
+      for (final ref in refs.skip(i).take(450)) {
+        batch.delete(ref);
+      }
+      await batch.commit();
     }
   }
 

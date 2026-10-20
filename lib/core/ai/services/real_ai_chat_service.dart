@@ -39,14 +39,18 @@ class RealAIChatService {
 
   Future<String> askAI(
       {required String prompt,
-      required List<RealChatMessage> conversationHistory}) async {
+      required List<RealChatMessage> conversationHistory,
+      String? subjectId,
+      List<String> sourceIds = const []}) async {
     final history = conversationHistory
         .take(12)
         .map((m) => '${m.role}: ${m.content}')
         .join('\n');
-    final result = await _ref
-        .read(knowledgeEngineProvider)
-        .answer(prompt: prompt, history: history);
+    final result = await _ref.read(knowledgeEngineProvider).answer(
+        prompt: prompt,
+        history: history,
+        subjectId: subjectId,
+        sourceIds: sourceIds);
     final answer = result['answer'] ?? result['response'] ?? result['text'];
     if (answer is String && answer.trim().isNotEmpty) return answer.trim();
     throw const AiGenerationUnavailable();

@@ -54,8 +54,26 @@ class LibraryScreen extends ConsumerStatefulWidget {
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String _searchQuery = '';
+  String? _activeSubjectId;
+  String _activeSubjectName = 'General';
   final Set<String> _selectedDocIds = {};
   String _viewMode = 'grid'; // grid | list
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final id = await ref.read(firestoreServiceProvider).getActiveSubjectId();
+      if (!mounted || id == null || id.isEmpty) return;
+      setState(() {
+        _activeSubjectId = id;
+      });
+      final active = ref.read(activeDocumentProvider);
+      if (active != null && active.subjectId != id) {
+        ref.read(activeDocumentProvider.notifier).clearDocument();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -94,14 +112,33 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ? ref.watch(userKnowledgeStreamProvider(userId)).asData?.value ??
             const <Map<String, dynamic>>[]
         : const <Map<String, dynamic>>[];
+    final subjects = userId.isNotEmpty
+        ? ref.watch(userSubjectsStreamProvider(userId)).asData?.value ??
+            const <Map<String, dynamic>>[]
+        : const <Map<String, dynamic>>[];
+    if (_activeSubjectId != null && _activeSubjectName == 'General') {
+      final restored = subjects.where((s) => s['id'] == _activeSubjectId);
+      if (restored.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted)
+            setState(() => _activeSubjectName =
+                restored.first['name']?.toString() ?? 'General');
+        });
+      }
+    }
 
     // Automatically restore last opened document from Firestore if none is active
-    if (activeDoc == null && firestoreDocs.isNotEmpty) {
+    final restoreDocs = _activeSubjectId == null
+        ? firestoreDocs
+        : firestoreDocs
+            .where((doc) => doc.subjectId == _activeSubjectId)
+            .toList();
+    if (activeDoc == null && restoreDocs.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final current = ref.read(activeDocumentProvider);
-        if (current == null && firestoreDocs.isNotEmpty) {
-          final sorted = List<FirestoreDocumentModel>.from(firestoreDocs);
+        if (current == null && restoreDocs.isNotEmpty) {
+          final sorted = List<FirestoreDocumentModel>.from(restoreDocs);
           sorted.sort((a, b) => b.lastOpened.compareTo(a.lastOpened));
           _onDocTap(sorted.first);
         }
@@ -111,6 +148,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final isDesktop = MediaQuery.of(context).size.width >= 1100;
 
     final filteredDocs = firestoreDocs.where((doc) {
+      if (_activeSubjectId != null && doc.subjectId != _activeSubjectId)
+        return false;
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
       return doc.title.toLowerCase().contains(q) ||
@@ -139,6 +178,28 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   onUpload: () => _openUploadModal(context),
                   onAddNote: _addNote,
                   onAddFolder: _addFolder,
+                  subjects: subjects,
+                  activeSubjectId: _activeSubjectId,
+                  onSubjectSelected: (subject) => setState(() {
+                    _activeSubjectId = subject?['id'] as String?;
+                    _activeSubjectName =
+                        subject?['name']?.toString() ?? 'General';
+                    _selectedDocIds.clear();
+                    ref
+                        .read(selectedKnowledgeSourceIdsProvider.notifier)
+                        .state = const [];
+                    if (activeDoc != null &&
+                        _activeSubjectId != null &&
+                        activeDoc.subjectId != _activeSubjectId) {
+                      ref.read(activeDocumentProvider.notifier).clearDocument();
+                    }
+                    unawaited(ref
+                        .read(firestoreServiceProvider)
+                        .setActiveSubjectId(_activeSubjectId));
+                  }),
+                  onSubjectCreate: _createSubject,
+                  onSubjectRename: (subject) => _renameSubject(subject),
+                  onSubjectDelete: (subject) => _deleteSubject(subject),
                 ),
                 const Divider(
                     height: 1, thickness: 1, color: AppColors.darkBorderSubtle),
@@ -159,7 +220,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           onDocReindex: _onDocReindex,
                         ),
                 ),
-                _WorkspaceShelf(items: workspaceItems),
+                _WorkspaceShelf(
+                    items: _activeSubjectId == null
+                        ? workspaceItems
+                        : workspaceItems
+                            .where(
+                                (item) => item['subjectId'] == _activeSubjectId)
+                            .toList()),
               ],
             ),
           ),
@@ -173,7 +240,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               child: _StudyToolsStudio(
                 activeDoc: activeDoc,
                 onToolTap: (route) => _openTool(context, activeDoc, route),
-                onAiChat: () => context.go(AppRoutes.aiChat),
+                onAiChat: () {
+                  final ids = _selectedDocIds.isNotEmpty
+                      ? _selectedDocIds.toList(growable: false)
+                      : activeDoc == null
+                          ? const <String>[]
+                          : <String>[activeDoc.id];
+                  ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
+                      ids;
+                  context.go(AppRoutes.aiChat);
+                },
               ),
             ),
           ],
@@ -206,6 +282,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         _selectedDocIds.add(docId);
       }
     });
+    ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
+        List<String>.unmodifiable(_selectedDocIds);
   }
 
   void _onQuickAction(FirestoreDocumentModel doc, String route) {
@@ -255,8 +333,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       await ref
           .read(firebaseUploadServiceProvider)
           .deleteStoredDocument(doc.storagePath);
-    } catch (_) {
-      debugPrint('Stored file cleanup did not complete.');
+    } catch (error) {
+      debugPrint('Stored file cleanup did not complete: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('The file could not be removed. Please retry.'),
+        ));
+      }
+      return;
     }
     await ref.read(firestoreServiceProvider).deleteDocument(
           documentId: doc.id,
@@ -338,7 +422,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       );
       return;
     }
-    context.push(routeTemplate.replaceFirst(':topicId', activeDoc.id));
+    final ids = _selectedDocIds.length > 1
+        ? _selectedDocIds.toList(growable: false)
+        : <String>[activeDoc.id];
+    ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = ids;
+    context.push(routeTemplate.replaceFirst(':topicId', ids.join(',')));
   }
 
   void _openUploadModal(BuildContext context) {
@@ -357,6 +445,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       context: context,
       barrierColor: Colors.black.withOpacity(0.75),
       builder: (ctx) => _UploadModal(
+        defaultSubject: _activeSubjectName,
         onFilesUploaded: (docs) {
           if (docs.isNotEmpty) {
             ref.read(activeDocumentProvider.notifier).setDocument(docs.first);
@@ -364,6 +453,93 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _createSubject() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Create subject'),
+              content: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Subject name')),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                    child: const Text('Create'))
+              ],
+            ));
+    controller.dispose();
+    if (name == null || name.isEmpty) return;
+    final id = await ref.read(firestoreServiceProvider).createSubject(name);
+    if (mounted)
+      setState(() {
+        _activeSubjectId = id;
+        _activeSubjectName = name;
+      });
+    await ref.read(firestoreServiceProvider).setActiveSubjectId(id);
+  }
+
+  Future<void> _renameSubject(Map<String, dynamic> subject) async {
+    final controller =
+        TextEditingController(text: subject['name']?.toString() ?? '');
+    final name = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Rename subject'),
+              content: TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Subject name')),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                    child: const Text('Save'))
+              ],
+            ));
+    controller.dispose();
+    if (name == null || name.isEmpty) return;
+    await ref
+        .read(firestoreServiceProvider)
+        .renameSubject(subject['id'] as String, name);
+    if (_activeSubjectId == subject['id'] && mounted)
+      setState(() => _activeSubjectName = name);
+  }
+
+  Future<void> _deleteSubject(Map<String, dynamic> subject) async {
+    final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Delete subject?'),
+              content:
+                  const Text('Documents and notes will remain in General.'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Delete'))
+              ],
+            ));
+    if (confirm != true) return;
+    final id = subject['id'] as String;
+    await ref.read(firestoreServiceProvider).deleteSubject(id);
+    if (_activeSubjectId == id && mounted)
+      setState(() {
+        _activeSubjectId = null;
+        _activeSubjectName = 'General';
+      });
+    if (_activeSubjectId == null)
+      await ref.read(firestoreServiceProvider).setActiveSubjectId(null);
   }
 
   Future<void> _addNote() async {
@@ -377,7 +553,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     }
     final title = TextEditingController();
     final content = TextEditingController();
-    final subject = TextEditingController();
+    final subject = TextEditingController(text: _activeSubjectName);
     final topic = TextEditingController();
     await showDialog<void>(
         context: context,
@@ -413,12 +589,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       final noteContent = content.text.trim();
                       final noteSubject = subject.text.trim();
                       final noteTopic = topic.text.trim();
+                      final subjectId = noteSubject.toLowerCase() ==
+                                  _activeSubjectName.toLowerCase() &&
+                              _activeSubjectId != null
+                          ? _activeSubjectId!
+                          : await ref
+                              .read(firestoreServiceProvider)
+                              .getOrCreateSubject(noteSubject);
                       final noteId = await ref
                           .read(firestoreServiceProvider)
                           .saveKnowledgeNote(
                               title: noteTitle,
                               content: noteContent,
                               subject: noteSubject,
+                              subjectId: subjectId,
                               topic: noteTopic);
                       final engine = ref.read(knowledgeEngineProvider);
                       unawaited(() async {
@@ -429,6 +613,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               title: noteTitle,
                               content: noteContent,
                               subject: noteSubject,
+                              subjectId: subjectId,
                               topic: noteTopic);
                         } catch (error) {
                           debugPrint('Note indexing failed: $error');
@@ -472,7 +657,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       if (name.text.trim().isEmpty) return;
                       await ref
                           .read(firestoreServiceProvider)
-                          .createWorkspaceFolder(name: name.text.trim());
+                          .createWorkspaceFolder(
+                              name: name.text.trim(),
+                              subject: _activeSubjectName,
+                              subjectId: _activeSubjectId ?? '');
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
                     child: const Text('Create'))
@@ -519,6 +707,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         examTraps: const [],
       ),
       uploadedAt: doc.uploadedAt,
+      subjectId: doc.subjectId,
+      subject: doc.subject,
       downloadUrl: doc.fileUrl,
     );
   }
@@ -590,6 +780,12 @@ class _LibraryHeader extends StatelessWidget {
   final VoidCallback onUpload;
   final VoidCallback onAddNote;
   final VoidCallback onAddFolder;
+  final List<Map<String, dynamic>> subjects;
+  final String? activeSubjectId;
+  final ValueChanged<Map<String, dynamic>?> onSubjectSelected;
+  final VoidCallback onSubjectCreate;
+  final ValueChanged<Map<String, dynamic>> onSubjectRename;
+  final ValueChanged<Map<String, dynamic>> onSubjectDelete;
 
   const _LibraryHeader({
     required this.totalDocs,
@@ -600,6 +796,12 @@ class _LibraryHeader extends StatelessWidget {
     required this.onUpload,
     required this.onAddNote,
     required this.onAddFolder,
+    required this.subjects,
+    required this.activeSubjectId,
+    required this.onSubjectSelected,
+    required this.onSubjectCreate,
+    required this.onSubjectRename,
+    required this.onSubjectDelete,
   });
 
   @override
@@ -654,6 +856,46 @@ class _LibraryHeader extends StatelessWidget {
                   color: AppColors.darkTextSecondary.withOpacity(0.7),
                 ),
               ),
+              const SizedBox(height: 6),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                DropdownButton<String?>(
+                  value: activeSubjectId,
+                  hint: const Text('All subjects'),
+                  underline: const SizedBox.shrink(),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('All subjects')),
+                    ...subjects.map((subject) => DropdownMenuItem<String?>(
+                          value: subject['id'] as String,
+                          child: Text(subject['name']?.toString() ?? 'Subject'),
+                        )),
+                  ],
+                  onChanged: (id) => onSubjectSelected(id == null
+                      ? null
+                      : subjects.where((s) => s['id'] == id).first),
+                ),
+                IconButton(
+                    tooltip: 'Create subject',
+                    onPressed: onSubjectCreate,
+                    icon: const Icon(Icons.add_circle_outline, size: 18)),
+                if (activeSubjectId != null)
+                  PopupMenuButton<String>(
+                    tooltip: 'Subject options',
+                    onSelected: (action) {
+                      final subject = subjects
+                          .where((s) => s['id'] == activeSubjectId)
+                          .first;
+                      if (action == 'rename') onSubjectRename(subject);
+                      if (action == 'delete') onSubjectDelete(subject);
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                          value: 'rename', child: Text('Rename subject')),
+                      PopupMenuItem(
+                          value: 'delete', child: Text('Delete subject')),
+                    ],
+                  ),
+              ]),
             ],
           ),
           const Spacer(),
@@ -1691,7 +1933,9 @@ class _StudyToolsStudio extends StatelessWidget {
 
 class _UploadModal extends ConsumerStatefulWidget {
   final ValueChanged<List<UploadedDocument>> onFilesUploaded;
-  const _UploadModal({required this.onFilesUploaded});
+  final String defaultSubject;
+  const _UploadModal(
+      {required this.onFilesUploaded, required this.defaultSubject});
 
   @override
   ConsumerState<_UploadModal> createState() => _UploadModalState();
@@ -1706,6 +1950,12 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
   final _subtopicController = TextEditingController();
   final _notesController = TextEditingController();
   final _tagsController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _subjectController.text = widget.defaultSubject;
+  }
 
   @override
   void dispose() {
@@ -1750,6 +2000,8 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
         return;
       }
 
+      final subjectId = await firestore.getOrCreateSubject(subject);
+
       setState(() {
         _currentStep = 'Saving sources to your workspace…';
         _progress = 0.25;
@@ -1758,6 +2010,7 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
           await Future.wait(files.map((file) => uploadService.uploadFile(
                 file,
                 subject: subject,
+                subjectId: subjectId,
                 topic: topic,
                 subtopic: subtopic,
                 notes: notes,
@@ -1784,6 +2037,8 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
               examTraps: const []),
           uploadedAt: DateTime.now(),
           downloadUrl: result.downloadUrl,
+          subjectId: subjectId,
+          subject: subject,
         ));
         unawaited(() async {
           try {
@@ -1793,6 +2048,7 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
               title: file.name,
               content: text,
               subject: subject,
+              subjectId: subjectId,
               topic: topic,
               subtopic: subtopic,
               sourceBytes: file.bytes,
