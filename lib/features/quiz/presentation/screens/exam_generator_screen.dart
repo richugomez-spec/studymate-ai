@@ -1,385 +1,126 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../../core/routing/app_routes.dart';
+import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
-import '../../../../core/theme/app_colors.dart';
 
 class ExamGeneratorScreen extends ConsumerStatefulWidget {
   final String? topicId;
   const ExamGeneratorScreen({super.key, this.topicId});
-
   @override
-  ConsumerState<ExamGeneratorScreen> createState() => _ExamGeneratorScreenState();
+  ConsumerState<ExamGeneratorScreen> createState() =>
+      _ExamGeneratorScreenState();
 }
 
 class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
   int _marks = 50;
-  int _durationMinutes = 60;
-  String _difficulty = 'Medium';
-  bool _includeAnswerKey = true;
-  bool _examGenerated = false;
+  int _minutes = 60;
+  String _difficulty = 'Moderate';
+  bool _answerKey = true;
+  Future<Map<String, dynamic>>? _result;
+
+  Future<void> _generate() async {
+    setState(() => _result = ref.read(knowledgeEngineProvider).generateExam(
+          topicId: widget.topicId,
+          prompt:
+              'Generate an exam for $_marks marks, $_minutes minutes, difficulty $_difficulty, answer key $_answerKey. Use a balanced question mix grounded in workspace topics. Return title and questions (type, prompt, marks, answer, explanation).',
+        ));
+    await _result;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final activeDoc = ref.watch(activeDocumentProvider);
-
-    if (activeDoc == null) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        appBar: AppBar(title: const Text('Mock Exam Generator', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 16))),
-        body: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 460),
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              color: AppColors.darkSurfaceVariant,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.darkBorderSubtle),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.description_outlined, size: 40, color: AppColors.electricViolet),
-                const SizedBox(height: 12),
-                const Text('No Document Active', style: TextStyle(fontFamily: 'Inter', fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
-                const SizedBox(height: 8),
-                Text('Upload your study materials to generate tailored mock exam papers with answer keys.', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white60)),
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  onPressed: () => context.push(AppRoutes.uploadCenter),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.electricViolet, foregroundColor: Colors.white),
-                  icon: const Icon(Icons.upload_file_rounded, size: 16),
-                  label: const Text('Upload Document'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (!_examGenerated) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        appBar: AppBar(title: Text('Mock Exam Setup: ${activeDoc.fileName}', style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 15), overflow: TextOverflow.ellipsis)),
-        body: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 520),
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                color: AppColors.darkSurface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.darkBorder),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('Generate Complete Mock Exam', style: TextStyle(fontFamily: 'Inter', fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
-                  const SizedBox(height: 4),
-                  Text('Realistic exam papers compiled from your uploaded notes.', style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white60)),
-
-                  const SizedBox(height: 24),
-
-                  // Total Marks
-                  const Text('TOTAL MARKS', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.darkTextTertiary)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [25, 50, 100].map((m) {
-                      final sel = _marks == m;
-                      return Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: InkWell(
-                            onTap: () => setState(() => _marks = m),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: sel ? AppColors.electricViolet : AppColors.darkSurfaceVariant,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: sel ? AppColors.electricViolet : AppColors.darkBorderSubtle),
-                              ),
-                              child: Text('$m Marks', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w600, color: sel ? Colors.white : Colors.white70)),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Duration
-                  const Text('EXAM DURATION', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.darkTextTertiary)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [30, 60, 120].map((d) {
-                      final sel = _durationMinutes == d;
-                      return Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: InkWell(
-                            onTap: () => setState(() => _durationMinutes = d),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: sel ? AppColors.teal : AppColors.darkSurfaceVariant,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: sel ? AppColors.teal : AppColors.darkBorderSubtle),
-                              ),
-                              child: Text('$d Mins', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w600, color: sel ? Colors.white : Colors.white70)),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Difficulty
-                  const Text('DIFFICULTY', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.darkTextTertiary)),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: ['Standard', 'Moderate', 'Challenging'].map((diff) {
-                      final sel = _difficulty == diff;
-                      return Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: InkWell(
-                            onTap: () => setState(() => _difficulty = diff),
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              decoration: BoxDecoration(
-                                color: sel ? AppColors.skyBlue : AppColors.darkSurfaceVariant,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: sel ? AppColors.skyBlue : AppColors.darkBorderSubtle),
-                              ),
-                              child: Text(diff, textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Inter', fontSize: 12, fontWeight: FontWeight.w600, color: sel ? Colors.white : Colors.white70)),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Include Step-by-Step Answer Key', style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white)),
-                    value: _includeAnswerKey,
-                    activeColor: AppColors.electricViolet,
-                    onChanged: (v) => setState(() => _includeAnswerKey = v),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  ElevatedButton(
-                    onPressed: () => setState(() => _examGenerated = true),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.electricViolet,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text('Generate Mock Exam Paper', style: TextStyle(fontFamily: 'Inter', fontSize: 14, fontWeight: FontWeight.w600)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    // ── Exam Paper View ───────────────────────────────────────────────────────
-    final concepts = activeDoc.concepts;
-
+    final doc = ref.watch(activeDocumentProvider);
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text('Mock Exam: ${activeDoc.fileName}', style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 15)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.picture_as_pdf_rounded, size: 20, color: AppColors.teal),
-            tooltip: 'Export Exam PDF',
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Mock exam paper exported ready for printing!')),
-              );
-            },
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          // Exam Header Card
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: AppColors.darkSurfaceVariant,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.darkBorderSubtle),
-            ),
-            child: Column(
-              children: [
-                Text('STUDYMATE AI OFFICIAL MOCK EXAMINATION', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.electricVioletLight, letterSpacing: 1.0)),
-                const SizedBox(height: 8),
-                Text(activeDoc.fileName, style: const TextStyle(fontFamily: 'Inter', fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white)),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text('Max Marks: $_marks', style: const TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: Colors.white70)),
-                    const SizedBox(width: 16),
-                    Text('Time Allowed: $_durationMinutes Mins', style: const TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: Colors.white70)),
-                    const SizedBox(width: 16),
-                    Text('Difficulty: $_difficulty', style: const TextStyle(fontFamily: 'Inter', fontSize: 12.5, color: AppColors.teal)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Section A: Short Conceptual Questions (20% Marks - Recall & Understanding)
-          const Text('SECTION A: BLOOM L1/L2 RECALL & UNDERSTANDING (10 Marks)', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.teal)),
-          const SizedBox(height: 10),
-          if (activeDoc.hierarchicalModel?.shortAnswerTopics.isNotEmpty == true) ...[
-            ...activeDoc.hierarchicalModel!.shortAnswerTopics.take(3).map((sa) {
-              final idx = activeDoc.hierarchicalModel!.shortAnswerTopics.indexOf(sa) + 1;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.darkBorder)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(child: Text('Q$idx. $sa', style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white))),
-                        const Text('[3-4 Marks]', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: Colors.white60)),
-                      ],
-                    ),
-                    if (_includeAnswerKey) ...[
-                      const SizedBox(height: 8),
-                      Text('Marking Scheme & Key: Accurate definition [2M], Invariants and constraints [1-2M]. Grounded directly in course syllabus.', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.teal.withOpacity(0.9))),
-                    ],
-                  ],
-                ),
-              );
-            }),
-          ] else ...[
-            ...concepts.take(3).map((c) {
-              final idx = concepts.indexOf(c) + 1;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.darkBorder)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Q$idx. Define ${c.title} and state its core premise.', style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
-                        const Text('[3 Marks]', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: Colors.white60)),
-                      ],
-                    ),
-                    if (_includeAnswerKey) ...[
-                      const SizedBox(height: 8),
-                      Text('Answer Key: ${c.description}', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.teal.withOpacity(0.9))),
-                    ],
-                  ],
-                ),
-              );
-            }),
-          ],
-
-          const SizedBox(height: 20),
-
-          // Section B: Analytical & Long Answers (Bloom L4/L5 Analyze & Evaluate)
-          const Text('SECTION B: BLOOM L4/L5 ANALYSIS & SYSTEM DESIGN (40 Marks)', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.electricVioletLight)),
-          const SizedBox(height: 10),
-          if (activeDoc.hierarchicalModel?.longAnswerTopics.isNotEmpty == true) ...[
-            ...activeDoc.hierarchicalModel!.longAnswerTopics.take(2).map((la) {
-              final idx = activeDoc.hierarchicalModel!.longAnswerTopics.indexOf(la) + 4;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.darkBorder)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text('Q$idx. $la', style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text('[10 Marks]', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: Colors.white60)),
-                      ],
-                    ),
-                    if (_includeAnswerKey) ...[
-                      const SizedBox(height: 8),
-                      Text('Marking Scheme & Solution:\n• Architectural derivation and proof [4M]\n• Operational invariants & boundary condition analysis [3M]\n• Implementation trade-offs & failure handling [3M]', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.teal.withOpacity(0.9), height: 1.4)),
-                    ],
-                  ],
-                ),
-              );
-            }),
-          ] else ...[
-            ...concepts.skip(1).take(2).map((c) {
-              final idx = concepts.indexOf(c) + 3;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.darkBorder)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text('Q$idx. Detail the operational mechanics of ${c.title} with a practical example and analyze potential edge cases.', style: const TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white)),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text('[10 Marks]', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: Colors.white60)),
-                      ],
-                    ),
-                    if (_includeAnswerKey) ...[
-                      const SizedBox(height: 8),
-                      Text('Answer Key:\n• Primary mechanism and definitions: ${c.description}\n• Core exam focus: Pay attention to edge cases and boundary conditions.', style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.teal.withOpacity(0.9), height: 1.4)),
-                    ],
-                  ],
-                ),
-              );
-            }),
-          ],
-
-          const SizedBox(height: 24),
-
-          OutlinedButton.icon(
-            onPressed: () => setState(() => _examGenerated = false),
-            icon: const Icon(Icons.tune_rounded, size: 16),
-            label: const Text('Adjust Exam Parameters'),
-            style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.white.withOpacity(0.2)), padding: const EdgeInsets.symmetric(vertical: 14)),
-          ),
-        ],
-      ),
+          title: const Text('Exam Generator'),
+          leading: BackButton(onPressed: () => Navigator.maybePop(context))),
+      body: _result == null
+          ? ListView(padding: const EdgeInsets.all(20), children: [
+              if (doc != null) Text('Workspace: ${doc.fileName}'),
+              _choice('Total marks', _marks, const [25, 50, 100],
+                  (value) => setState(() => _marks = value)),
+              _choice('Duration (minutes)', _minutes, const [30, 60, 120],
+                  (value) => setState(() => _minutes = value)),
+              DropdownButtonFormField<String>(
+                  value: _difficulty,
+                  items: const ['Easy', 'Moderate', 'Challenging']
+                      .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                      .toList(),
+                  onChanged: (v) =>
+                      setState(() => _difficulty = v ?? 'Moderate')),
+              SwitchListTile(
+                  title: const Text('Include answer key'),
+                  value: _answerKey,
+                  onChanged: (v) => setState(() => _answerKey = v)),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                  onPressed: _generate,
+                  icon: const Icon(Icons.auto_awesome),
+                  label: const Text('Generate with Gemini')),
+            ])
+          : FutureBuilder<Map<String, dynamic>>(
+              future: _result,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done)
+                  return const Center(child: CircularProgressIndicator());
+                if (snapshot.hasError)
+                  return Center(
+                      child:
+                          Text('Could not generate exam: ${snapshot.error}'));
+                final data = snapshot.data!;
+                final questions = (data['questions'] as List? ?? const [])
+                    .whereType<Map>()
+                    .toList();
+                return ListView(padding: const EdgeInsets.all(20), children: [
+                  Text((data['title'] ?? 'Practice Exam').toString(),
+                      style: Theme.of(context).textTheme.headlineSmall),
+                  for (var i = 0; i < questions.length; i++)
+                    Card(
+                        child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                      'Question ${i + 1} · ${questions[i]['marks'] ?? ''} marks',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 8),
+                                  Text((questions[i]['prompt'] ??
+                                          questions[i]['question'] ??
+                                          '')
+                                      .toString()),
+                                  if (_answerKey &&
+                                      questions[i]['answer'] != null) ...[
+                                    const Divider(),
+                                    Text('Answer: ${questions[i]['answer']}'),
+                                    if (questions[i]['explanation'] != null)
+                                      Text(questions[i]['explanation']
+                                          .toString())
+                                  ],
+                                ]))),
+                  TextButton(
+                      onPressed: () => setState(() => _result = null),
+                      child: const Text('Adjust settings')),
+                ]);
+              }),
     );
   }
+
+  Widget _choice(String label, int selected, List<int> values,
+          ValueChanged<int> onChanged) =>
+      Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label),
+            Wrap(spacing: 8, children: [
+              for (final value in values)
+                ChoiceChip(
+                    label: Text('$value'),
+                    selected: selected == value,
+                    onSelected: (_) => onChanged(value))
+            ]),
+          ]));
 }

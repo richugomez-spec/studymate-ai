@@ -13,7 +13,17 @@ const int kMaxFileSizeBytes = 50 * 1024 * 1024;
 
 /// Supported file extensions
 const Set<String> kSupportedExtensions = {
-  'pdf', 'docx', 'pptx', 'txt', 'md', 'png', 'jpg', 'jpeg', 'webp',
+  'pdf',
+  'docx',
+  'pptx',
+  'txt',
+  'md',
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+  'json',
+  'csv',
 };
 
 // ── Result model ─────────────────────────────────────────────────────────────
@@ -34,7 +44,8 @@ class UploadResult {
 
 class UploadProgress {
   final double progress; // 0.0 → 1.0
-  final String phase;    // 'validating' | 'uploading' | 'saving' | 'done' | 'error'
+  final String
+      phase; // 'validating' | 'uploading' | 'saving' | 'done' | 'error'
   final String? error;
 
   const UploadProgress({
@@ -90,6 +101,11 @@ class FirebaseUploadService {
   Future<UploadResult> uploadFile(
     PlatformFile file, {
     void Function(double)? onProgress,
+    String subject = 'General',
+    String topic = '',
+    String subtopic = '',
+    String notes = '',
+    List<String> tags = const [],
   }) async {
     // 1. Validate
     validateFile(file);
@@ -99,119 +115,123 @@ class FirebaseUploadService {
       throw StateError('Could not read file bytes. Please re-select the file.');
     }
 
-    final currentUser = _auth.currentUser;
-    String uid;
-    if (currentUser != null) {
-      uid = currentUser.uid;
-    } else {
-      try {
-        final anonUser = await _auth.signInAnonymously();
-        uid = anonUser.user?.uid ?? 'guest_${DateTime.now().millisecondsSinceEpoch}';
-      } catch (_) {
-        uid = 'guest_${DateTime.now().millisecondsSinceEpoch}';
-      }
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      throw StateError('Sign in to upload sources to your workspace.');
     }
 
     final timestamp = DateTime.now();
     final ext = (file.extension ?? 'bin').toLowerCase();
-    final storagePath = 'uploads/$uid/${timestamp.millisecondsSinceEpoch}_${file.name}';
+    final storagePath =
+        'uploads/$uid/${timestamp.millisecondsSinceEpoch}_${file.name}';
 
-    // 2. Upload to Firebase Storage with progress tracking (non-blocking resilience)
-    String downloadUrl = '';
-    try {
-      final ref = _storage.ref(storagePath);
-      final metadata = SettableMetadata(
-        contentType: _mimeType(ext),
-        customMetadata: {
-          'originalName': file.name,
-          'uploadedBy': uid,
-          'uploadedAt': timestamp.toIso8601String(),
-        },
-      );
+    // Persist the source record before starting the Storage transfer.
+    final docRef = await _firestore.collection('documents').add({
+      'title': file.name,
+      'ownerId': uid,
+      'fileName': file.name,
+      'fileType': ext.toUpperCase(),
+      'byteSize': file.size,
+      'storagePath': storagePath,
+      'downloadUrl': '',
+      'uploadedAt': FieldValue.serverTimestamp(),
+      'status': 'queued',
+      'subject': subject,
+      'topic': topic,
+      'subtopic': subtopic,
+      'notes': notes,
+      'tags': tags,
+      'indexedAt': null,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    await _firestore.collection('users').doc(uid).set({
+      'documentsUploaded': FieldValue.increment(1),
+      'lastLogin': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
-      final task = ref.putData(bytes, metadata);
-
-      task.snapshotEvents.listen((snapshot) {
-        if (snapshot.totalBytes > 0) {
-          final progress = snapshot.bytesTransferred / snapshot.totalBytes;
-          onProgress?.call(progress);
-        }
-      }, onError: (_) {});
-
-      // Wait for upload with short timeout on web
-      final snapshot = await task.timeout(const Duration(seconds: 8));
-      downloadUrl = await snapshot.ref.getDownloadURL().catchError((_) => '');
-    } catch (e) {
-      debugPrint('Firebase Storage upload bypass: $e');
-      // If Storage fails or times out due to rules/CORS, don't block the student
-    }
-
-    // 3. Save metadata to Firestore
-    String firestoreDocId = 'doc_${timestamp.millisecondsSinceEpoch}';
-    try {
-      final docRef = await _firestore.collection('documents').add({
-        'ownerId': uid,
-        'fileName': file.name,
-        'fileType': ext.toUpperCase(),
-        'byteSize': file.size,
-        'storagePath': storagePath,
-        'downloadUrl': downloadUrl,
-        'uploadedAt': FieldValue.serverTimestamp(),
-        'status': 'uploaded',
-      }).timeout(const Duration(seconds: 15));
-      firestoreDocId = docRef.id;
-    } catch (_) {
-      // Fallback if Firestore rules or offline
-    }
+    unawaited(_uploadInBackground(
+      bytes: bytes,
+      uid: uid,
+      fileName: file.name,
+      ext: ext,
+      storagePath: storagePath,
+      documentId: docRef.id,
+      uploadedAt: timestamp,
+      onProgress: onProgress,
+    ));
 
     return UploadResult(
-      downloadUrl: downloadUrl,
+      downloadUrl: '',
       storagePath: storagePath,
-      firestoreDocId: firestoreDocId,
+      firestoreDocId: docRef.id,
     );
   }
 
-  /// Update Firestore document status after processing is complete.
-  Future<void> markAsProcessed(String firestoreDocId, {
-    int conceptCount = 0,
-    int flashcardCount = 0,
-    int quizCount = 0,
-    String summary = '',
-    String? extractedText,
-    int? pageCount,
-  }) async {
-    final Map<String, dynamic> updateData = {
-      'status': 'COMPLETED',
-      'processedAt': FieldValue.serverTimestamp(),
-      'conceptCount': conceptCount,
-      'flashcardCount': flashcardCount,
-      'quizCount': quizCount,
-      'summary': summary,
-    };
-    if (extractedText != null) {
-      updateData['extractedText'] = extractedText.length > 50000 
-          ? extractedText.substring(0, 50000) 
-          : extractedText;
+  Future<void> _uploadInBackground(
+      {required Uint8List bytes,
+      required String uid,
+      required String fileName,
+      required String ext,
+      required String storagePath,
+      required String documentId,
+      required DateTime uploadedAt,
+      void Function(double)? onProgress}) async {
+    try {
+      final ref = _storage.ref(storagePath);
+      final task = ref.putData(
+          bytes,
+          SettableMetadata(contentType: _mimeType(ext), customMetadata: {
+            'originalName': fileName,
+            'uploadedBy': uid,
+            'uploadedAt': uploadedAt.toIso8601String(),
+          }));
+      task.snapshotEvents.listen((snapshot) {
+        if (snapshot.totalBytes > 0) {
+          onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
+        }
+      }, onError: (_) {});
+      final snapshot = await task;
+      final url = await snapshot.ref.getDownloadURL();
+      await _firestore.collection('documents').doc(documentId).update({
+        'downloadUrl': url,
+        'fileUrl': url,
+        'uploadStatus': 'uploaded',
+      });
+    } catch (error) {
+      await _firestore.collection('documents').doc(documentId).update({
+        'uploadStatus': 'error',
+        'uploadError': error.toString(),
+      });
+      debugPrint('Background upload failed: $error');
     }
-    if (pageCount != null) {
-      updateData['pageCount'] = pageCount;
-    }
-    await _firestore.collection('documents').doc(firestoreDocId).update(updateData);
   }
 
   /// MIME type resolver
   String _mimeType(String ext) {
     switch (ext) {
-      case 'pdf':   return 'application/pdf';
-      case 'docx':  return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      case 'pptx':  return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-      case 'txt':   return 'text/plain';
-      case 'md':    return 'text/markdown';
-      case 'png':   return 'image/png';
+      case 'pdf':
+        return 'application/pdf';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'pptx':
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      case 'txt':
+        return 'text/plain';
+      case 'md':
+        return 'text/markdown';
+      case 'json':
+        return 'application/json';
+      case 'csv':
+        return 'text/csv';
+      case 'png':
+        return 'image/png';
       case 'jpg':
-      case 'jpeg':  return 'image/jpeg';
-      case 'webp':  return 'image/webp';
-      default:      return 'application/octet-stream';
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'application/octet-stream';
     }
   }
 }

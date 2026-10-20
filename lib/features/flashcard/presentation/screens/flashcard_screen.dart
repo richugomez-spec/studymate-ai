@@ -1,11 +1,11 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
+import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -40,7 +40,8 @@ class FlashcardScreen extends ConsumerStatefulWidget {
   ConsumerState<FlashcardScreen> createState() => _FlashcardScreenState();
 }
 
-class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTickerProviderStateMixin {
+class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _flipController;
   late Animation<double> _flipAnimation;
 
@@ -57,28 +58,33 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
   @override
   void initState() {
     super.initState();
-    _flipController = AnimationController(vsync: this, duration: const Duration(milliseconds: 320));
+    _flipController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 320));
     _flipAnimation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(parent: _flipController, curve: Curves.easeInOut),
     );
     _loadCards();
   }
 
-  void _loadCards() {
+  Future<void> _loadCards() async {
     final doc = ref.read(activeDocumentProvider);
-    if (doc != null && doc.flashcards.isNotEmpty) {
+    if (doc != null) {
+      final result = await ref
+          .read(knowledgeEngineProvider)
+          .generateFlashcards(topicId: widget.topicId ?? doc.id);
+      final generated = result['cards'];
       _cards.clear();
-      for (int i = 0; i < doc.flashcards.length; i++) {
-        final fc = doc.flashcards[i];
-        final diff = i % 3 == 0 ? 'Hard' : (i % 2 == 0 ? 'Medium' : 'Easy');
-        _cards.add(_SRSFlashcard(
-          id: fc.id,
-          front: fc.front,
-          back: fc.back,
-          difficulty: diff,
-          sourcePage: (i ~/ 2) + 1,
-        ));
-      }
+      if (generated is List)
+        for (int i = 0; i < generated.length; i++) {
+          final card = Map<String, dynamic>.from(generated[i] as Map);
+          _cards.add(_SRSFlashcard(
+            id: '$i',
+            front: (card['front'] ?? '').toString(),
+            back: (card['back'] ?? '').toString(),
+            sourcePage: (i ~/ 2) + 1,
+          ));
+        }
+      if (mounted) setState(() {});
     }
   }
 
@@ -118,13 +124,17 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
       } else if (card.repetitionCount == 1) {
         card.intervalDays = 6.0;
       } else {
-        card.intervalDays = (card.intervalDays * card.easeFactor).roundToDouble();
+        card.intervalDays =
+            (card.intervalDays * card.easeFactor).roundToDouble();
       }
       card.repetitionCount++;
     }
 
     // Update ease factor: EF' = EF + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02))
-    card.easeFactor = max(1.3, card.easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)));
+    card.easeFactor = max(
+        1.3,
+        card.easeFactor +
+            (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)));
 
     // Increment user study progress in Firestore
     final user = ref.read(currentUserProvider);
@@ -149,14 +159,21 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
   @override
   Widget build(BuildContext context) {
     final activeDoc = ref.watch(activeDocumentProvider);
-    if (_cards.isEmpty && activeDoc != null && activeDoc.flashcards.isNotEmpty) {
+    if (_cards.isEmpty &&
+        activeDoc != null &&
+        activeDoc.flashcards.isNotEmpty) {
       _loadCards();
     }
 
     if (activeDoc == null || _cards.isEmpty) {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        appBar: AppBar(title: const Text('SRS Flashcards', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 16))),
+        appBar: AppBar(
+            title: const Text('SRS Flashcards',
+                style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16))),
         body: Center(
           child: Container(
             constraints: const BoxConstraints(maxWidth: 460),
@@ -169,19 +186,31 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.flip_to_front_rounded, size: 40, color: AppColors.teal),
+                const Icon(Icons.flip_to_front_rounded,
+                    size: 40, color: AppColors.teal),
                 const SizedBox(height: 12),
-                const Text('No Flashcards Available', style: TextStyle(fontFamily: 'Inter', fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+                const Text('No Flashcards Available',
+                    style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white)),
                 const SizedBox(height: 8),
                 Text(
                   'Upload study materials to generate active-recall flashcards with SuperMemo SM-2 interval scheduling.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white60, height: 1.4),
+                  style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13,
+                      color: Colors.white60,
+                      height: 1.4),
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(
                   onPressed: () => context.push(AppRoutes.uploadCenter),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.electricViolet, foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.electricViolet,
+                      foregroundColor: Colors.white),
                   icon: const Icon(Icons.upload_file_rounded, size: 16),
                   label: const Text('Upload Document'),
                 ),
@@ -195,7 +224,12 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
     if (_sessionComplete) {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        appBar: AppBar(title: const Text('Review Complete', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 16))),
+        appBar: AppBar(
+            title: const Text('Review Complete',
+                style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16))),
         body: Center(
           child: Container(
             constraints: const BoxConstraints(maxWidth: 480),
@@ -209,19 +243,42 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.verified_rounded, size: 52, color: AppColors.teal),
+                const Icon(Icons.verified_rounded,
+                    size: 52, color: AppColors.teal),
                 const SizedBox(height: 16),
-                const Text('Cards Mastered Today!', style: TextStyle(fontFamily: 'Inter', fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
+                const Text('Cards Mastered Today!',
+                    style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white)),
                 const SizedBox(height: 8),
-                Text('SM-2 Spaced Repetition has calculated your next review intervals.', style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: Colors.white60)),
+                Text(
+                    'SM-2 Spaced Repetition has calculated your next review intervals.',
+                    style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 13,
+                        color: Colors.white60)),
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
-                    _StatBadge(label: 'Again', count: _againCount, color: AppColors.error),
-                    _StatBadge(label: 'Hard', count: _hardCount, color: AppColors.amber),
-                    _StatBadge(label: 'Good', count: _goodCount, color: AppColors.skyBlue),
-                    _StatBadge(label: 'Easy', count: _easyCount, color: AppColors.teal),
+                    _StatBadge(
+                        label: 'Again',
+                        count: _againCount,
+                        color: AppColors.error),
+                    _StatBadge(
+                        label: 'Hard',
+                        count: _hardCount,
+                        color: AppColors.amber),
+                    _StatBadge(
+                        label: 'Good',
+                        count: _goodCount,
+                        color: AppColors.skyBlue),
+                    _StatBadge(
+                        label: 'Easy',
+                        count: _easyCount,
+                        color: AppColors.teal),
                   ],
                 ),
                 const SizedBox(height: 28),
@@ -238,7 +295,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
                   },
                   icon: const Icon(Icons.replay_rounded, size: 16),
                   label: const Text('Review Again'),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.electricViolet, foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.electricViolet,
+                      foregroundColor: Colors.white),
                 ),
               ],
             ),
@@ -253,7 +312,10 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text('Flashcards: ${activeDoc.fileName}', style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 15), overflow: TextOverflow.ellipsis),
+        title: Text('Flashcards: ${activeDoc.fileName}',
+            style: const TextStyle(
+                fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 15),
+            overflow: TextOverflow.ellipsis),
       ),
       body: Column(
         children: [
@@ -269,14 +331,23 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Card ${_currentIndex + 1} of ${_cards.length}', style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: AppColors.darkTextSecondary)),
+                Text('Card ${_currentIndex + 1} of ${_cards.length}',
+                    style: const TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 11,
+                        color: AppColors.darkTextSecondary)),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.06),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text('Source: Page ${card.sourcePage}', style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white.withOpacity(0.7))),
+                  child: Text('Source: Page ${card.sourcePage}',
+                      style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 11,
+                          color: Colors.white.withOpacity(0.7))),
                 ),
               ],
             ),
@@ -288,8 +359,10 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
               child: GestureDetector(
                 onTap: _flipCard,
                 child: Container(
-                  constraints: const BoxConstraints(maxWidth: 520, maxHeight: 360),
-                  margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  constraints:
+                      const BoxConstraints(maxWidth: 520, maxHeight: 360),
+                  margin:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   child: AnimatedBuilder(
                     animation: _flipAnimation,
                     builder: (context, child) {
@@ -321,7 +394,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             decoration: BoxDecoration(
               color: AppColors.darkSurface,
-              border: Border(top: BorderSide(color: AppColors.darkBorder.withOpacity(0.5))),
+              border: Border(
+                  top:
+                      BorderSide(color: AppColors.darkBorder.withOpacity(0.5))),
             ),
             child: Row(
               children: [
@@ -354,14 +429,36 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('QUESTION', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.teal, letterSpacing: 0.8)),
-              Text('Difficulty: ${card.difficulty}', style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white38)),
+              Text('QUESTION',
+                  style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.teal,
+                      letterSpacing: 0.8)),
+              Text('Difficulty: ${card.difficulty}',
+                  style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 11,
+                      color: Colors.white38)),
             ],
           ),
           const Spacer(),
-          Text(card.front, textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'Inter', fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white, height: 1.4)),
+          Text(card.front,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  height: 1.4)),
           const Spacer(),
-          Text('Tap card to reveal answer', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white.withOpacity(0.35))),
+          Text('Tap card to reveal answer',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 11,
+                  color: Colors.white.withOpacity(0.35))),
         ],
       ),
     );
@@ -381,14 +478,36 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('ANSWER', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.electricVioletLight, letterSpacing: 0.8)),
-              Text('Next: ${card.intervalDays.toStringAsFixed(0)}d', style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, color: AppColors.teal)),
+              Text('ANSWER',
+                  style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.electricVioletLight,
+                      letterSpacing: 0.8)),
+              Text('Next: ${card.intervalDays.toStringAsFixed(0)}d',
+                  style: const TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 11,
+                      color: AppColors.teal)),
             ],
           ),
           const Spacer(),
-          Text(card.back, textAlign: TextAlign.center, style: const TextStyle(fontFamily: 'Inter', fontSize: 17, fontWeight: FontWeight.w500, color: Colors.white, height: 1.45)),
+          Text(card.back,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                  height: 1.45)),
           const Spacer(),
-          Text('Rate your recall below to schedule next review', textAlign: TextAlign.center, style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white.withOpacity(0.35))),
+          Text('Rate your recall below to schedule next review',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 11,
+                  color: Colors.white.withOpacity(0.35))),
         ],
       ),
     );
@@ -404,7 +523,11 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen> with SingleTi
           padding: const EdgeInsets.symmetric(vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
-        child: Text(label, style: const TextStyle(fontFamily: 'Inter', fontSize: 12.5, fontWeight: FontWeight.w600)),
+        child: Text(label,
+            style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600)),
       ),
     );
   }
@@ -415,15 +538,23 @@ class _StatBadge extends StatelessWidget {
   final int count;
   final Color color;
 
-  const _StatBadge({required this.label, required this.count, required this.color});
+  const _StatBadge(
+      {required this.label, required this.count, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text('$count', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 20, fontWeight: FontWeight.w700, color: color)),
+        Text('$count',
+            style: TextStyle(
+                fontFamily: 'JetBrains Mono',
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: color)),
         const SizedBox(height: 2),
-        Text(label, style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white60)),
+        Text(label,
+            style: TextStyle(
+                fontFamily: 'Inter', fontSize: 11, color: Colors.white60)),
       ],
     );
   }

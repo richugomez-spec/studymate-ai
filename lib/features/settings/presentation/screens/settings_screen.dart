@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
-import '../../../../core/ai/services/real_ai_chat_service.dart';
+import '../../../../core/ai/services/gemini_api_key_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 
@@ -23,7 +23,11 @@ class SettingsScreen extends ConsumerWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Google Gemini API Key',
-          style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, color: Colors.white, fontSize: 17),
+          style: TextStyle(
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              fontSize: 17),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -31,20 +35,34 @@ class SettingsScreen extends ConsumerWidget {
           children: [
             const Text(
               'Enter your personal Google Gemini API key. Free keys can be created at aistudio.google.com/apikey.',
-              style: TextStyle(fontFamily: 'Inter', fontSize: 13, color: AppColors.darkTextSecondary, height: 1.4),
+              style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13,
+                  color: AppColors.darkTextSecondary,
+                  height: 1.4),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: controller,
-              style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12, color: Colors.white),
+              style: const TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 12,
+                  color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'AIzaSy...',
                 hintStyle: const TextStyle(color: Colors.white24),
                 filled: true,
                 fillColor: AppColors.darkSurfaceContainerLowest,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.darkBorder)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.darkBorder)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.electricViolet)),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: AppColors.darkBorder)),
+                enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: AppColors.darkBorder)),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide:
+                        const BorderSide(color: AppColors.electricViolet)),
               ),
             ),
           ],
@@ -52,18 +70,23 @@ class SettingsScreen extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.darkTextSecondary)),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.darkTextSecondary)),
           ),
           ElevatedButton(
             onPressed: () {
               ref.read(aiApiKeyProvider.notifier).setApiKey(controller.text);
               Navigator.of(ctx).pop();
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Gemini API key updated successfully!')),
+                const SnackBar(
+                    content: Text('Gemini API key updated successfully!')),
               );
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.electricViolet),
-            child: const Text('Save Key', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.electricViolet),
+            child: const Text('Save Key',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -111,7 +134,9 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.vpn_key_outlined,
             iconColor: AppColors.electricViolet,
             title: 'Gemini API Key',
-            subtitle: hasCustomKey ? 'Active (Live Generative AI)' : 'Configure personal API key',
+            subtitle: hasCustomKey
+                ? 'Active (Live Generative AI)'
+                : 'Configure personal API key',
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap: () => _showApiKeyDialog(context, ref),
           ).animate(delay: 50.ms).fadeIn().slideY(begin: 0.1, end: 0),
@@ -128,7 +153,8 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: isDark ? 'Dark Mode' : 'Light Mode',
             trailing: Switch(
               value: isDark,
-              onChanged: (_) => ref.read(themeModeNotifierProvider.notifier).toggle(),
+              onChanged: (_) =>
+                  ref.read(themeModeNotifierProvider.notifier).toggle(),
               activeColor: AppColors.electricViolet,
             ),
             onTap: () => ref.read(themeModeNotifierProvider.notifier).toggle(),
@@ -160,23 +186,33 @@ class SettingsScreen extends ConsumerWidget {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  title: const Text('Sign Out', style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700, color: Colors.white)),
+                  title: const Text('Sign Out',
+                      style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white)),
                   content: const Text(
                     'Are you sure you want to sign out of StudyMate AI?',
-                    style: TextStyle(fontFamily: 'Inter', color: AppColors.darkTextSecondary),
+                    style: TextStyle(
+                        fontFamily: 'Inter',
+                        color: AppColors.darkTextSecondary),
                   ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(dialogCtx).pop(false),
-                      child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.6))),
+                      child: Text('Cancel',
+                          style:
+                              TextStyle(color: Colors.white.withOpacity(0.6))),
                     ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.error,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
                       ),
                       onPressed: () => Navigator.of(dialogCtx).pop(true),
-                      child: const Text('Sign Out', style: TextStyle(color: Colors.white)),
+                      child: const Text('Sign Out',
+                          style: TextStyle(color: Colors.white)),
                     ),
                   ],
                 ),
@@ -192,12 +228,16 @@ class SettingsScreen extends ConsumerWidget {
             icon: const Icon(Icons.logout_rounded, color: AppColors.error),
             label: const Text(
               'Sign Out',
-              style: TextStyle(color: AppColors.error, fontFamily: 'Inter', fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  color: AppColors.error,
+                  fontFamily: 'Inter',
+                  fontWeight: FontWeight.w600),
             ),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: AppColors.error),
               padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14)),
               minimumSize: const Size(double.infinity, 52),
             ),
           ).animate(delay: 200.ms).fadeIn(),
@@ -215,7 +255,10 @@ class _ProfileCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final displayName = user?.displayName ?? (user?.email.isNotEmpty == true ? user!.email.split('@').first : 'Student');
+    final displayName = user?.displayName ??
+        (user?.email.isNotEmpty == true
+            ? user!.email.split('@').first
+            : 'Student');
     final email = user?.email ?? 'Not logged in';
     final initial = displayName.isNotEmpty ? displayName[0].toUpperCase() : 'S';
 
@@ -231,9 +274,10 @@ class _ProfileCard extends ConsumerWidget {
           CircleAvatar(
             radius: 26,
             backgroundColor: AppColors.electricViolet.withOpacity(0.2),
-            backgroundImage: (user?.photoUrl != null && user!.photoUrl!.isNotEmpty)
-                ? NetworkImage(user.photoUrl!)
-                : null,
+            backgroundImage:
+                (user?.photoUrl != null && user!.photoUrl!.isNotEmpty)
+                    ? NetworkImage(user.photoUrl!)
+                    : null,
             child: (user?.photoUrl == null || user!.photoUrl!.isEmpty)
                 ? Text(
                     initial,
@@ -270,7 +314,8 @@ class _ProfileCard extends ConsumerWidget {
                 ),
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppColors.electricViolet.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(4),
@@ -288,7 +333,8 @@ class _ProfileCard extends ConsumerWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right_rounded, size: 20, color: Colors.white.withOpacity(0.4)),
+          Icon(Icons.chevron_right_rounded,
+              size: 20, color: Colors.white.withOpacity(0.4)),
         ],
       ),
     );
@@ -387,7 +433,8 @@ class _SettingsTile extends StatelessWidget {
               DefaultTextStyle(
                 style: TextStyle(color: Colors.white.withOpacity(0.3)),
                 child: IconTheme(
-                  data: IconThemeData(color: Colors.white.withOpacity(0.3), size: 18),
+                  data: IconThemeData(
+                      color: Colors.white.withOpacity(0.3), size: 18),
                   child: trailing!,
                 ),
               ),

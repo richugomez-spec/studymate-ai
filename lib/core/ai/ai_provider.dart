@@ -22,10 +22,6 @@ abstract class AIProvider {
   /// Stream response tokens as they arrive
   Stream<String> stream(AIRequest request);
 
-  /// Generate embeddings for a list of texts
-  /// Returns a list of float vectors (one per input text)
-  Future<List<List<double>>> embed(List<String> texts);
-
   /// Validate that the provider is reachable and configured correctly
   Future<bool> validate();
 }

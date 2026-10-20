@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -11,18 +13,26 @@ final firestoreServiceProvider = Provider<FirestoreService>((ref) {
 });
 
 /// Reactive stream of the current user's profile from Firestore
-final userProfileStreamProvider = StreamProvider.family<FirestoreUserModel?, String>((ref, uid) {
+final userProfileStreamProvider =
+    StreamProvider.family<FirestoreUserModel?, String>((ref, uid) {
   return ref.watch(firestoreServiceProvider).streamUser(uid);
 });
 
 /// Reactive stream of the current user's study progress from Firestore
-final userStudyProgressStreamProvider = StreamProvider.family<FirestoreStudyProgressModel?, String>((ref, uid) {
+final userStudyProgressStreamProvider =
+    StreamProvider.family<FirestoreStudyProgressModel?, String>((ref, uid) {
   return ref.watch(firestoreServiceProvider).streamStudyProgress(uid);
 });
 
 /// Reactive stream of all documents uploaded by the user to Firestore
-final userDocumentsStreamProvider = StreamProvider.family<List<FirestoreDocumentModel>, String>((ref, uid) {
+final userDocumentsStreamProvider =
+    StreamProvider.family<List<FirestoreDocumentModel>, String>((ref, uid) {
   return ref.watch(firestoreServiceProvider).streamUserDocuments(uid);
+});
+
+final userKnowledgeStreamProvider =
+    StreamProvider.family<List<Map<String, dynamic>>, String>((ref, uid) {
+  return ref.watch(firestoreServiceProvider).streamWorkspaceItems(uid);
 });
 
 /// Production Firestore Service Layer
@@ -38,7 +48,8 @@ class FirestoreService {
 
   // In-memory cache to prevent duplicate Firestore reads across page navigations
   static final Map<String, (FirestoreUserModel?, DateTime)> _userCache = {};
-  static final Map<String, (FirestoreStudyProgressModel?, DateTime)> _progressCache = {};
+  static final Map<String, (FirestoreStudyProgressModel?, DateTime)>
+      _progressCache = {};
   static const Duration _cacheTtl = Duration(minutes: 5);
 
   FirestoreService({
@@ -62,6 +73,169 @@ class FirestoreService {
 
   CollectionReference<Map<String, dynamic>> get _studyProgressCol =>
       _firestore.collection('study_progress');
+
+  CollectionReference<Map<String, dynamic>> get _knowledgeCol =>
+      _firestore.collection('knowledge_items');
+
+  Future<List<Map<String, dynamic>>> loadKnowledge({String? ownerId}) async {
+    final uid = ownerId ?? currentUserId;
+    if (uid == null) return const [];
+    final snapshot = await _docsCol.where('ownerId', isEqualTo: uid).get();
+    final notes = await _knowledgeCol.where('ownerId', isEqualTo: uid).get();
+    final items = <Map<String, dynamic>>[
+      ...notes.docs
+          .where((d) => d.data()['kind'] != 'folder')
+          .map((d) => {'id': d.id, ...d.data(), 'kind': 'note'}),
+    ];
+    for (final note in notes.docs) {
+      final indexed = note.data()['structuredKnowledge'];
+      if (indexed is Map && indexed['concepts'] is List) {
+        for (final concept in indexed['concepts'] as List) {
+          if (concept is Map)
+            items.add({
+              'id': '${note.id}_${concept['id'] ?? items.length}',
+              'sourceId': note.id,
+              'title':
+                  concept['name'] ?? concept['title'] ?? note.data()['title'],
+              'content': jsonEncode(concept),
+              'subject': note.data()['subject'],
+              'topic': note.data()['topic'],
+              'kind': 'concept',
+              'updatedAt': note.data()['indexedAt']
+            });
+        }
+      }
+    }
+    for (final doc in snapshot.docs) {
+      final data = doc.data();
+      final customNotes = (data['notes'] ?? '').toString().trim();
+      if (customNotes.isNotEmpty)
+        items.add({
+          'id': '${doc.id}_notes',
+          'title': '${data['title'] ?? data['fileName']} notes',
+          'sourceId': doc.id,
+          'content': customNotes,
+          'subject': data['subject'],
+          'topic': data['topic'],
+          'kind': 'note',
+          'updatedAt': data['uploadedAt'],
+        });
+      items.add({'id': doc.id, ...data, 'kind': 'document'});
+      final indexed = data['structuredKnowledge'];
+      if (indexed is Map && indexed['concepts'] is List) {
+        for (final concept in indexed['concepts'] as List) {
+          if (concept is Map)
+            items.add({
+              'id': '${doc.id}_${concept['id'] ?? items.length}',
+              'sourceId': doc.id,
+              'title': concept['name'] ?? concept['title'] ?? data['title'],
+              'content': jsonEncode(concept),
+              'subject': data['subject'],
+              'topic': data['topic'],
+              'kind': 'concept',
+              'updatedAt': data['indexedAt'],
+            });
+        }
+      }
+    }
+    return items;
+  }
+
+  Future<String> saveKnowledgeNote(
+      {required String title,
+      required String content,
+      String subject = '',
+      String topic = '',
+      String subtopic = '',
+      String notes = '',
+      String folderId = '',
+      List<String> tags = const []}) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to save knowledge.');
+    final ref = await _knowledgeCol.add({
+      'ownerId': uid,
+      'title': title,
+      'content': content,
+      'subject': subject,
+      'topic': topic,
+      'subtopic': subtopic,
+      'notes': notes,
+      'folderId': folderId,
+      'tags': tags,
+      'kind': 'note',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    return ref.id;
+  }
+
+  Future<String> createWorkspaceFolder(
+      {required String name, String parentId = '', String subject = ''}) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to create a workspace folder.');
+    final ref = await _knowledgeCol.add({
+      'ownerId': uid,
+      'kind': 'folder',
+      'title': name,
+      'parentId': parentId,
+      'subject': subject,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp()
+    });
+    return ref.id;
+  }
+
+  Stream<List<Map<String, dynamic>>> streamWorkspaceItems(String ownerId) =>
+      _knowledgeCol.where('ownerId', isEqualTo: ownerId).snapshots().map(
+          (snapshot) =>
+              snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+
+  Future<void> saveKnowledgeIndex(String documentId, Map<String, dynamic> index,
+      {required String sourceText, String sourceKind = 'document'}) async {
+    final target = sourceKind == 'note'
+        ? _knowledgeCol.doc(documentId)
+        : _docsCol.doc(documentId);
+    await target.update({
+      'structuredKnowledge': index,
+      'extractedText': sourceText.length > 100000
+          ? sourceText.substring(0, 100000)
+          : sourceText,
+      'indexedAt': FieldValue.serverTimestamp(),
+      'status': 'indexed',
+    });
+  }
+
+  Future<void> setDocumentIndexError(String documentId, String error) async {
+    await _docsCol.doc(documentId).set({
+      'status': 'index_error',
+      'indexError': error,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> cacheGeneration(String key, Map<String, dynamic> result) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('generation_cache')
+        .doc(key)
+        .set({'result': result, 'updatedAt': FieldValue.serverTimestamp()});
+  }
+
+  Future<Map<String, dynamic>?> getGenerationCache(String key) async {
+    final uid = currentUserId;
+    if (uid == null) return null;
+    final doc = await _firestore
+        .collection('users')
+        .doc(uid)
+        .collection('generation_cache')
+        .doc(key)
+        .get();
+    final result = doc.data()?['result'];
+    return result is Map ? Map<String, dynamic>.from(result) : null;
+  }
 
   // ── 1. Users Collection (/users/{uid}) ──────────────────────────────────────
 
@@ -148,64 +322,6 @@ class FirestoreService {
 
   // ── 2. Documents Collection (/documents/{docId}) ───────────────────────────
 
-  /// Create a new document in Firestore and increment the user's documentsUploaded count
-  Future<String> createDocument({
-    required String ownerId,
-    required String title,
-    required String fileName,
-    required String fileUrl,
-    String subject = 'General',
-    int conceptCount = 0,
-    int quizCount = 0,
-    int flashcardCount = 0,
-    String? summary,
-    String? extractedText,
-    Map<String, dynamic>? documentData,
-  }) async {
-    try {
-      final now = DateTime.now();
-      final newDocRef = _docsCol.doc();
-      final userDocRef = _usersCol.doc(ownerId);
-
-      final batch = _firestore.batch();
-
-      final docModel = FirestoreDocumentModel(
-        id: newDocRef.id,
-        ownerId: ownerId,
-        title: title,
-        subject: subject,
-        fileName: fileName,
-        fileUrl: fileUrl,
-        uploadedAt: now,
-        lastOpened: now,
-        conceptCount: conceptCount,
-        quizCount: quizCount,
-        flashcardCount: flashcardCount,
-        summary: summary,
-        extractedText: extractedText,
-        documentData: documentData,
-      );
-
-      batch.set(newDocRef, docModel.toMap());
-
-      // Atomically increment documentsUploaded in users collection
-      batch.set(
-        userDocRef,
-        {
-          'documentsUploaded': FieldValue.increment(1),
-          'lastLogin': Timestamp.fromDate(now),
-        },
-        SetOptions(merge: true),
-      );
-
-      await batch.commit();
-      return newDocRef.id;
-    } catch (e) {
-      debugPrint('FirestoreService.createDocument error: $e');
-      rethrow;
-    }
-  }
-
   /// Permanently delete a document from Firestore and decrement user's count
   Future<void> deleteDocument({
     required String documentId,
@@ -236,47 +352,6 @@ class FirestoreService {
     }
   }
 
-  /// Fetch a single document snapshot by ID
-  Future<FirestoreDocumentModel?> getDocumentById(String documentId) async {
-    try {
-      final doc = await _docsCol.doc(documentId).get();
-      if (!doc.exists || doc.data() == null) return null;
-      return FirestoreDocumentModel.fromMap(doc.data()!, doc.id);
-    } catch (e) {
-      debugPrint('FirestoreService.getDocumentById error: $e');
-      return null;
-    }
-  }
-
-
-
-  /// Update document metadata (e.g. concept/quiz/flashcard count)
-  Future<void> updateDocumentMetadata(
-    String documentId, {
-    int? conceptCount,
-    int? quizCount,
-    int? flashcardCount,
-    DateTime? lastOpened,
-    String? fileUrl,
-  }) async {
-    try {
-      final updates = <String, dynamic>{};
-      if (conceptCount != null) updates['conceptCount'] = conceptCount;
-      if (quizCount != null) updates['quizCount'] = quizCount;
-      if (flashcardCount != null) updates['flashcardCount'] = flashcardCount;
-      if (lastOpened != null) {
-        updates['lastOpened'] = Timestamp.fromDate(lastOpened);
-      }
-      if (fileUrl != null && fileUrl.isNotEmpty) updates['fileUrl'] = fileUrl;
-
-      if (updates.isNotEmpty) {
-        await _docsCol.doc(documentId).update(updates);
-      }
-    } catch (e) {
-      debugPrint('FirestoreService.updateDocumentMetadata error: $e');
-    }
-  }
-
   /// Stream of user's uploaded documents
   Stream<List<FirestoreDocumentModel>> streamUserDocuments(String ownerId) {
     return _docsCol
@@ -300,8 +375,8 @@ class FirestoreService {
     String? documentId,
   }) async {
     try {
-      Query<Map<String, dynamic>> query = _chatSessionsCol
-          .where('ownerId', isEqualTo: ownerId);
+      Query<Map<String, dynamic>> query =
+          _chatSessionsCol.where('ownerId', isEqualTo: ownerId);
 
       if (documentId != null && documentId.isNotEmpty) {
         query = query.where('documentId', isEqualTo: documentId);
@@ -365,7 +440,8 @@ class FirestoreService {
   }
 
   /// Stream messages in a chat session in chronological order
-  Stream<List<FirestoreChatMessageModel>> streamSessionMessages(String sessionId) {
+  Stream<List<FirestoreChatMessageModel>> streamSessionMessages(
+      String sessionId) {
     return _chatSessionsCol
         .doc(sessionId)
         .collection('messages')

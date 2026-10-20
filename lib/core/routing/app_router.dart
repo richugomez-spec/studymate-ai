@@ -49,7 +49,8 @@ class GoRouterRefreshStream extends ChangeNotifier {
 @riverpod
 GoRouter appRouter(AppRouterRef ref) {
   final authRepository = ref.watch(authRepositoryProvider);
-  final refreshNotifier = GoRouterRefreshStream(authRepository.authStateChanges);
+  final refreshNotifier =
+      GoRouterRefreshStream(authRepository.authStateChanges);
   ref.onDispose(refreshNotifier.dispose);
 
   return GoRouter(
@@ -60,7 +61,8 @@ GoRouter appRouter(AppRouterRef ref) {
       final isAuthenticated = user != null;
       final location = state.matchedLocation;
 
-      final isAuthRoute = location == AppRoutes.login || location == AppRoutes.onboarding;
+      final isAuthRoute =
+          location == AppRoutes.login || location == AppRoutes.onboarding;
 
       // Authenticated users navigating to login are redirected back to home
       if (isAuthenticated && isAuthRoute) {
@@ -92,11 +94,13 @@ GoRouter appRouter(AppRouterRef ref) {
         routes: [
           GoRoute(
             path: AppRoutes.home,
-            pageBuilder: (_, __) => const NoTransitionPage(child: DashboardScreen()),
+            pageBuilder: (_, __) =>
+                const NoTransitionPage(child: DashboardScreen()),
           ),
           GoRoute(
             path: AppRoutes.library,
-            pageBuilder: (_, __) => const NoTransitionPage(child: LibraryScreen()),
+            pageBuilder: (_, __) =>
+                const NoTransitionPage(child: LibraryScreen()),
           ),
           GoRoute(
             path: AppRoutes.aiChat,
@@ -104,7 +108,8 @@ GoRouter appRouter(AppRouterRef ref) {
           ),
           GoRoute(
             path: AppRoutes.studyTools,
-            pageBuilder: (_, __) => const NoTransitionPage(child: StudyToolsScreen()),
+            pageBuilder: (_, __) =>
+                const NoTransitionPage(child: StudyToolsScreen()),
           ),
           GoRoute(
             path: AppRoutes.flashcards,
@@ -115,40 +120,49 @@ GoRouter appRouter(AppRouterRef ref) {
           GoRoute(
             path: AppRoutes.quiz,
             pageBuilder: (_, state) => NoTransitionPage(
-              child: QuizScreen(topicId: state.pathParameters['topicId'] ?? 'current'),
+              child: QuizScreen(
+                  topicId: state.pathParameters['topicId'] ?? 'current'),
             ),
           ),
           GoRoute(
             path: AppRoutes.summary,
             pageBuilder: (_, state) => NoTransitionPage(
-              child: SummaryScreen(topicId: state.pathParameters['topicId'] ?? 'current'),
+              child: SummaryScreen(
+                topicId: state.pathParameters['topicId'] ?? 'current',
+                initialMode: state.uri.queryParameters['mode'],
+              ),
             ),
           ),
           GoRoute(
             path: AppRoutes.mindMap,
             pageBuilder: (_, state) => NoTransitionPage(
-              child: MindMapScreen(topicId: state.pathParameters['topicId'] ?? 'current'),
+              child: MindMapScreen(
+                  topicId: state.pathParameters['topicId'] ?? 'current'),
             ),
           ),
           GoRoute(
             path: AppRoutes.questionPaperAnalyzer,
             pageBuilder: (_, state) => NoTransitionPage(
-              child: QuestionPaperAnalyzerScreen(topicId: state.pathParameters['topicId'] ?? 'current'),
+              child: QuestionPaperAnalyzerScreen(
+                  topicId: state.pathParameters['topicId'] ?? 'current'),
             ),
           ),
           GoRoute(
             path: AppRoutes.examGenerator,
             pageBuilder: (_, state) => NoTransitionPage(
-              child: ExamGeneratorScreen(topicId: state.pathParameters['topicId'] ?? 'current'),
+              child: ExamGeneratorScreen(
+                  topicId: state.pathParameters['topicId'] ?? 'current'),
             ),
           ),
           GoRoute(
             path: AppRoutes.progress,
-            pageBuilder: (_, __) => const NoTransitionPage(child: AnalyticsScreen()),
+            pageBuilder: (_, __) =>
+                const NoTransitionPage(child: AnalyticsScreen()),
           ),
           GoRoute(
             path: AppRoutes.settings,
-            pageBuilder: (_, __) => const NoTransitionPage(child: SettingsScreen()),
+            pageBuilder: (_, __) =>
+                const NoTransitionPage(child: SettingsScreen()),
           ),
         ],
       ),

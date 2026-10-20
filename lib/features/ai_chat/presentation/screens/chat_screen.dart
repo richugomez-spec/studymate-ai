@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/ai/services/real_ai_chat_service.dart';
+import '../../../../core/ai/services/gemini_api_key_provider.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -50,7 +51,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _currentSessionId = session.id;
 
         // Fetch existing messages from the session
-        final messagesStream = firestoreService.streamSessionMessages(session.id);
+        final messagesStream =
+            firestoreService.streamSessionMessages(session.id);
         final initialMessages = await messagesStream.first.timeout(
           const Duration(seconds: 4),
           onTimeout: () => [],
@@ -135,7 +137,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   /// Progressively streams words to the screen for a smooth ChatGPT typing effect
-  Future<void> _streamWords(String fullResponse, String placeholderId, DateTime timestamp) async {
+  Future<void> _streamWords(
+      String fullResponse, String placeholderId, DateTime timestamp) async {
     final words = fullResponse.split(' ');
     final buffer = StringBuffer();
     const batchSize = 3;
@@ -172,7 +175,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final signedIn = await AuthRequiredModal.show(
         context,
         title: 'Sign in to chat with AI Coach',
-        message: 'Sign in to access unlimited AI tutoring, document Q&A, and persistent chat sessions across your devices.',
+        message:
+            'Sign in to access unlimited AI tutoring, document Q&A, and persistent chat sessions across your devices.',
       );
       if (!signedIn) return;
     }
@@ -286,9 +290,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(
           children: [
-            Icon(Icons.vpn_key_rounded, color: AppColors.electricViolet, size: 22),
+            Icon(Icons.vpn_key_rounded,
+                color: AppColors.electricViolet, size: 22),
             SizedBox(width: 10),
-            Text('Connect Gemini API Key', style: TextStyle(fontFamily: 'Inter', fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+            Text('Connect Gemini API Key',
+                style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white)),
           ],
         ),
         content: Column(
@@ -297,7 +307,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           children: [
             Text(
               'Enter your Google Gemini API key to enable live generative streaming responses with Gemini 3.8 Flash. Keys are free on Google AI Studio.',
-              style: TextStyle(fontFamily: 'Inter', fontSize: 12, color: Colors.white.withOpacity(0.7), height: 1.4),
+              style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  color: Colors.white.withOpacity(0.7),
+                  height: 1.4),
             ),
             const SizedBox(height: 16),
             TextField(
@@ -309,8 +323,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
                 filled: true,
                 fillColor: AppColors.darkSurfaceVariant,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                prefixIcon: const Icon(Icons.key, color: AppColors.electricViolet, size: 18),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none),
+                prefixIcon: const Icon(Icons.key,
+                    color: AppColors.electricViolet, size: 18),
               ),
             ),
           ],
@@ -321,22 +338,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               onPressed: () {
                 ref.read(aiApiKeyProvider.notifier).setApiKey('');
                 Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('API Key cleared.')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('API Key cleared.')));
               },
-              child: const Text('Clear Key', style: TextStyle(color: AppColors.error)),
+              child: const Text('Clear Key',
+                  style: TextStyle(color: AppColors.error)),
             ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white60)),
           ),
           ElevatedButton(
             onPressed: () {
               ref.read(aiApiKeyProvider.notifier).setApiKey(controller.text);
               Navigator.of(ctx).pop();
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gemini API Key saved! Ready for live streaming.')));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content:
+                      Text('Gemini API Key saved! Ready for live streaming.')));
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.electricViolet),
-            child: const Text('Save Key', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.electricViolet),
+            child: const Text('Save Key',
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -360,7 +385,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 gradient: AppColors.primaryGradient,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.auto_awesome_rounded, size: 16, color: Colors.white),
+              child: const Icon(Icons.auto_awesome_rounded,
+                  size: 16, color: Colors.white),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -378,13 +404,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ),
                   ),
                   Text(
-                    activeDoc != null ? '📄 ${activeDoc.fileName}' : 'No document loaded',
+                    activeDoc != null
+                        ? '📄 ${activeDoc.fileName}'
+                        : 'No document loaded',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 11,
-                      color: activeDoc != null ? AppColors.teal : Colors.white38,
+                      color:
+                          activeDoc != null ? AppColors.teal : Colors.white38,
                     ),
                   ),
                 ],
@@ -429,25 +458,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 _PromptChip(
                   icon: '💡',
                   label: 'Test my understanding',
-                  onTap: () => _sendMessage('Can you test my understanding of this material with a challenging exam question?'),
+                  onTap: () => _sendMessage(
+                      'Can you test my understanding of this material with a challenging exam question?'),
                 ),
                 const SizedBox(width: 8),
                 _PromptChip(
                   icon: '🔗',
                   label: 'Core Prerequisites',
-                  onTap: () => _sendMessage('What are the foundational prerequisite concepts I need to understand this?'),
+                  onTap: () => _sendMessage(
+                      'What are the foundational prerequisite concepts I need to understand this?'),
                 ),
                 const SizedBox(width: 8),
                 _PromptChip(
                   icon: '🧪',
                   label: 'Explain with Analogy',
-                  onTap: () => _sendMessage('Explain the central mechanism using an intuitive real-world analogy.'),
+                  onTap: () => _sendMessage(
+                      'Explain the central mechanism using an intuitive real-world analogy.'),
                 ),
                 const SizedBox(width: 8),
                 _PromptChip(
                   icon: '⚠️',
                   label: 'Exam Traps',
-                  onTap: () => _sendMessage('What are the most common misconceptions and pitfalls in exams regarding this topic?'),
+                  onTap: () => _sendMessage(
+                      'What are the most common misconceptions and pitfalls in exams regarding this topic?'),
                 ),
               ],
             ),
@@ -463,7 +496,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         SizedBox(
                           width: 24,
                           height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.electricViolet),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: AppColors.electricViolet),
                         ),
                         SizedBox(height: 12),
                         Text(
@@ -479,9 +513,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   )
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     itemCount: _messages.length,
-                    itemBuilder: (_, i) => _RealMessageBubble(message: _messages[i]),
+                    itemBuilder: (_, i) =>
+                        _RealMessageBubble(message: _messages[i]),
                   ),
           ),
 
@@ -490,7 +526,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             decoration: BoxDecoration(
               color: AppColors.darkSurface,
-              border: Border(top: BorderSide(color: AppColors.darkBorder.withOpacity(0.5))),
+              border: Border(
+                  top:
+                      BorderSide(color: AppColors.darkBorder.withOpacity(0.5))),
             ),
             child: Row(
               children: [
@@ -501,12 +539,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     onSubmitted: _sendMessage,
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: activeDoc != null ? 'Ask about ${activeDoc.fileName}...' : 'Ask AI coach or upload document...',
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13),
+                      hintText: activeDoc != null
+                          ? 'Ask about ${activeDoc.fileName}...'
+                          : 'Ask AI coach or upload document...',
+                      hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.3), fontSize: 13),
                       filled: true,
                       fillColor: AppColors.darkSurfaceVariant,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none),
                     ),
                   ),
                 ),
@@ -523,10 +567,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
                           )
-                        : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                    onPressed: _isSending ? null : () => _sendMessage(_inputController.text),
+                        : const Icon(Icons.send_rounded,
+                            color: Colors.white, size: 20),
+                    onPressed: _isSending
+                        ? null
+                        : () => _sendMessage(_inputController.text),
                   ),
                 ),
               ],
@@ -543,7 +591,8 @@ class _PromptChip extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _PromptChip({required this.icon, required this.label, required this.onTap});
+  const _PromptChip(
+      {required this.icon, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -594,7 +643,8 @@ class _RealMessageBubble extends StatelessWidget {
         right: isUser ? 0 : 56,
       ),
       child: Column(
-        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment:
+            isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisSize: MainAxisSize.min,
@@ -606,10 +656,12 @@ class _RealMessageBubble extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppColors.brandAccent.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: AppColors.brandAccent.withOpacity(0.4)),
+                    border: Border.all(
+                        color: AppColors.brandAccent.withOpacity(0.4)),
                   ),
                   child: const Center(
-                    child: Icon(Icons.psychology, size: 12, color: AppColors.electricVioletLight),
+                    child: Icon(Icons.psychology,
+                        size: 12, color: AppColors.electricVioletLight),
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -621,7 +673,9 @@ class _RealMessageBubble extends StatelessWidget {
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.5,
-                  color: isUser ? AppColors.electricVioletLight : AppColors.darkTextSecondary,
+                  color: isUser
+                      ? AppColors.electricVioletLight
+                      : AppColors.darkTextSecondary,
                 ),
               ),
             ],
@@ -630,10 +684,14 @@ class _RealMessageBubble extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: isUser ? AppColors.darkSurfaceContainerHigh : AppColors.darkSurfaceVariant,
+              color: isUser
+                  ? AppColors.darkSurfaceContainerHigh
+                  : AppColors.darkSurfaceVariant,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
-                color: isUser ? AppColors.brandAccent.withOpacity(0.35) : AppColors.darkBorder,
+                color: isUser
+                    ? AppColors.brandAccent.withOpacity(0.35)
+                    : AppColors.darkBorder,
                 width: 1,
               ),
             ),
@@ -641,9 +699,17 @@ class _RealMessageBubble extends StatelessWidget {
                 ? const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.brandAccent)),
+                      SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: AppColors.brandAccent)),
                       SizedBox(width: 10),
-                      Text('Synthesizing...', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12, color: AppColors.darkTextSecondary)),
+                      Text('Synthesizing...',
+                          style: TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 12,
+                              color: AppColors.darkTextSecondary)),
                     ],
                   )
                 : MarkdownBody(
@@ -702,7 +768,9 @@ class _RealMessageBubble extends StatelessWidget {
                         fontStyle: FontStyle.italic,
                       ),
                       blockquoteDecoration: const BoxDecoration(
-                        border: Border(left: BorderSide(color: AppColors.electricViolet, width: 3)),
+                        border: Border(
+                            left: BorderSide(
+                                color: AppColors.electricViolet, width: 3)),
                       ),
                     ),
                   ),

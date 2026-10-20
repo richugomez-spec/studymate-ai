@@ -8,10 +8,19 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/services/firebase_upload_service.dart';
+import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../services/firestore_models.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/auth_required_modal.dart';
+
+String _mimeTypeFor(String? extension) => switch (extension?.toLowerCase()) {
+      'pdf' => 'application/pdf',
+      'png' => 'image/png',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'webp' => 'image/webp',
+      _ => 'application/octet-stream',
+    };
 
 /// Library Workspace — NotebookLM-inspired 3-column workspace
 /// Left sidebar (in MainShell) | Center document folio | Right AI Tools Studio
@@ -30,12 +39,17 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
-    final userId = user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
+    final userId =
+        user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
     final activeDoc = ref.watch(activeDocumentProvider);
     final firestoreDocsAsync = userId.isNotEmpty
         ? ref.watch(userDocumentsStreamProvider(userId))
         : null;
     final firestoreDocs = firestoreDocsAsync?.asData?.value ?? [];
+    final workspaceItems = userId.isNotEmpty
+        ? ref.watch(userKnowledgeStreamProvider(userId)).asData?.value ??
+            const <Map<String, dynamic>>[]
+        : const <Map<String, dynamic>>[];
 
     // Automatically restore last opened document from Firestore if none is active
     if (activeDoc == null && firestoreDocs.isNotEmpty) {
@@ -75,14 +89,19 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   totalDocs: firestoreDocs.length,
                   searchQuery: _searchQuery,
                   viewMode: _viewMode,
-                  onSearchChanged: (val) => setState(() => _searchQuery = val.trim()),
+                  onSearchChanged: (val) =>
+                      setState(() => _searchQuery = val.trim()),
                   onViewModeChanged: (mode) => setState(() => _viewMode = mode),
                   onUpload: () => _openUploadModal(context),
+                  onAddNote: _addNote,
+                  onAddFolder: _addFolder,
                 ),
-                const Divider(height: 1, thickness: 1, color: AppColors.darkBorderSubtle),
+                const Divider(
+                    height: 1, thickness: 1, color: AppColors.darkBorderSubtle),
                 Expanded(
                   child: filteredDocs.isEmpty && activeDoc == null
-                      ? _LibraryEmptyState(onUpload: () => _openUploadModal(context))
+                      ? _LibraryEmptyState(
+                          onUpload: () => _openUploadModal(context))
                       : _LibraryDocumentFolio(
                           docs: filteredDocs,
                           activeDoc: activeDoc,
@@ -94,13 +113,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           onDocDelete: (doc) => _onDocDelete(doc, userId),
                         ),
                 ),
+                _WorkspaceShelf(items: workspaceItems),
               ],
             ),
           ),
 
           // Right Study Tools Studio
           if (isDesktop) ...[
-            const VerticalDivider(width: 1, thickness: 1, color: AppColors.darkBorderSubtle),
+            const VerticalDivider(
+                width: 1, thickness: 1, color: AppColors.darkBorderSubtle),
             SizedBox(
               width: 300,
               child: _StudyToolsStudio(
@@ -157,22 +178,37 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF111217),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: const Text('Delete Document', style: TextStyle(fontFamily: 'Inter', color: AppColors.darkTextPrimary, fontSize: 16, fontWeight: FontWeight.w700)),
-        content: Text('Remove "${doc.title.isNotEmpty ? doc.title : doc.fileName}" permanently? This cannot be undone.', style: const TextStyle(fontFamily: 'Inter', color: AppColors.darkTextSecondary, fontSize: 13)),
+        title: const Text('Delete Document',
+            style: TextStyle(
+                fontFamily: 'Inter',
+                color: AppColors.darkTextPrimary,
+                fontSize: 16,
+                fontWeight: FontWeight.w700)),
+        content: Text(
+            'Remove "${doc.title.isNotEmpty ? doc.title : doc.fileName}" permanently? This cannot be undone.',
+            style: const TextStyle(
+                fontFamily: 'Inter',
+                color: AppColors.darkTextSecondary,
+                fontSize: 13)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel', style: TextStyle(color: AppColors.darkTextSecondary))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel',
+                  style: TextStyle(color: AppColors.darkTextSecondary))),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w700)),
+            child: const Text('Delete',
+                style: TextStyle(
+                    color: AppColors.error, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
     );
     if (confirm != true) return;
     await ref.read(firestoreServiceProvider).deleteDocument(
-      documentId: doc.id,
-      ownerId: userId.isNotEmpty ? userId : doc.ownerId,
-    );
+          documentId: doc.id,
+          ownerId: userId.isNotEmpty ? userId : doc.ownerId,
+        );
     // Clear active doc if it was the deleted one
     final activeDoc = ref.read(activeDocumentProvider);
     if (activeDoc?.id == doc.id) {
@@ -180,7 +216,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     }
   }
 
-  void _openTool(BuildContext context, UploadedDocument? activeDoc, String routeTemplate) {
+  void _openTool(
+      BuildContext context, UploadedDocument? activeDoc, String routeTemplate) {
     if (activeDoc == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -200,7 +237,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       AuthRequiredModal.show(
         context,
         title: 'Sign in to upload documents',
-        message: 'Create a free account or sign in to index your notes and generate AI study materials.',
+        message:
+            'Create a free account or sign in to index your notes and generate AI study materials.',
       );
       return;
     }
@@ -218,6 +256,121 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
   }
 
+  Future<void> _addNote() async {
+    if (ref.read(currentUserProvider) == null) {
+      AuthRequiredModal.show(
+        context,
+        title: 'Sign in to save notes',
+        message: 'Sign in to keep your knowledge workspace synced.',
+      );
+      return;
+    }
+    final title = TextEditingController();
+    final content = TextEditingController();
+    final subject = TextEditingController();
+    final topic = TextEditingController();
+    await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Add knowledge note'),
+              content: SingleChildScrollView(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextField(
+                    controller: title,
+                    decoration: const InputDecoration(labelText: 'Title')),
+                TextField(
+                    controller: subject,
+                    decoration: const InputDecoration(labelText: 'Subject')),
+                TextField(
+                    controller: topic,
+                    decoration: const InputDecoration(labelText: 'Topic')),
+                TextField(
+                    controller: content,
+                    minLines: 4,
+                    maxLines: 8,
+                    decoration: const InputDecoration(labelText: 'Note')),
+              ])),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: () async {
+                      if (content.text.trim().isEmpty) return;
+                      final noteTitle = title.text.trim().isEmpty
+                          ? 'Note'
+                          : title.text.trim();
+                      final noteContent = content.text.trim();
+                      final noteSubject = subject.text.trim();
+                      final noteTopic = topic.text.trim();
+                      final noteId = await ref
+                          .read(firestoreServiceProvider)
+                          .saveKnowledgeNote(
+                              title: noteTitle,
+                              content: noteContent,
+                              subject: noteSubject,
+                              topic: noteTopic);
+                      final engine = ref.read(knowledgeEngineProvider);
+                      unawaited(() async {
+                        try {
+                          await engine.index(
+                              sourceId: noteId,
+                              sourceKind: 'note',
+                              title: noteTitle,
+                              content: noteContent,
+                              subject: noteSubject,
+                              topic: noteTopic);
+                        } catch (error) {
+                          debugPrint('Note indexing failed: $error');
+                        }
+                      }());
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+                    child: const Text('Save note'))
+              ],
+            ));
+    title.dispose();
+    content.dispose();
+    subject.dispose();
+    topic.dispose();
+  }
+
+  Future<void> _addFolder() async {
+    if (ref.read(currentUserProvider) == null) {
+      AuthRequiredModal.show(
+        context,
+        title: 'Sign in to create folders',
+        message: 'Sign in to keep your knowledge workspace synced.',
+      );
+      return;
+    }
+    final name = TextEditingController();
+    await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Create workspace folder'),
+              content: TextField(
+                  controller: name,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Folder name')),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: () async {
+                      if (name.text.trim().isEmpty) return;
+                      await ref
+                          .read(firestoreServiceProvider)
+                          .createWorkspaceFolder(name: name.text.trim());
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+                    child: const Text('Create'))
+              ],
+            ));
+    name.dispose();
+  }
+
   UploadedDocument _buildFallback(FirestoreDocumentModel doc) {
     return UploadedDocument(
       id: doc.id,
@@ -225,38 +378,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       fileType: doc.fileType,
       byteSize: 1024 * 50,
       fullText: doc.extractedText ?? doc.title,
-      chunks: const [],
-      concepts: [
-        ExtractedConcept(
-          id: 'c_1',
-          title: doc.title.isNotEmpty ? doc.title : doc.fileName,
-          description: doc.summary ?? 'Core principles extracted from ${doc.fileName}.',
-          initialMastery: 0.6,
-          importanceScore: 5,
-        ),
-      ],
-      flashcards: [
-        ExtractedFlashcard(
-          id: 'fc_1',
-          front: 'What is the core subject of ${doc.title}?',
-          back: doc.subject,
-          conceptTitle: doc.title,
-        ),
-      ],
-      quizzes: [
-        ExtractedQuizQuestion(
-          id: 'qz_1',
-          question: 'What is the main subject covered in ${doc.title}?',
-          options: [doc.subject, 'General Knowledge', 'Introductory', 'Other'],
-          correctIndex: 0,
-          explanation: 'Extracted from metadata.',
-          conceptTitle: doc.title,
-        ),
-      ],
+      concepts: const [],
+      flashcards: const [],
+      quizzes: const [],
       summary: ExtractedSummary(
         title: doc.title,
-        overview: doc.summary ?? 'Summary for ${doc.fileName}.',
-        keyTakeaways: const ['Indexed in active knowledge base', 'Full AI context available in AI Coach'],
+        overview: '',
+        keyTakeaways: const [],
         coreTheorems: const [],
         examTraps: const [],
       ),
@@ -268,6 +396,61 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
 // ── Library Header ────────────────────────────────────────────────────────────
 
+class _WorkspaceShelf extends StatelessWidget {
+  const _WorkspaceShelf({required this.items});
+  final List<Map<String, dynamic>> items;
+  @override
+  Widget build(BuildContext context) {
+    final folders = items.where((item) => item['kind'] == 'folder').toList();
+    final notes = items.where((item) => item['kind'] == 'note').toList();
+    if (folders.isEmpty && notes.isEmpty) return const SizedBox(height: 8);
+    return SizedBox(
+        height: 126,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text('FOLDERS & NOTES',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11))),
+          Expanded(
+              child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [
+                for (final folder in folders)
+                  _WorkspaceItemCard(
+                      icon: Icons.folder_outlined,
+                      title: folder['title']?.toString() ?? 'Folder',
+                      subtitle:
+                          folder['subject']?.toString() ?? 'Workspace folder'),
+                for (final note in notes)
+                  _WorkspaceItemCard(
+                      icon: Icons.sticky_note_2_outlined,
+                      title: note['title']?.toString() ?? 'Note',
+                      subtitle: note['topic']?.toString() ??
+                          note['subject']?.toString() ??
+                          'Knowledge note'),
+              ])),
+        ]));
+  }
+}
+
+class _WorkspaceItemCard extends StatelessWidget {
+  const _WorkspaceItemCard(
+      {required this.icon, required this.title, required this.subtitle});
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+      width: 190,
+      child: Card(
+          child: ListTile(
+        leading: Icon(icon),
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+      )));
+}
+
 class _LibraryHeader extends StatelessWidget {
   final int totalDocs;
   final String searchQuery;
@@ -275,6 +458,8 @@ class _LibraryHeader extends StatelessWidget {
   final ValueChanged<String> onSearchChanged;
   final ValueChanged<String> onViewModeChanged;
   final VoidCallback onUpload;
+  final VoidCallback onAddNote;
+  final VoidCallback onAddFolder;
 
   const _LibraryHeader({
     required this.totalDocs,
@@ -283,6 +468,8 @@ class _LibraryHeader extends StatelessWidget {
     required this.onSearchChanged,
     required this.onViewModeChanged,
     required this.onUpload,
+    required this.onAddNote,
+    required this.onAddFolder,
   });
 
   @override
@@ -310,7 +497,8 @@ class _LibraryHeader extends StatelessWidget {
                   const SizedBox(width: 8),
                   if (totalDocs > 0)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
                       decoration: BoxDecoration(
                         color: AppColors.electricViolet.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(12),
@@ -351,15 +539,22 @@ class _LibraryHeader extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Row(
               children: [
-                Icon(Icons.search_rounded, size: 15, color: Colors.white.withOpacity(0.35)),
+                Icon(Icons.search_rounded,
+                    size: 15, color: Colors.white.withOpacity(0.35)),
                 const SizedBox(width: 6),
                 Expanded(
                   child: TextField(
                     onChanged: onSearchChanged,
-                    style: const TextStyle(fontFamily: 'Inter', fontSize: 12, color: AppColors.darkTextPrimary),
+                    style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12,
+                        color: AppColors.darkTextPrimary),
                     decoration: InputDecoration(
                       hintText: 'Search documents...',
-                      hintStyle: TextStyle(fontFamily: 'Inter', fontSize: 12, color: Colors.white.withOpacity(0.28)),
+                      hintStyle: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.28)),
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
@@ -380,12 +575,28 @@ class _LibraryHeader extends StatelessWidget {
             ),
             child: Row(
               children: [
-                _ViewBtn(icon: Icons.grid_view_rounded, active: viewMode == 'grid', onTap: () => onViewModeChanged('grid')),
-                _ViewBtn(icon: Icons.view_list_rounded, active: viewMode == 'list', onTap: () => onViewModeChanged('list')),
+                _ViewBtn(
+                    icon: Icons.grid_view_rounded,
+                    active: viewMode == 'grid',
+                    onTap: () => onViewModeChanged('grid')),
+                _ViewBtn(
+                    icon: Icons.view_list_rounded,
+                    active: viewMode == 'list',
+                    onTap: () => onViewModeChanged('list')),
               ],
             ),
           ),
           const SizedBox(width: 10),
+          OutlinedButton.icon(
+              onPressed: onAddNote,
+              icon: const Icon(Icons.note_add_outlined, size: 15),
+              label: const Text('Add Note')),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+              onPressed: onAddFolder,
+              icon: const Icon(Icons.create_new_folder_outlined, size: 15),
+              label: const Text('Folder')),
+          const SizedBox(width: 8),
           // Upload
           ElevatedButton.icon(
             onPressed: onUpload,
@@ -394,12 +605,16 @@ class _LibraryHeader extends StatelessWidget {
               foregroundColor: Colors.white,
               elevation: 0,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             icon: const Icon(Icons.add_rounded, size: 15),
             label: const Text(
               'Add Sources',
-              style: TextStyle(fontFamily: 'Inter', fontSize: 12.5, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -412,7 +627,8 @@ class _ViewBtn extends StatelessWidget {
   final IconData icon;
   final bool active;
   final VoidCallback onTap;
-  const _ViewBtn({required this.icon, required this.active, required this.onTap});
+  const _ViewBtn(
+      {required this.icon, required this.active, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -422,10 +638,15 @@ class _ViewBtn extends StatelessWidget {
         width: 34,
         height: 34,
         decoration: BoxDecoration(
-          color: active ? AppColors.darkSurfaceContainerHigh : Colors.transparent,
+          color:
+              active ? AppColors.darkSurfaceContainerHigh : Colors.transparent,
           borderRadius: BorderRadius.circular(7),
         ),
-        child: Icon(icon, size: 16, color: active ? AppColors.electricVioletLight : Colors.white.withOpacity(0.35)),
+        child: Icon(icon,
+            size: 16,
+            color: active
+                ? AppColors.electricVioletLight
+                : Colors.white.withOpacity(0.35)),
       ),
     );
   }
@@ -448,20 +669,35 @@ class _LibraryEmptyState extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.electricViolet.withOpacity(0.08),
               shape: BoxShape.circle,
-              border: Border.all(color: AppColors.electricViolet.withOpacity(0.2), width: 1.5),
+              border: Border.all(
+                  color: AppColors.electricViolet.withOpacity(0.2), width: 1.5),
             ),
-            child: const Icon(Icons.cloud_upload_outlined, size: 38, color: AppColors.electricViolet),
-          ).animate().fadeIn(duration: 500.ms).scaleXY(begin: 0.8, end: 1.0, duration: 500.ms, curve: Curves.easeOut),
+            child: const Icon(Icons.cloud_upload_outlined,
+                size: 38, color: AppColors.electricViolet),
+          ).animate().fadeIn(duration: 500.ms).scaleXY(
+              begin: 0.8, end: 1.0, duration: 500.ms, curve: Curves.easeOut),
           const SizedBox(height: 22),
           const Text(
             'No Study Materials Yet',
-            style: TextStyle(fontFamily: 'Inter', fontSize: 19, fontWeight: FontWeight.w700, color: AppColors.darkTextPrimary, letterSpacing: -0.3),
-          ).animate(delay: 100.ms).fadeIn(duration: 400.ms).slideY(begin: 0.2, end: 0),
+            style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 19,
+                fontWeight: FontWeight.w700,
+                color: AppColors.darkTextPrimary,
+                letterSpacing: -0.3),
+          )
+              .animate(delay: 100.ms)
+              .fadeIn(duration: 400.ms)
+              .slideY(begin: 0.2, end: 0),
           const SizedBox(height: 10),
           Text(
             'Upload lecture notes, textbooks, or assignments.\nStudyMate AI extracts concepts, summaries, flashcards & quizzes.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontFamily: 'Inter', fontSize: 13.5, color: AppColors.darkTextSecondary.withOpacity(0.75), height: 1.55),
+            style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13.5,
+                color: AppColors.darkTextSecondary.withOpacity(0.75),
+                height: 1.55),
           ).animate(delay: 150.ms).fadeIn(duration: 400.ms),
           const SizedBox(height: 28),
           Row(
@@ -472,29 +708,45 @@ class _LibraryEmptyState extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.electricViolet,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   elevation: 0,
                 ),
                 icon: const Icon(Icons.file_upload_outlined, size: 17),
-                label: const Text('Upload Documents', style: TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w600)),
+                label: const Text('Upload Documents',
+                    style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
               ),
             ],
-          ).animate(delay: 200.ms).fadeIn(duration: 400.ms).slideY(begin: 0.15, end: 0),
+          )
+              .animate(delay: 200.ms)
+              .fadeIn(duration: 400.ms)
+              .slideY(begin: 0.15, end: 0),
           const SizedBox(height: 28),
           Wrap(
             spacing: 8,
             runSpacing: 6,
             alignment: WrapAlignment.center,
-            children: ['PDF', 'PPTX', 'DOCX', 'TXT', 'Markdown'].map((f) => Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.darkSurfaceVariant,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppColors.darkBorderSubtle),
-              ),
-              child: Text(f, style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10.5, color: AppColors.darkTextSecondary)),
-            )).toList(),
+            children: ['PDF', 'PPTX', 'DOCX', 'TXT', 'Markdown']
+                .map((f) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkSurfaceVariant,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.darkBorderSubtle),
+                      ),
+                      child: Text(f,
+                          style: const TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 10.5,
+                              color: AppColors.darkTextSecondary)),
+                    ))
+                .toList(),
           ).animate(delay: 300.ms).fadeIn(duration: 400.ms),
         ],
       ),
@@ -534,7 +786,8 @@ class _LibraryDocumentFolio extends StatelessWidget {
                 FirestoreDocumentModel(
                   id: activeDoc!.id,
                   ownerId: '',
-                  title: activeDoc!.fileName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), ''),
+                  title: activeDoc!.fileName
+                      .replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), ''),
                   subject: 'General',
                   fileName: activeDoc!.fileName,
                   fileUrl: activeDoc!.downloadUrl ?? '',
@@ -557,13 +810,24 @@ class _LibraryDocumentFolio extends StatelessWidget {
           children: [
             const Text(
               'INDEXED DOCUMENTS',
-              style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 9.5, fontWeight: FontWeight.w700, color: AppColors.darkTextTertiary, letterSpacing: 1.0),
+              style: TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.darkTextTertiary,
+                  letterSpacing: 1.0),
             ),
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-              decoration: BoxDecoration(color: AppColors.darkSurfaceContainer, borderRadius: BorderRadius.circular(4)),
-              child: Text('${displayDocs.length}', style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 9.5, color: AppColors.darkTextTertiary)),
+              decoration: BoxDecoration(
+                  color: AppColors.darkSurfaceContainer,
+                  borderRadius: BorderRadius.circular(4)),
+              child: Text('${displayDocs.length}',
+                  style: const TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 9.5,
+                      color: AppColors.darkTextTertiary)),
             ),
             if (selectedDocIds.isNotEmpty) ...[
               const Spacer(),
@@ -576,7 +840,11 @@ class _LibraryDocumentFolio extends StatelessWidget {
                 ),
                 child: Text(
                   '${selectedDocIds.length} selected — Cross-doc AI',
-                  style: const TextStyle(fontFamily: 'Inter', fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.teal),
+                  style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.teal),
                 ),
               ),
             ],
@@ -586,7 +854,9 @@ class _LibraryDocumentFolio extends StatelessWidget {
         if (viewMode == 'grid')
           LayoutBuilder(
             builder: (context, constraints) {
-              final cols = constraints.maxWidth > 850 ? 3 : (constraints.maxWidth > 560 ? 2 : 1);
+              final cols = constraints.maxWidth > 850
+                  ? 3
+                  : (constraints.maxWidth > 560 ? 2 : 1);
               return GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -669,17 +939,34 @@ class _DocumentCardState extends State<_DocumentCard> {
 
   static Color _fileColor(String ext) {
     switch (ext.toLowerCase().replaceAll('.', '')) {
-      case 'pdf': return const Color(0xFFFF6B6B);
+      case 'pdf':
+        return const Color(0xFFFF6B6B);
       case 'pptx':
-      case 'ppt': return const Color(0xFFFF9F43);
+      case 'ppt':
+        return const Color(0xFFFF9F43);
       case 'docx':
-      case 'doc': return const Color(0xFF5F85DB);
-      default: return AppColors.teal;
+      case 'doc':
+        return const Color(0xFF5F85DB);
+      default:
+        return AppColors.teal;
     }
   }
 
   static String _formatDate(DateTime dt) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
 
@@ -718,7 +1005,10 @@ class _DocumentCardState extends State<_DocumentCard> {
             boxShadow: (widget.isActive || _hovered)
                 ? [
                     BoxShadow(
-                      color: (widget.isActive ? AppColors.electricViolet : Colors.black).withOpacity(0.12),
+                      color: (widget.isActive
+                              ? AppColors.electricViolet
+                              : Colors.black)
+                          .withOpacity(0.12),
                       blurRadius: 16,
                       offset: const Offset(0, 4),
                     ),
@@ -741,7 +1031,11 @@ class _DocumentCardState extends State<_DocumentCard> {
                     child: Center(
                       child: Text(
                         ftShort,
-                        style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: FontWeight.w800, color: fileColor),
+                        style: TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 9,
+                            fontWeight: FontWeight.w800,
+                            color: fileColor),
                       ),
                     ),
                   ),
@@ -752,14 +1046,21 @@ class _DocumentCardState extends State<_DocumentCard> {
                       children: [
                         Text(
                           doc.title.isNotEmpty ? doc.title : doc.fileName,
-                          style: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkTextPrimary),
+                          style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.darkTextPrimary),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 2),
                         Text(
                           _formatDate(doc.uploadedAt),
-                          style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 9.5, color: AppColors.darkTextTertiary),
+                          style: const TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 9.5,
+                              color: AppColors.darkTextTertiary),
                         ),
                       ],
                     ),
@@ -767,9 +1068,13 @@ class _DocumentCardState extends State<_DocumentCard> {
                   GestureDetector(
                     onTap: widget.onSelect,
                     child: Icon(
-                      widget.isSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                      widget.isSelected
+                          ? Icons.check_box_rounded
+                          : Icons.check_box_outline_blank_rounded,
                       size: 15,
-                      color: widget.isSelected ? AppColors.teal : Colors.white.withOpacity(0.2),
+                      color: widget.isSelected
+                          ? AppColors.teal
+                          : Colors.white.withOpacity(0.2),
                     ),
                   ),
                 ],
@@ -777,16 +1082,21 @@ class _DocumentCardState extends State<_DocumentCard> {
               const Spacer(),
               Row(
                 children: [
-                  _MetaPill(label: '${doc.conceptCount} concepts', color: AppColors.electricViolet),
+                  _MetaPill(
+                      label: '${doc.conceptCount} concepts',
+                      color: AppColors.electricViolet),
                   const SizedBox(width: 5),
-                  _MetaPill(label: '${doc.quizCount} quizzes', color: AppColors.skyBlue),
+                  _MetaPill(
+                      label: '${doc.quizCount} quizzes',
+                      color: AppColors.skyBlue),
                 ],
               ),
               const SizedBox(height: 8),
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                     decoration: BoxDecoration(
                       color: AppColors.teal.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(4),
@@ -794,9 +1104,15 @@ class _DocumentCardState extends State<_DocumentCard> {
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.check_circle_rounded, size: 9, color: AppColors.teal),
+                        Icon(Icons.check_circle_rounded,
+                            size: 9, color: AppColors.teal),
                         SizedBox(width: 3),
-                        Text('AI Ready', style: TextStyle(fontFamily: 'Inter', fontSize: 9.5, fontWeight: FontWeight.w600, color: AppColors.teal)),
+                        Text('AI Ready',
+                            style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.teal)),
                       ],
                     ),
                   ),
@@ -805,23 +1121,41 @@ class _DocumentCardState extends State<_DocumentCard> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _HoverAction(icon: Icons.flip_to_front_outlined, tooltip: 'Flashcards', color: AppColors.teal,
-                            onTap: () => widget.onQuickAction(AppRoutes.flashcards)),
-                        _HoverAction(icon: Icons.quiz_outlined, tooltip: 'Quiz', color: AppColors.amber,
+                        _HoverAction(
+                            icon: Icons.flip_to_front_outlined,
+                            tooltip: 'Flashcards',
+                            color: AppColors.teal,
+                            onTap: () =>
+                                widget.onQuickAction(AppRoutes.flashcards)),
+                        _HoverAction(
+                            icon: Icons.quiz_outlined,
+                            tooltip: 'Quiz',
+                            color: AppColors.amber,
                             onTap: () => widget.onQuickAction(AppRoutes.quiz)),
-                        _HoverAction(icon: Icons.summarize_outlined, tooltip: 'Summary', color: AppColors.skyBlue,
-                            onTap: () => widget.onQuickAction(AppRoutes.summary)),
-                        _HoverAction(icon: Icons.delete_outline_rounded, tooltip: 'Delete', color: AppColors.error,
+                        _HoverAction(
+                            icon: Icons.summarize_outlined,
+                            tooltip: 'Summary',
+                            color: AppColors.skyBlue,
+                            onTap: () =>
+                                widget.onQuickAction(AppRoutes.summary)),
+                        _HoverAction(
+                            icon: Icons.delete_outline_rounded,
+                            tooltip: 'Delete',
+                            color: AppColors.error,
                             onTap: widget.onDelete),
                       ],
                     )
                   else if (widget.isActive)
-                    const Icon(Icons.radio_button_checked_rounded, size: 13, color: AppColors.electricViolet),
+                    const Icon(Icons.radio_button_checked_rounded,
+                        size: 13, color: AppColors.electricViolet),
                 ],
               ),
             ],
           ),
-        ).animate(delay: Duration(milliseconds: widget.index * 40)).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+        )
+            .animate(delay: Duration(milliseconds: widget.index * 40))
+            .fadeIn(duration: 300.ms)
+            .slideY(begin: 0.08, end: 0),
       ),
     );
   }
@@ -859,17 +1193,34 @@ class _DocumentListRowState extends State<_DocumentListRow> {
 
   static Color _fileColor(String ext) {
     switch (ext.toLowerCase().replaceAll('.', '')) {
-      case 'pdf': return const Color(0xFFFF6B6B);
+      case 'pdf':
+        return const Color(0xFFFF6B6B);
       case 'pptx':
-      case 'ppt': return const Color(0xFFFF9F43);
+      case 'ppt':
+        return const Color(0xFFFF9F43);
       case 'docx':
-      case 'doc': return const Color(0xFF5F85DB);
-      default: return AppColors.teal;
+      case 'doc':
+        return const Color(0xFF5F85DB);
+      default:
+        return AppColors.teal;
     }
   }
 
   static String _formatDate(DateTime dt) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
     return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
 
@@ -889,10 +1240,14 @@ class _DocumentListRowState extends State<_DocumentListRow> {
           decoration: BoxDecoration(
             color: widget.isActive
                 ? AppColors.darkSurfaceContainer
-                : _hovered ? AppColors.darkSurfaceVariant : AppColors.darkSurface,
+                : _hovered
+                    ? AppColors.darkSurfaceVariant
+                    : AppColors.darkSurface,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: widget.isActive ? AppColors.electricViolet.withOpacity(0.4) : AppColors.darkBorderSubtle,
+              color: widget.isActive
+                  ? AppColors.electricViolet.withOpacity(0.4)
+                  : AppColors.darkBorderSubtle,
               width: widget.isActive ? 1.5 : 1,
             ),
           ),
@@ -901,8 +1256,12 @@ class _DocumentListRowState extends State<_DocumentListRow> {
               Container(
                 width: 32,
                 height: 32,
-                decoration: BoxDecoration(color: fileColor.withOpacity(0.15), borderRadius: BorderRadius.circular(7)),
-                child: Center(child: Icon(Icons.description_rounded, size: 16, color: fileColor)),
+                decoration: BoxDecoration(
+                    color: fileColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(7)),
+                child: Center(
+                    child: Icon(Icons.description_rounded,
+                        size: 16, color: fileColor)),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -911,33 +1270,59 @@ class _DocumentListRowState extends State<_DocumentListRow> {
                   children: [
                     Text(
                       doc.title.isNotEmpty ? doc.title : doc.fileName,
-                      style: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkTextPrimary),
+                      style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.darkTextPrimary),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    Text(_formatDate(doc.uploadedAt), style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 9.5, color: AppColors.darkTextTertiary)),
+                    Text(_formatDate(doc.uploadedAt),
+                        style: const TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 9.5,
+                            color: AppColors.darkTextTertiary)),
                   ],
                 ),
               ),
-              _MetaPill(label: '${doc.conceptCount} concepts', color: AppColors.electricViolet),
+              _MetaPill(
+                  label: '${doc.conceptCount} concepts',
+                  color: AppColors.electricViolet),
               const SizedBox(width: 6),
-              _MetaPill(label: '${doc.flashcardCount} cards', color: AppColors.teal),
+              _MetaPill(
+                  label: '${doc.flashcardCount} cards', color: AppColors.teal),
               const SizedBox(width: 12),
               if (_hovered) ...[
-                _HoverAction(icon: Icons.flip_to_front_outlined, tooltip: 'Flashcards', color: AppColors.teal,
+                _HoverAction(
+                    icon: Icons.flip_to_front_outlined,
+                    tooltip: 'Flashcards',
+                    color: AppColors.teal,
                     onTap: () => widget.onQuickAction(AppRoutes.flashcards)),
-                _HoverAction(icon: Icons.quiz_outlined, tooltip: 'Quiz', color: AppColors.amber,
+                _HoverAction(
+                    icon: Icons.quiz_outlined,
+                    tooltip: 'Quiz',
+                    color: AppColors.amber,
                     onTap: () => widget.onQuickAction(AppRoutes.quiz)),
-                _HoverAction(icon: Icons.summarize_outlined, tooltip: 'Summary', color: AppColors.skyBlue,
+                _HoverAction(
+                    icon: Icons.summarize_outlined,
+                    tooltip: 'Summary',
+                    color: AppColors.skyBlue,
                     onTap: () => widget.onQuickAction(AppRoutes.summary)),
-                _HoverAction(icon: Icons.delete_outline_rounded, tooltip: 'Delete', color: AppColors.error,
+                _HoverAction(
+                    icon: Icons.delete_outline_rounded,
+                    tooltip: 'Delete',
+                    color: AppColors.error,
                     onTap: widget.onDelete),
                 const SizedBox(width: 4),
               ],
-              const Icon(Icons.chevron_right_rounded, size: 16, color: AppColors.darkTextTertiary),
+              const Icon(Icons.chevron_right_rounded,
+                  size: 16, color: AppColors.darkTextTertiary),
             ],
           ),
-        ).animate(delay: Duration(milliseconds: widget.index * 30)).fadeIn(duration: 250.ms),
+        )
+            .animate(delay: Duration(milliseconds: widget.index * 30))
+            .fadeIn(duration: 250.ms),
       ),
     );
   }
@@ -972,31 +1357,48 @@ class _StudyToolsStudio extends StatelessWidget {
                   color: AppColors.electricViolet.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: const Icon(Icons.psychology_outlined, size: 15, color: AppColors.electricVioletLight),
+                child: const Icon(Icons.psychology_outlined,
+                    size: 15, color: AppColors.electricVioletLight),
               ),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
                   'Study Tools',
-                  style: TextStyle(fontFamily: 'Inter', fontSize: 13.5, fontWeight: FontWeight.w700, color: AppColors.darkTextPrimary),
+                  style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.darkTextPrimary),
                 ),
               ),
               if (activeDoc != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: AppColors.teal.withOpacity(0.12), borderRadius: BorderRadius.circular(4)),
-                  child: const Text('Active', style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.teal)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                      color: AppColors.teal.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(4)),
+                  child: const Text('Active',
+                      style: TextStyle(
+                          fontFamily: 'JetBrains Mono',
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.teal)),
                 ),
             ],
           ),
           const SizedBox(height: 5),
           Text(
-            activeDoc != null ? activeDoc!.fileName : 'Select a document to enable tools.',
+            activeDoc != null
+                ? activeDoc!.fileName
+                : 'Select a document to enable tools.',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white.withOpacity(0.4)),
+            style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 11,
+                color: Colors.white.withOpacity(0.4)),
           ),
-
           if (activeDoc != null) ...[
             const SizedBox(height: 14),
             Container(
@@ -1007,51 +1409,105 @@ class _StudyToolsStudio extends StatelessWidget {
                   AppColors.skyBlue.withOpacity(0.06),
                 ]),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.electricViolet.withOpacity(0.22)),
+                border: Border.all(
+                    color: AppColors.electricViolet.withOpacity(0.22)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     activeDoc!.fileName,
-                    style: const TextStyle(fontFamily: 'Inter', fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.darkTextPrimary),
+                    style: const TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.darkTextPrimary),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      _StatBubble(label: '${activeDoc!.concepts.length}', sublabel: 'concepts'),
+                      _StatBubble(
+                          label: '${activeDoc!.concepts.length}',
+                          sublabel: 'concepts'),
                       const SizedBox(width: 6),
-                      _StatBubble(label: '${activeDoc!.flashcards.length}', sublabel: 'cards'),
+                      _StatBubble(
+                          label: '${activeDoc!.flashcards.length}',
+                          sublabel: 'cards'),
                       const SizedBox(width: 6),
-                      _StatBubble(label: '${activeDoc!.quizzes.length}', sublabel: 'quizzes'),
+                      _StatBubble(
+                          label: '${activeDoc!.quizzes.length}',
+                          sublabel: 'quizzes'),
                     ],
                   ),
                 ],
               ),
             ),
           ],
-
           const SizedBox(height: 16),
           const Text(
             'QUICK ACTIONS',
-            style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.darkTextTertiary, letterSpacing: 1.0),
+            style: TextStyle(
+                fontFamily: 'JetBrains Mono',
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: AppColors.darkTextTertiary,
+                letterSpacing: 1.0),
           ),
           const SizedBox(height: 8),
-
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                _ToolTile(icon: Icons.auto_awesome_rounded, title: 'AI Chat Tutor', desc: 'Ask anything with citations', color: AppColors.electricViolet, onTap: onAiChat),
-                _ToolTile(icon: Icons.summarize_rounded, title: 'Smart Summary', desc: 'Key takeaways & overview', color: AppColors.skyBlue, onTap: () => onToolTap(AppRoutes.summary)),
-                _ToolTile(icon: Icons.hub_rounded, title: 'Mind Map', desc: 'Visual concept graph', color: AppColors.amber, onTap: () => onToolTap(AppRoutes.mindMap)),
-                _ToolTile(icon: Icons.flip_to_front_rounded, title: 'Flashcards', desc: 'Spaced repetition drills', color: AppColors.teal, onTap: () => onToolTap(AppRoutes.flashcards)),
-                _ToolTile(icon: Icons.quiz_rounded, title: 'Quiz Generator', desc: 'Active recall questions', color: AppColors.electricVioletLight, onTap: () => onToolTap(AppRoutes.quiz)),
-                _ToolTile(icon: Icons.analytics_rounded, title: 'PYQ Analyzer', desc: 'Exam weight analysis', color: AppColors.teal, onTap: () => onToolTap(AppRoutes.questionPaperAnalyzer)),
-                _ToolTile(icon: Icons.assignment_rounded, title: 'Exam Generator', desc: 'Full mock papers', color: AppColors.electricViolet, onTap: () => onToolTap(AppRoutes.examGenerator)),
-                _ToolTile(icon: Icons.functions_rounded, title: 'Formula Sheet', desc: 'Extracted equations', color: AppColors.skyBlue, onTap: () => onToolTap(AppRoutes.summary)),
+                _ToolTile(
+                    icon: Icons.auto_awesome_rounded,
+                    title: 'AI Chat Tutor',
+                    desc: 'Ask anything with citations',
+                    color: AppColors.electricViolet,
+                    onTap: onAiChat),
+                _ToolTile(
+                    icon: Icons.summarize_rounded,
+                    title: 'Smart Summary',
+                    desc: 'Key takeaways & overview',
+                    color: AppColors.skyBlue,
+                    onTap: () => onToolTap(AppRoutes.summary)),
+                _ToolTile(
+                    icon: Icons.hub_rounded,
+                    title: 'Mind Map',
+                    desc: 'Visual concept graph',
+                    color: AppColors.amber,
+                    onTap: () => onToolTap(AppRoutes.mindMap)),
+                _ToolTile(
+                    icon: Icons.flip_to_front_rounded,
+                    title: 'Flashcards',
+                    desc: 'Spaced repetition drills',
+                    color: AppColors.teal,
+                    onTap: () => onToolTap(AppRoutes.flashcards)),
+                _ToolTile(
+                    icon: Icons.quiz_rounded,
+                    title: 'Quiz Generator',
+                    desc: 'Active recall questions',
+                    color: AppColors.electricVioletLight,
+                    onTap: () => onToolTap(AppRoutes.quiz)),
+                _ToolTile(
+                    icon: Icons.analytics_rounded,
+                    title: 'PYQ Analyzer',
+                    desc: 'Exam weight analysis',
+                    color: AppColors.teal,
+                    onTap: () => onToolTap(AppRoutes.questionPaperAnalyzer)),
+                _ToolTile(
+                    icon: Icons.assignment_rounded,
+                    title: 'Exam Generator',
+                    desc: 'Full mock papers',
+                    color: AppColors.electricViolet,
+                    onTap: () => onToolTap(AppRoutes.examGenerator)),
+                _ToolTile(
+                    icon: Icons.functions_rounded,
+                    title: 'Formula Sheet',
+                    desc: 'Extracted equations',
+                    color: AppColors.skyBlue,
+                    onTap: () => onToolTap(AppRoutes.summary)),
               ],
             ),
           ),
@@ -1075,13 +1531,37 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
   bool _isProcessing = false;
   String _currentStep = '';
   double _progress = 0.0;
+  final _subjectController = TextEditingController();
+  final _topicController = TextEditingController();
+  final _subtopicController = TextEditingController();
+  final _notesController = TextEditingController();
+  final _tagsController = TextEditingController();
+
+  @override
+  void dispose() {
+    _subjectController.dispose();
+    _topicController.dispose();
+    _subtopicController.dispose();
+    _notesController.dispose();
+    _tagsController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickAndUpload({List<String>? extensions}) async {
     final processingService = ref.read(documentProcessingServiceProvider);
     final uploadService = ref.read(firebaseUploadServiceProvider);
-    final firestoreService = ref.read(firestoreServiceProvider);
-    final user = ref.read(currentUserProvider);
-    final ownerId = user?.id ?? uploadService.currentUserId ?? '';
+    final knowledgeEngine = ref.read(knowledgeEngineProvider);
+    final subject = _subjectController.text.trim().isEmpty
+        ? 'General'
+        : _subjectController.text.trim();
+    final topic = _topicController.text.trim();
+    final subtopic = _subtopicController.text.trim();
+    final notes = _notesController.text.trim();
+    final tags = _tagsController.text
+        .split(',')
+        .map((tag) => tag.trim())
+        .where((tag) => tag.isNotEmpty)
+        .toList();
 
     setState(() {
       _isProcessing = true;
@@ -1090,61 +1570,72 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
     });
 
     try {
-      final files = await processingService.pickMultipleFiles(allowedExtensions: extensions);
+      final files = await processingService.pickMultipleFiles(
+          allowedExtensions: extensions);
       if (files.isEmpty) {
         setState(() => _isProcessing = false);
         return;
       }
 
+      setState(() {
+        _currentStep = 'Saving sources to your workspace…';
+        _progress = 0.25;
+      });
+      final results =
+          await Future.wait(files.map((file) => uploadService.uploadFile(
+                file,
+                subject: subject,
+                topic: topic,
+                subtopic: subtopic,
+                notes: notes,
+                tags: tags,
+              )));
       final completedDocs = <UploadedDocument>[];
-
-      for (int i = 0; i < files.length; i++) {
-        final f = files[i];
-        final base = (i + 1) / files.length;
-
-        setState(() {
-          _currentStep = 'Processing ${f.name}...';
-          _progress = (base * 0.3).clamp(0.0, 1.0);
-        });
-
-        final processedDoc = await processingService.processDocument(f);
-
-        setState(() {
-          _currentStep = 'Extracting concepts from ${f.name}...';
-          _progress = (base * 0.7).clamp(0.0, 1.0);
-        });
-
-        completedDocs.add(processedDoc);
-
+      for (var i = 0; i < files.length; i++) {
+        final file = files[i];
+        final result = results[i];
+        completedDocs.add(UploadedDocument(
+          id: result.firestoreDocId,
+          fileName: file.name,
+          fileType: (file.extension ?? 'file').toUpperCase(),
+          byteSize: file.size,
+          fullText: '',
+          concepts: const [],
+          flashcards: const [],
+          quizzes: const [],
+          summary: ExtractedSummary(
+              title: file.name,
+              overview: '',
+              keyTakeaways: const [],
+              coreTheorems: const [],
+              examTraps: const []),
+          uploadedAt: DateTime.now(),
+          downloadUrl: result.downloadUrl,
+        ));
         unawaited(() async {
           try {
-            final uploadResult = await uploadService.uploadFile(f);
-            if (ownerId.isNotEmpty) {
-              await firestoreService.createDocument(
-                ownerId: ownerId,
-                title: f.name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), ''),
-                fileName: f.name,
-                fileUrl: uploadResult.downloadUrl,
-                conceptCount: processedDoc.concepts.length,
-                quizCount: processedDoc.quizzes.length,
-                flashcardCount: processedDoc.flashcards.length,
-                summary: processedDoc.summary.overview,
-                extractedText: processedDoc.fullText,
-                documentData: processedDoc.toJson(),
-              );
-            }
-          } catch (e) {
-            debugPrint('Cloud sync error: $e');
+            final text = await processingService.extractText(file);
+            await knowledgeEngine.index(
+              sourceId: result.firestoreDocId,
+              title: file.name,
+              content: text,
+              subject: subject,
+              topic: topic,
+              subtopic: subtopic,
+              sourceBytes: file.bytes,
+              mimeType: _mimeTypeFor(file.extension),
+            );
+          } catch (error) {
+            debugPrint('Background indexing failed for ${file.name}: $error');
           }
         }());
       }
 
       setState(() {
-        _currentStep = 'All documents indexed & ready!';
-        _progress = 1.0;
+        _currentStep = 'Sources saved. Indexing continues in the background.';
+        _progress = 0.35;
       });
 
-      await Future.delayed(const Duration(milliseconds: 700));
       if (mounted) {
         widget.onFilesUploaded(completedDocs);
         Navigator.of(context).pop();
@@ -1153,7 +1644,9 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
       setState(() => _isProcessing = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e'), backgroundColor: AppColors.error),
+          SnackBar(
+              content: Text('Upload failed: $e'),
+              backgroundColor: AppColors.error),
         );
       }
     }
@@ -1171,7 +1664,12 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
           color: const Color(0xFF111217),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.darkBorder),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.55), blurRadius: 40, offset: const Offset(0, 8))],
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.55),
+                blurRadius: 40,
+                offset: const Offset(0, 8))
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1182,21 +1680,35 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: AppColors.electricViolet.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
-                  child: const Icon(Icons.file_upload_outlined, size: 18, color: AppColors.electricViolet),
+                  decoration: BoxDecoration(
+                      color: AppColors.electricViolet.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.file_upload_outlined,
+                      size: 18, color: AppColors.electricViolet),
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Add Sources to Workspace', style: TextStyle(fontFamily: 'Inter', fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.darkTextPrimary)),
-                      Text('AI will extract concepts, flashcards & quizzes instantly.', style: TextStyle(fontFamily: 'Inter', fontSize: 11.5, color: AppColors.darkTextSecondary)),
+                      Text('Add Sources to Workspace',
+                          style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.darkTextPrimary)),
+                      Text(
+                          'AI will extract concepts, flashcards & quizzes instantly.',
+                          style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 11.5,
+                              color: AppColors.darkTextSecondary)),
                     ],
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.darkTextSecondary),
+                  icon: const Icon(Icons.close_rounded,
+                      size: 18, color: AppColors.darkTextSecondary),
                   onPressed: () => Navigator.of(context).pop(),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -1205,16 +1717,59 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
             ),
             const SizedBox(height: 22),
 
+            TextField(
+                controller: _subjectController,
+                decoration: const InputDecoration(labelText: 'Subject')),
+            TextField(
+                controller: _topicController,
+                decoration: const InputDecoration(labelText: 'Topic')),
+            TextField(
+                controller: _subtopicController,
+                decoration: const InputDecoration(labelText: 'Subtopic')),
+            TextField(
+                controller: _notesController,
+                maxLines: 2,
+                decoration: const InputDecoration(labelText: 'Optional notes')),
+            TextField(
+                controller: _tagsController,
+                decoration:
+                    const InputDecoration(labelText: 'Tags (comma separated)')),
+            const SizedBox(height: 14),
+
             // Source type pills
             Row(
               children: [
-                _SourcePill(icon: Icons.picture_as_pdf_rounded, label: 'PDF', color: const Color(0xFFFF6B6B), onTap: _isProcessing ? null : () => _pickAndUpload(extensions: ['pdf'])),
+                _SourcePill(
+                    icon: Icons.picture_as_pdf_rounded,
+                    label: 'PDF',
+                    color: const Color(0xFFFF6B6B),
+                    onTap: _isProcessing
+                        ? null
+                        : () => _pickAndUpload(extensions: ['pdf'])),
                 const SizedBox(width: 6),
-                _SourcePill(icon: Icons.slideshow_rounded, label: 'PPT', color: const Color(0xFFFF9F43), onTap: _isProcessing ? null : () => _pickAndUpload(extensions: ['pptx', 'ppt'])),
+                _SourcePill(
+                    icon: Icons.slideshow_rounded,
+                    label: 'PPT',
+                    color: const Color(0xFFFF9F43),
+                    onTap: _isProcessing
+                        ? null
+                        : () => _pickAndUpload(extensions: ['pptx', 'ppt'])),
                 const SizedBox(width: 6),
-                _SourcePill(icon: Icons.description_rounded, label: 'DOCX', color: const Color(0xFF5F85DB), onTap: _isProcessing ? null : () => _pickAndUpload(extensions: ['docx', 'doc'])),
+                _SourcePill(
+                    icon: Icons.description_rounded,
+                    label: 'DOCX',
+                    color: const Color(0xFF5F85DB),
+                    onTap: _isProcessing
+                        ? null
+                        : () => _pickAndUpload(extensions: ['docx', 'doc'])),
                 const SizedBox(width: 6),
-                _SourcePill(icon: Icons.text_snippet_rounded, label: 'TXT', color: AppColors.teal, onTap: _isProcessing ? null : () => _pickAndUpload(extensions: ['txt', 'md'])),
+                _SourcePill(
+                    icon: Icons.text_snippet_rounded,
+                    label: 'TXT',
+                    color: AppColors.teal,
+                    onTap: _isProcessing
+                        ? null
+                        : () => _pickAndUpload(extensions: ['txt', 'md'])),
               ],
             ),
             const SizedBox(height: 14),
@@ -1229,7 +1784,9 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
                   color: AppColors.darkSurfaceVariant.withOpacity(0.6),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: _isProcessing ? AppColors.electricViolet.withOpacity(0.4) : AppColors.darkBorder,
+                    color: _isProcessing
+                        ? AppColors.electricViolet.withOpacity(0.4)
+                        : AppColors.darkBorder,
                     width: 1.5,
                   ),
                 ),
@@ -1245,18 +1802,27 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
                                 value: _progress,
                                 strokeWidth: 3,
                                 color: AppColors.electricViolet,
-                                backgroundColor: AppColors.electricViolet.withOpacity(0.12),
+                                backgroundColor:
+                                    AppColors.electricViolet.withOpacity(0.12),
                               ),
                             ),
                             const SizedBox(height: 12),
                             Text(
                               _currentStep,
-                              style: const TextStyle(fontFamily: 'Inter', fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.electricVioletLight),
+                              style: const TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.electricVioletLight),
                             ),
                             const SizedBox(height: 3),
                             Text(
                               '${(_progress * 100).toInt()}%',
-                              style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.darkTextSecondary),
+                              style: const TextStyle(
+                                  fontFamily: 'JetBrains Mono',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.darkTextSecondary),
                             ),
                           ],
                         )
@@ -1266,15 +1832,26 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppColors.electricViolet.withOpacity(0.1),
+                                color:
+                                    AppColors.electricViolet.withOpacity(0.1),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.upload_file_rounded, size: 26, color: AppColors.electricViolet),
+                              child: const Icon(Icons.upload_file_rounded,
+                                  size: 26, color: AppColors.electricViolet),
                             ),
                             const SizedBox(height: 10),
-                            const Text('Click to browse or drag files here', style: TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.darkTextPrimary)),
+                            const Text('Click to browse or drag files here',
+                                style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.darkTextPrimary)),
                             const SizedBox(height: 3),
-                            Text('PDF, PPTX, DOCX, TXT, Markdown', style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white.withOpacity(0.32))),
+                            Text('PDF, PPTX, DOCX, TXT, Markdown',
+                                style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 11,
+                                    color: Colors.white.withOpacity(0.32))),
                           ],
                         ),
                 ),
@@ -1298,8 +1875,15 @@ class _MetaPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(color: color.withOpacity(0.10), borderRadius: BorderRadius.circular(4)),
-      child: Text(label, style: TextStyle(fontFamily: 'Inter', fontSize: 9.5, fontWeight: FontWeight.w600, color: color.withOpacity(0.9))),
+      decoration: BoxDecoration(
+          color: color.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(4)),
+      child: Text(label,
+          style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 9.5,
+              fontWeight: FontWeight.w600,
+              color: color.withOpacity(0.9))),
     );
   }
 }
@@ -1309,7 +1893,11 @@ class _HoverAction extends StatelessWidget {
   final String tooltip;
   final Color color;
   final VoidCallback onTap;
-  const _HoverAction({required this.icon, required this.tooltip, required this.color, required this.onTap});
+  const _HoverAction(
+      {required this.icon,
+      required this.tooltip,
+      required this.color,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1321,7 +1909,9 @@ class _HoverAction extends StatelessWidget {
           width: 24,
           height: 24,
           margin: const EdgeInsets.only(left: 4),
-          decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(5)),
+          decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(5)),
           child: Icon(icon, size: 13, color: color),
         ),
       ),
@@ -1338,11 +1928,22 @@ class _StatBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: AppColors.darkSurfaceContainerHigh, borderRadius: BorderRadius.circular(6)),
+      decoration: BoxDecoration(
+          color: AppColors.darkSurfaceContainerHigh,
+          borderRadius: BorderRadius.circular(6)),
       child: Column(
         children: [
-          Text(label, style: const TextStyle(fontFamily: 'JetBrains Mono', fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.darkTextPrimary)),
-          Text(sublabel, style: const TextStyle(fontFamily: 'Inter', fontSize: 9, color: AppColors.darkTextTertiary)),
+          Text(label,
+              style: const TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.darkTextPrimary)),
+          Text(sublabel,
+              style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 9,
+                  color: AppColors.darkTextTertiary)),
         ],
       ),
     );
@@ -1355,7 +1956,12 @@ class _ToolTile extends StatefulWidget {
   final String desc;
   final Color color;
   final VoidCallback onTap;
-  const _ToolTile({required this.icon, required this.title, required this.desc, required this.color, required this.onTap});
+  const _ToolTile(
+      {required this.icon,
+      required this.title,
+      required this.desc,
+      required this.color,
+      required this.onTap});
 
   @override
   State<_ToolTile> createState() => _ToolTileState();
@@ -1377,15 +1983,22 @@ class _ToolTileState extends State<_ToolTile> {
             duration: const Duration(milliseconds: 150),
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: _hovered ? AppColors.darkSurfaceContainerHigh : AppColors.darkSurfaceContainer,
+              color: _hovered
+                  ? AppColors.darkSurfaceContainerHigh
+                  : AppColors.darkSurfaceContainer,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: _hovered ? AppColors.darkBorder : AppColors.darkBorderSubtle),
+              border: Border.all(
+                  color: _hovered
+                      ? AppColors.darkBorder
+                      : AppColors.darkBorderSubtle),
             ),
             child: Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: widget.color.withOpacity(0.12), borderRadius: BorderRadius.circular(5)),
+                  decoration: BoxDecoration(
+                      color: widget.color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(5)),
                   child: Icon(widget.icon, size: 14, color: widget.color),
                 ),
                 const SizedBox(width: 9),
@@ -1393,12 +2006,23 @@ class _ToolTileState extends State<_ToolTile> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(widget.title, style: const TextStyle(fontFamily: 'Inter', fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.darkTextPrimary)),
-                      Text(widget.desc, style: TextStyle(fontFamily: 'Inter', fontSize: 10, color: Colors.white.withOpacity(0.4))),
+                      Text(widget.title,
+                          style: const TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.darkTextPrimary)),
+                      Text(widget.desc,
+                          style: TextStyle(
+                              fontFamily: 'Inter',
+                              fontSize: 10,
+                              color: Colors.white.withOpacity(0.4))),
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded, size: 14, color: Colors.white.withOpacity(_hovered ? 0.5 : 0.2)),
+                Icon(Icons.chevron_right_rounded,
+                    size: 14,
+                    color: Colors.white.withOpacity(_hovered ? 0.5 : 0.2)),
               ],
             ),
           ),
@@ -1413,7 +2037,11 @@ class _SourcePill extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback? onTap;
-  const _SourcePill({required this.icon, required this.label, required this.color, this.onTap});
+  const _SourcePill(
+      {required this.icon,
+      required this.label,
+      required this.color,
+      this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1432,7 +2060,12 @@ class _SourcePill extends StatelessWidget {
             children: [
               Icon(icon, size: 18, color: color),
               const SizedBox(height: 4),
-              Text(label, style: TextStyle(fontFamily: 'JetBrains Mono', fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+              Text(label,
+                  style: TextStyle(
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: color)),
             ],
           ),
         ),

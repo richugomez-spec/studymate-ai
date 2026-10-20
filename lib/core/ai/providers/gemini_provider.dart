@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:google_generative_ai/google_generative_ai.dart' as genai;
 
 import '../ai_message.dart';
@@ -8,7 +10,6 @@ import '../ai_config.dart';
 class GeminiProvider implements AIProvider {
   final AIConfig config;
   late final genai.GenerativeModel _model;
-  late final genai.GenerativeModel _embeddingModel;
 
   GeminiProvider(this.config) {
     _model = genai.GenerativeModel(
@@ -18,10 +19,6 @@ class GeminiProvider implements AIProvider {
         temperature: config.temperature,
         maxOutputTokens: config.maxTokens,
       ),
-    );
-    _embeddingModel = genai.GenerativeModel(
-      model: 'gemini-embedding-001',
-      apiKey: config.apiKey!,
     );
   }
 
@@ -69,10 +66,36 @@ class GeminiProvider implements AIProvider {
           )
         : _model;
 
-    final chat = model.startChat(history: history.take(history.length - 1).toList());
+    final chat =
+        model.startChat(history: history.take(history.length - 1).toList());
     final last = history.last;
     final response = await chat.sendMessage(last);
 
+    return AIResponse(
+      content: response.text ?? '',
+      model: config.model ?? 'gemini-3.8-flash',
+      promptTokens: response.usageMetadata?.promptTokenCount ?? 0,
+      completionTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+    );
+  }
+
+  Future<AIResponse> completeWithInlineData(
+      AIRequest request, Uint8List bytes, String mimeType) async {
+    final systemPrompt = _extractSystemPrompt(request.messages);
+    final model = genai.GenerativeModel(
+      model: config.model ?? 'gemini-3.8-flash',
+      apiKey: config.apiKey!,
+      systemInstruction:
+          systemPrompt == null ? null : genai.Content.system(systemPrompt),
+      generationConfig: genai.GenerationConfig(
+          temperature: config.temperature, maxOutputTokens: config.maxTokens),
+    );
+    final userText =
+        request.messages.where((m) => m.role == AIRole.user).last.content;
+    final response = await model.generateContent([
+      genai.Content.multi(
+          [genai.TextPart(userText), genai.DataPart(mimeType, bytes)]),
+    ]);
     return AIResponse(
       content: response.text ?? '',
       model: config.model ?? 'gemini-3.8-flash',
@@ -94,24 +117,13 @@ class GeminiProvider implements AIProvider {
           )
         : _model;
 
-    final chat = model.startChat(history: history.take(history.length - 1).toList());
+    final chat =
+        model.startChat(history: history.take(history.length - 1).toList());
     final last = history.last;
 
     await for (final chunk in chat.sendMessageStream(last)) {
       if (chunk.text != null) yield chunk.text!;
     }
-  }
-
-  @override
-  Future<List<List<double>>> embed(List<String> texts) async {
-    final results = <List<double>>[];
-    for (final text in texts) {
-      final response = await _embeddingModel.embedContent(
-        genai.Content.text(text),
-      );
-      results.add(response.embedding.values.toList());
-    }
-    return results;
   }
 
   @override
