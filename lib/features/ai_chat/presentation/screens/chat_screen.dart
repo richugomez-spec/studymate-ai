@@ -28,10 +28,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   final List<RealChatMessage> _messages = [];
   String? _currentSessionId;
+  ProviderSubscription<String?>? _subjectSubscription;
 
   @override
   void initState() {
     super.initState();
+    _subjectSubscription = ref.listenManual<String?>(
+      activeKnowledgeSubjectIdProvider,
+      (previous, next) {
+        if (previous == next || !mounted) return;
+        _currentSessionId = null;
+        setState(_messages.clear);
+        _loadPersistedChatHistory();
+      },
+    );
     _loadPersistedChatHistory();
   }
 
@@ -42,14 +52,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final firestoreService = ref.read(firestoreServiceProvider);
       final user = ref.read(currentUserProvider);
       final ownerId = user?.id ?? firestoreService.currentUserId;
-      final activeDoc = ref.read(activeDocumentProvider);
-
       if (ownerId != null && ownerId.isNotEmpty) {
         final session = await firestoreService.getOrCreateChatSession(
           ownerId: ownerId,
-          subjectId: activeDoc?.subjectId.isNotEmpty == true
-              ? activeDoc!.subjectId
-              : ref.read(activeKnowledgeWorkspaceIdProvider),
+          subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+              ref.read(activeKnowledgeWorkspaceIdProvider),
         );
         _currentSessionId = session.id;
 
@@ -116,6 +123,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    _subjectSubscription?.close();
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -205,16 +213,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final firestoreService = ref.read(firestoreServiceProvider);
     final user = ref.read(currentUserProvider);
     final ownerId = user?.id ?? firestoreService.currentUserId;
-    final activeDoc = ref.read(activeDocumentProvider);
-
     if (ownerId != null && ownerId.isNotEmpty) {
       try {
         if (_currentSessionId == null) {
           final session = await firestoreService.getOrCreateChatSession(
             ownerId: ownerId,
-            subjectId: activeDoc?.subjectId.isNotEmpty == true
-                ? activeDoc!.subjectId
-                : ref.read(activeKnowledgeWorkspaceIdProvider),
+            subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+                ref.read(activeKnowledgeWorkspaceIdProvider),
           );
           _currentSessionId = session.id;
         }
@@ -235,9 +240,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await for (final part in chatService.streamAI(
         prompt: clean,
         conversationHistory: _messages.where((m) => !m.isThinking).toList(),
-        subjectId: activeDoc?.subjectId.isNotEmpty == true
-            ? activeDoc!.subjectId
-            : ref.read(activeKnowledgeWorkspaceIdProvider),
+        subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+            ref.read(activeKnowledgeWorkspaceIdProvider),
         sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
       )) {
         responseBuffer.write(part);
@@ -302,6 +306,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final activeDoc = ref.watch(activeDocumentProvider);
+    final subjectName = ref.watch(activeKnowledgeSubjectNameProvider) ??
+        activeDoc?.subject ??
+        'All Subjects';
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -333,16 +340,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     ),
                   ),
                   Text(
-                    activeDoc != null
-                        ? '📄 ${activeDoc.fileName}'
-                        : 'No document loaded',
+                    subjectName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 11,
-                      color:
-                          activeDoc != null ? AppColors.teal : Colors.white38,
+                      color: subjectName != 'All Subjects'
+                          ? AppColors.teal
+                          : Colors.white38,
                     ),
                   ),
                 ],
@@ -451,7 +457,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                     decoration: InputDecoration(
                       hintText: activeDoc != null
-                          ? 'Ask about ${activeDoc.fileName}...'
+                          ? 'Ask about $subjectName...'
                           : 'Ask AI coach or upload document...',
                       hintStyle: TextStyle(
                           color: Colors.white.withOpacity(0.3), fontSize: 13),

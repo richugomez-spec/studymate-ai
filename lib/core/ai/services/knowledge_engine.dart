@@ -29,21 +29,25 @@ class KnowledgeEngine {
     Map<String, dynamic> options = const {},
   }) async {
     final firestore = _ref.read(firestoreServiceProvider);
-    final scopedIds = sourceIds.isNotEmpty
-        ? sourceIds
-        : (topicId != null && topicId.contains(',')
-            ? topicId
-                .split(',')
-                .map((id) => id.trim())
-                .where((id) => id.isNotEmpty)
-                .toList()
-            : const <String>[]);
+    final scopedIds = subjectId != null && subjectId.isNotEmpty
+        ? const <String>[]
+        : sourceIds.isNotEmpty
+            ? sourceIds
+            : (topicId != null && topicId.contains(',')
+                ? topicId
+                    .split(',')
+                    .map((id) => id.trim())
+                    .where((id) => id.isNotEmpty)
+                    .toList()
+                : const <String>[]);
     final records = await firestore.loadKnowledge(
       subjectId: subjectId,
       sourceIds: scopedIds,
     );
-    final relevant =
-        _prioritize(records, topicId, prompt, sourceIds: scopedIds);
+    final relevant = _prioritize(records,
+        subjectId != null && subjectId.isNotEmpty ? null : topicId, prompt,
+        sourceIds: scopedIds,
+        includeAll: subjectId != null && subjectId.isNotEmpty);
     final sourceSignature = relevant
         .map((r) => '${r['id']}:${r['updatedAt']}:${r['indexedAt']}')
         .join('|');
@@ -51,7 +55,7 @@ class KnowledgeEngine {
         ? DateTime.now().toIso8601String().substring(0, 10)
         : '';
     final cacheKey = _stableKey(
-      '${firestore.currentUserId ?? 'guest'}|${task.toLowerCase()}|${subjectId ?? ''}|${topicId ?? ''}|${scopedIds.join(',')}|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|$dateSignature',
+      '${firestore.currentUserId ?? 'guest'}|${task.toLowerCase()}|${subjectId ?? ''}|${subjectId != null && subjectId.isNotEmpty ? subjectId : topicId ?? ''}|${scopedIds.join(',')}|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|$dateSignature',
     );
     final cached =
         forceRefresh ? null : await firestore.getGenerationCache(cacheKey);
@@ -69,6 +73,7 @@ class KnowledgeEngine {
       prompt: prompt,
       options: options,
       topicId: topicId,
+      scopeId: subjectId ?? topicId,
       sources: relevant,
     );
     _inFlight[cacheKey] = generation;
@@ -88,6 +93,7 @@ class KnowledgeEngine {
     required String prompt,
     required Map<String, dynamic> options,
     required String? topicId,
+    required String? scopeId,
     required List<Map<String, dynamic>> sources,
   }) async {
     final webResults = _needsWeb(prompt, sources)
@@ -132,7 +138,7 @@ class KnowledgeEngine {
       ...webResults
           .map((r) => {'title': r['title'], 'url': r['url'], 'kind': 'web'}),
     ];
-    await firestore.cacheGeneration(cacheKey, result);
+    await firestore.cacheGeneration(cacheKey, result, scopeId: scopeId);
     await _updateSourceCounts(firestore, task, topicId, result);
     return result;
   }
@@ -194,20 +200,17 @@ class KnowledgeEngine {
         sourceId, structured,
         sourceText: content, sourceKind: sourceKind, subjectId: subjectId);
     if (sourceKind == 'document') {
-      unawaited(_prepareDocumentStudyCounts(sourceId, subjectId));
+      unawaited(_prepareDocumentStudyCounts(sourceId));
     }
     return structured;
   }
 
-  Future<void> _prepareDocumentStudyCounts(
-      String sourceId, String subjectId) async {
+  Future<void> _prepareDocumentStudyCounts(String sourceId) async {
     final jobs = <String, Future<Map<String, dynamic>> Function()>{
-      'flashcards': () =>
-          generateFlashcards(topicId: sourceId, subjectId: subjectId),
-      'quiz': () => generateQuiz(topicId: sourceId, subjectId: subjectId),
-      'summary': () => generateSummary(topicId: sourceId, subjectId: subjectId),
-      'mind_map': () =>
-          generateMindMap(topicId: sourceId, subjectId: subjectId),
+      'flashcards': () => generateFlashcards(topicId: sourceId),
+      'quiz': () => generateQuiz(topicId: sourceId),
+      'summary': () => generateSummary(topicId: sourceId),
+      'mind_map': () => generateMindMap(topicId: sourceId),
     };
     await Future.wait(jobs.entries.map((job) async {
       try {
@@ -250,7 +253,7 @@ class KnowledgeEngine {
 
   List<Map<String, dynamic>> _prioritize(
       List<Map<String, dynamic>> records, String? topicId, String prompt,
-      {List<String> sourceIds = const []}) {
+      {List<String> sourceIds = const [], bool includeAll = false}) {
     final scoped = sourceIds.isNotEmpty
         ? records
         : topicId == null || topicId == 'current'
@@ -292,7 +295,9 @@ class KnowledgeEngine {
       final score = relevance(b).compareTo(relevance(a));
       return score != 0 ? score : priority(a).compareTo(priority(b));
     });
-    return sourceIds.isNotEmpty ? ordered : ordered.take(24).toList();
+    return sourceIds.isNotEmpty || includeAll
+        ? ordered
+        : ordered.take(24).toList();
   }
 
   String _rankedContexts(List<Map<String, dynamic>> sources, String prompt) {
@@ -328,18 +333,17 @@ class KnowledgeEngine {
     final selected = <String>[];
     final perSource = <String, int>{};
     var chars = 0;
-    final sourceOrder =
-        sources.map((source) => (source['id'] ?? '').toString()).toSet();
     final sourceHeads =
         <String, ({Map<String, dynamic> source, String text, double score})>{};
     for (final chunk in chunks) {
       sourceHeads.putIfAbsent(
           (chunk.source['id'] ?? '').toString(), () => chunk);
     }
+    final firstChunks = sourceHeads.values.toList()
+      ..sort((a, b) => b.score.compareTo(a.score));
     final prioritized =
         <({Map<String, dynamic> source, String text, double score})>[
-      ...sourceOrder.map((id) => sourceHeads[id]).whereType<
-          ({Map<String, dynamic> source, String text, double score})>(),
+      ...firstChunks,
       ...chunks,
     ];
     final seen = <String>{};
@@ -482,7 +486,7 @@ class KnowledgeEngine {
           String? subjectId,
           bool forceRefresh = false,
           String prompt =
-              'Build a complete hierarchical mind map from extracted concepts in every selected source. Include a root, major branches, and nested sub-concepts; create at least three meaningful levels when source material supports them. Return non-empty nodes and edges, preserving relationships between concepts. Give every node a stable id and parentId.'}) =>
+              'Build a substantial hierarchical mind map from all retrieved source chunks. Identify at least 12 distinct concepts when the material supports them, organize them beneath meaningful parent branches, and return at least 12 nodes and 12 parent-child edges. Add cross-links between related branches using labeled edges. Include concise descriptions and stable unique IDs. Never return an empty map or a root-only result; use the strongest available concepts if the source is sparse.'}) =>
       generate(
           task: 'mind_map',
           prompt: prompt,
@@ -596,9 +600,14 @@ class KnowledgeEngine {
       List<String> sourceIds = const [],
       String history = ''}) async* {
     final firestore = _ref.read(firestoreServiceProvider);
+    final selectedIds = subjectId != null && subjectId.isNotEmpty
+        ? const <String>[]
+        : sourceIds;
     final records = await firestore.loadKnowledge(
-        subjectId: subjectId, sourceIds: sourceIds);
-    final sources = _prioritize(records, null, prompt, sourceIds: sourceIds);
+        subjectId: subjectId, sourceIds: selectedIds);
+    final sources = _prioritize(records, null, prompt,
+        sourceIds: selectedIds,
+        includeAll: subjectId != null && subjectId.isNotEmpty);
     final context = _rankedContexts(sources, prompt);
     var web = const <Map<String, String>>[];
     if (_needsWeb(prompt, sources)) {

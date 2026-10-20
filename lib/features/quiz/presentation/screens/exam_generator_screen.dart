@@ -29,7 +29,8 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
       _revealedAnswers.clear();
       _result = ref.read(knowledgeEngineProvider).generateExam(
             topicId: widget.topicId,
-            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
+            subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+                ref.read(activeKnowledgeWorkspaceIdProvider),
             prompt:
                 'Generate a $_marks mark exam for $_minutes minutes at $_difficulty difficulty. Create precise, varied questions grounded in workspace knowledge. Return JSON with title and questions. Each question must have prompt, marks, modelAnswer, markingScheme (list), and commonMistakes (list). Do not include the answer in the question prompt.',
           );
@@ -47,9 +48,11 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
     return Scaffold(
       appBar: AppBar(
-          title: const Text('Exam Generator'),
+          title: Text(
+              '${subjectName == null ? '' : '$subjectName · '}Exam Generator'),
           leading: BackButton(onPressed: () => Navigator.maybePop(context))),
       body: _result == null
           ? ListView(padding: const EdgeInsets.all(20), children: [

@@ -78,7 +78,8 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     try {
       final result = await ref.read(knowledgeEngineProvider).generateFlashcards(
           topicId: widget.topicId,
-          subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
+          subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+              ref.read(activeKnowledgeWorkspaceIdProvider),
           prompt:
               'Create useful active recall cards. Return cards as a list of objects with a concise front question and a correct, clear back answer.');
       final generated = result['cards'];
@@ -177,6 +178,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
   @override
   Widget build(BuildContext context) {
+    final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
     if (!_hasRequestedCards) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_hasRequestedCards) _loadCards();
@@ -188,7 +190,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     }
     if (_generationFailed) {
       return Scaffold(
-        appBar: AppBar(title: const Text('SRS Flashcards')),
+        appBar: AppBar(
+            title: Text(
+                '${subjectName == null ? '' : '$subjectName · '}SRS Flashcards')),
         body: Center(
           child: TextButton(
             onPressed: _loadCards,
@@ -202,7 +206,8 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-            title: const Text('SRS Flashcards',
+            title: Text(
+                '${subjectName == null ? '' : '$subjectName · '}SRS Flashcards',
                 style: TextStyle(
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,
@@ -258,7 +263,8 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-            title: const Text('Review Complete',
+            title: Text(
+                '${subjectName == null ? '' : '$subjectName · '}Review Complete',
                 style: TextStyle(
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,
@@ -345,7 +351,8 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('SRS Flashcards',
+        title: Text(
+            '${subjectName == null ? '' : '$subjectName · '}SRS Flashcards',
             style: const TextStyle(
                 fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 15),
             overflow: TextOverflow.ellipsis),

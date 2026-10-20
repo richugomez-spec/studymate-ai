@@ -76,7 +76,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     try {
       final result = await ref.read(knowledgeEngineProvider).generateQuiz(
             topicId: widget.topicId ?? doc.id,
-            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
+            subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+                ref.read(activeKnowledgeWorkspaceIdProvider),
             prompt:
                 'Create exactly $_questionCount ${_difficulty.name} ${_quizType.name} practice questions. Return a JSON questions list. Each question must include non-empty question, options, answer, answerIndex, explanation, and conceptTitle. For non-multiple-choice formats, still provide valid options where appropriate.',
           );
@@ -199,12 +200,15 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   @override
   Widget build(BuildContext context) {
     final activeDoc = ref.watch(activeDocumentProvider);
+    final subjectName =
+        ref.watch(activeKnowledgeSubjectNameProvider) ?? activeDoc?.subject;
 
     if (activeDoc == null) {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-            title: const Text('Quiz Generator',
+            title: Text(
+                '${subjectName == null ? '' : '$subjectName · '}Quiz Generator',
                 style: TextStyle(
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,
@@ -259,7 +263,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-            title: Text('Quiz Setup: ${activeDoc.fileName}',
+            title: Text('Quiz Setup: ${subjectName ?? 'All Subjects'}',
                 style: const TextStyle(
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,
@@ -444,7 +448,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
-            title: const Text('Quiz Results',
+            title: Text(
+                '${subjectName == null ? '' : '$subjectName · '}Quiz Results',
                 style: TextStyle(
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,
@@ -566,7 +571,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text('Question ${_currentIndex + 1} of ${_questions.length}',
+        title: Text(
+            '${subjectName == null ? '' : '$subjectName · '}Question ${_currentIndex + 1} of ${_questions.length}',
             style: const TextStyle(
                 fontFamily: 'Inter',
                 fontWeight: FontWeight.w700,

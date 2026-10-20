@@ -238,6 +238,9 @@ final selectedKnowledgeSourceIdsProvider =
     StateProvider<List<String>>((ref) => const []);
 final activeKnowledgeWorkspaceIdProvider =
     StateProvider<String?>((ref) => null);
+final activeKnowledgeSubjectIdProvider = StateProvider<String?>((ref) => null);
+final activeKnowledgeSubjectNameProvider =
+    StateProvider<String?>((ref) => null);
 
 /// Service responsible for real file parsing, text extraction,
 /// and AI micro-concept synthesis.

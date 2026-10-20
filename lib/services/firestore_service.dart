@@ -198,34 +198,106 @@ class FirestoreService {
     if (subject.data()?['ownerId'] != uid) {
       throw StateError('Subject is not available.');
     }
-    // Keep documents and notes intact, but detach them from the removed root.
-    await Future.wait([
-      _docsCol
-          .where('ownerId', isEqualTo: uid)
-          .where('subjectId', isEqualTo: subjectId)
-          .get()
-          .then((s) => Future.wait(s.docs.map((d) => d.reference.update({
-                'subjectId': '',
-                'subject': 'General',
-              })))),
-      _knowledgeCol
-          .where('ownerId', isEqualTo: uid)
-          .where('subjectId', isEqualTo: subjectId)
-          .get()
-          .then((s) => Future.wait(s.docs.map((d) => d.reference.update({
-                'subjectId': '',
-                'subject': 'General',
-              })))),
+    final snapshots = await Future.wait([
+      _docsCol.where('ownerId', isEqualTo: uid).get(),
+      _knowledgeCol.where('ownerId', isEqualTo: uid).get(),
+      _chatSessionsCol.where('ownerId', isEqualTo: uid).get(),
+      _usersCol.doc(uid).collection('generation_cache').get(),
     ]);
-    final sessions = await _chatSessionsCol
-        .where('ownerId', isEqualTo: uid)
-        .where('subjectId', isEqualTo: subjectId)
-        .get();
-    for (final session in sessions.docs) {
+    final docs = snapshots[0].docs;
+    final knowledge = snapshots[1].docs;
+    final folderIds = <String>{
+      for (final item in knowledge)
+        if (item.data()['kind'] == 'folder' &&
+            item.data()['subjectId'] == subjectId)
+          item.id,
+    };
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final item in knowledge) {
+        if (item.data()['kind'] == 'folder' &&
+            folderIds.contains(item.data()['parentId']) &&
+            folderIds.add(item.id)) changed = true;
+      }
+    }
+    final subjectDocs = docs.where((doc) {
+      final data = doc.data();
+      return data['subjectId'] == subjectId ||
+          folderIds.contains(data['subjectId']) ||
+          folderIds.contains(data['folderId']);
+    }).toList();
+    final documentIds = subjectDocs.map((doc) => doc.id).toSet();
+    final subjectItems = knowledge.where((item) {
+      final data = item.data();
+      return data['subjectId'] == subjectId ||
+          folderIds.contains(item.id) ||
+          folderIds.contains(data['parentId']) ||
+          documentIds.contains(data['sourceId']);
+    }).toList();
+    final sessions = snapshots[2].docs.where((session) =>
+        session.data()['subjectId'] == subjectId ||
+        folderIds.contains(session.data()['subjectId']) ||
+        documentIds.contains(session.data()['documentId']));
+    await Future.wait(sessions.map((session) async {
       await _deleteCollection(session.reference.collection('messages'));
       await session.reference.delete();
-    }
+    }));
+    final staleCache = snapshots[3].docs.where((cache) {
+      final data = cache.data();
+      final result = data['result'];
+      final sources = result is Map ? result['sources'] : null;
+      return data['scopeId'] == subjectId ||
+          (sources is List &&
+              sources.any((source) =>
+                  source is Map && documentIds.contains(source['id'])));
+    });
+    await _deleteDocuments([
+      ...subjectDocs.map((doc) => doc.reference),
+      ...subjectItems.map((item) => item.reference),
+      ...staleCache.map((cache) => cache.reference),
+    ]);
+    await _usersCol.doc(uid).set({
+      'documentsUploaded': FieldValue.increment(-subjectDocs.length),
+      if ((await _usersCol.doc(uid).get()).data()?['activeSubjectId'] ==
+          subjectId)
+        'activeSubjectId': '',
+    }, SetOptions(merge: true));
     await subjectRef.delete();
+  }
+
+  Future<List<FirestoreDocumentModel>> getSubjectDocuments(
+      String subjectId) async {
+    final uid = currentUserId;
+    if (uid == null) return const [];
+    final snapshots = await Future.wait([
+      _docsCol.where('ownerId', isEqualTo: uid).get(),
+      _knowledgeCol.where('ownerId', isEqualTo: uid).get(),
+    ]);
+    final knowledge = snapshots[1].docs;
+    final folderIds = <String>{
+      for (final item in knowledge)
+        if (item.data()['kind'] == 'folder' &&
+            item.data()['subjectId'] == subjectId)
+          item.id,
+    };
+    var changed = true;
+    while (changed) {
+      changed = false;
+      for (final item in knowledge) {
+        if (item.data()['kind'] == 'folder' &&
+            folderIds.contains(item.data()['parentId']) &&
+            folderIds.add(item.id)) changed = true;
+      }
+    }
+    return snapshots[0]
+        .docs
+        .where((doc) =>
+            doc.data()['subjectId'] == subjectId ||
+            folderIds.contains(doc.data()['subjectId']) ||
+            folderIds.contains(doc.data()['folderId']))
+        .map((doc) => FirestoreDocumentModel.fromMap(doc.data(), doc.id))
+        .toList();
   }
 
   Future<List<Map<String, dynamic>>> loadKnowledge({
@@ -263,9 +335,27 @@ class FirestoreService {
         }
       }
     }
+    final folderIds = <String>{};
+    if (subjectId != null && subjectId.isNotEmpty) {
+      folderIds.addAll(notes
+          .where((item) =>
+              item['kind'] == 'folder' && item['subjectId'] == subjectId)
+          .map((item) => item['id'] as String));
+      var changed = true;
+      while (changed) {
+        changed = false;
+        for (final item in notes) {
+          if (item['kind'] == 'folder' &&
+              folderIds.contains(item['parentId']) &&
+              folderIds.add(item['id'] as String)) changed = true;
+        }
+      }
+    }
     bool inScope(Map<String, dynamic> data, String id) {
       if (subjectId != null && subjectId.isNotEmpty) {
         return data['subjectId'] == subjectId ||
+            folderIds.contains(data['subjectId']) ||
+            folderIds.contains(data['folderId']) ||
             (data['subjectId'] == null && data['subject'] == subjectId);
       }
       return true;
@@ -526,7 +616,8 @@ class FirestoreService {
     }, SetOptions(merge: true));
   }
 
-  Future<void> cacheGeneration(String key, Map<String, dynamic> result) async {
+  Future<void> cacheGeneration(String key, Map<String, dynamic> result,
+      {String? scopeId}) async {
     final uid = currentUserId;
     if (uid == null) return;
     await _firestore
@@ -534,7 +625,11 @@ class FirestoreService {
         .doc(uid)
         .collection('generation_cache')
         .doc(key)
-        .set({'result': result, 'updatedAt': FieldValue.serverTimestamp()});
+        .set({
+      'result': result,
+      if (scopeId != null && scopeId.isNotEmpty) 'scopeId': scopeId,
+      'updatedAt': FieldValue.serverTimestamp()
+    });
   }
 
   Future<Map<String, dynamic>?> getGenerationCache(String key) async {

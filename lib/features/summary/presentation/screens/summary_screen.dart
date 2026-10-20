@@ -28,7 +28,8 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
   void _generate({bool forceRefresh = false}) =>
       _result = ref.read(knowledgeEngineProvider).generateSummary(
             topicId: widget.topicId,
-            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
+            subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+                ref.read(activeKnowledgeWorkspaceIdProvider),
             forceRefresh: forceRefresh,
             prompt: switch (_mode) {
               SummaryMode.short =>
@@ -44,13 +45,15 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
     return Scaffold(
       appBar: AppBar(
-          title: Text(switch (_mode) {
+          title: Text(
+              '${subjectName == null || subjectName.isEmpty ? '' : '$subjectName · '}${switch (_mode) {
             SummaryMode.formula => 'Formula Sheet',
             SummaryMode.exam => 'Exam Notes',
             _ => 'Study Summary'
-          }),
+          }}'),
           leading: BackButton(onPressed: () => Navigator.maybePop(context)),
           actions: [
             IconButton(

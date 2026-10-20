@@ -48,7 +48,8 @@ class _QuestionPaperAnalyzerScreenState
     try {
       final result = ref.read(knowledgeEngineProvider).generatePYQ(
             topicId: widget.topicId,
-            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
+            subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+                ref.read(activeKnowledgeWorkspaceIdProvider),
             prompt:
                 'Answer this manually entered exam question using available workspace notes when relevant; otherwise use general knowledge. Question: $question. Marks: $marks. Return JSON with question, marks, model_answer, marking_scheme, and common_mistakes.',
           );
@@ -97,7 +98,9 @@ class _QuestionPaperAnalyzerScreenState
       final result = await ref.read(firebaseUploadServiceProvider).uploadFile(
         file,
         subject: 'Previous Year Papers',
-        subjectId: ref.read(activeKnowledgeWorkspaceIdProvider) ?? '',
+        subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+            ref.read(activeKnowledgeWorkspaceIdProvider) ??
+            '',
         topic: 'PYQ',
         tags: const ['pyq'],
       );
@@ -111,7 +114,9 @@ class _QuestionPaperAnalyzerScreenState
             title: file.name,
             content: text,
             subject: 'Previous Year Papers',
-            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider) ?? '',
+            subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+                ref.read(activeKnowledgeWorkspaceIdProvider) ??
+                '',
             topic: 'PYQ',
             sourceBytes: file.bytes,
             mimeType: _mimeType(file.extension),
@@ -149,7 +154,8 @@ class _QuestionPaperAnalyzerScreenState
     try {
       final result = ref.read(knowledgeEngineProvider).generatePYQ(
             topicId: id,
-            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
+            subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+                ref.read(activeKnowledgeWorkspaceIdProvider),
             prompt:
                 'Analyze only this uploaded previous-year question paper. Return JSON with frequently_repeated_questions (list, only evidence present in the paper), topic_frequency (list of topic and count), marks_distribution (list), important_units (list), and predicted_questions (list grounded in observed patterns). Do not invent repeated questions, frequencies, or marks.',
           );
@@ -168,9 +174,11 @@ class _QuestionPaperAnalyzerScreenState
 
   @override
   Widget build(BuildContext context) {
+    final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
     return Scaffold(
       appBar: AppBar(
-          title: const Text('PYQ Analyzer'),
+          title: Text(
+              '${subjectName == null ? '' : '$subjectName · '}PYQ Analyzer'),
           leading: BackButton(onPressed: () => Navigator.maybePop(context)),
           actions: [
             if (_analysis != null)

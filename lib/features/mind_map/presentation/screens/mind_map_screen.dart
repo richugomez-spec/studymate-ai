@@ -24,14 +24,17 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
   void _generate({bool forceRefresh = false}) =>
       _result = ref.read(knowledgeEngineProvider).generateMindMap(
           topicId: widget.topicId,
-          subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
+          subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
+              ref.read(activeKnowledgeWorkspaceIdProvider),
           forceRefresh: forceRefresh);
 
   @override
   Widget build(BuildContext context) {
+    final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
     return Scaffold(
       appBar: AppBar(
-          title: const Text('Mind Map'),
+          title:
+              Text('${subjectName == null ? '' : '$subjectName · '}Mind Map'),
           leading: BackButton(onPressed: () => Navigator.maybePop(context)),
           actions: [
             IconButton(

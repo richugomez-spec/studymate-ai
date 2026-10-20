@@ -71,6 +71,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       setState(() {
         _activeSubjectId = id;
       });
+      ref.read(activeKnowledgeSubjectIdProvider.notifier).state = id;
       ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = id;
       final active = ref.read(activeDocumentProvider);
       if (active != null && active.subjectId != id) {
@@ -127,6 +128,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           if (mounted)
             setState(() => _activeSubjectName =
                 restored.first['name']?.toString() ?? 'General');
+          ref.read(activeKnowledgeSubjectNameProvider.notifier).state =
+              restored.first['name']?.toString() ?? 'General';
         });
       }
     }
@@ -194,6 +197,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     _activeSubjectId = subject?['id'] as String?;
                     _activeSubjectName =
                         subject?['name']?.toString() ?? 'General';
+                    ref.read(activeKnowledgeSubjectIdProvider.notifier).state =
+                        _activeSubjectId;
+                    ref
+                        .read(activeKnowledgeSubjectNameProvider.notifier)
+                        .state = _activeSubjectName;
                     _activeFolderId = null;
                     _activeFolderName = null;
                     _activeFolderParentId = null;
@@ -523,6 +531,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         _activeSubjectId = id;
         _activeSubjectName = name;
       });
+    ref.read(activeKnowledgeSubjectIdProvider.notifier).state = id;
+    ref.read(activeKnowledgeSubjectNameProvider.notifier).state = name;
+    ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = id;
     await ref.read(firestoreServiceProvider).setActiveSubjectId(id);
   }
 
@@ -553,6 +564,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         .renameSubject(subject['id'] as String, name);
     if (_activeSubjectId == subject['id'] && mounted)
       setState(() => _activeSubjectName = name);
+    if (_activeSubjectId == subject['id']) {
+      ref.read(activeKnowledgeSubjectNameProvider.notifier).state = name;
+    }
   }
 
   Future<void> _deleteSubject(Map<String, dynamic> subject) async {
@@ -560,8 +574,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
               title: const Text('Delete subject?'),
-              content:
-                  const Text('Documents and notes will remain in General.'),
+              content: const Text(
+                  'This permanently deletes the subject, its folders, documents, notes, chats, and generated study materials.'),
               actions: [
                 TextButton(
                     onPressed: () => Navigator.pop(ctx, false),
@@ -573,14 +587,46 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ));
     if (confirm != true) return;
     final id = subject['id'] as String;
-    await ref.read(firestoreServiceProvider).deleteSubject(id);
-    if (_activeSubjectId == id && mounted)
+    final firestore = ref.read(firestoreServiceProvider);
+    final deletingActiveSubject = _activeSubjectId == id;
+    if (deletingActiveSubject && mounted) {
       setState(() {
         _activeSubjectId = null;
         _activeSubjectName = 'General';
+        _activeFolderId = null;
+        _activeFolderName = null;
+        _activeFolderParentId = null;
+        _selectedDocIds.clear();
       });
-    if (_activeSubjectId == null)
-      await ref.read(firestoreServiceProvider).setActiveSubjectId(null);
+      ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = null;
+      ref.read(activeKnowledgeSubjectIdProvider.notifier).state = null;
+      ref.read(activeKnowledgeSubjectNameProvider.notifier).state = null;
+      ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
+      ref.read(activeDocumentProvider.notifier).clearDocument();
+      unawaited(firestore.setActiveSubjectId(null));
+    }
+    try {
+      final docs = await firestore.getSubjectDocuments(id);
+      final upload = ref.read(firebaseUploadServiceProvider);
+      await Future.wait(docs.map((doc) async {
+        if (doc.storagePath.isEmpty) return;
+        try {
+          await upload.deleteStoredDocument(doc.storagePath);
+        } catch (error) {
+          if (error.toString().contains('object-not-found')) return;
+          rethrow;
+        }
+      }));
+      await firestore.deleteSubject(id);
+    } catch (error) {
+      debugPrint('Subject cleanup did not complete: $error');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('The subject could not be fully deleted. Please retry.'),
+        ));
+      }
+    }
   }
 
   Future<void> _addNote() async {
