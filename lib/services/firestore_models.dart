@@ -134,13 +134,22 @@ class FirestoreDocumentModel {
     return FirestoreDocumentModel(
       id: docId,
       ownerId: (map['ownerId'] as String?) ?? '',
-      title: (map['title'] as String?) ?? '',
+      title: (map['title'] as String?) ??
+          (map['fileName'] as String?) ??
+          (map['name'] as String?) ??
+          '',
       subject: (map['subject'] as String?) ?? 'General',
       subjectId: (map['subjectId'] as String?) ?? '',
       folderId: (map['folderId'] as String?) ?? '',
-      fileName: (map['fileName'] as String?) ?? '',
-      fileUrl: (map['fileUrl'] as String?) ?? '',
-      uploadedAt: _parseDateTime(map['uploadedAt']) ?? DateTime.now(),
+      fileName: (map['fileName'] as String?) ??
+          (map['title'] as String?) ??
+          (map['name'] as String?) ??
+          '',
+      fileUrl:
+          (map['fileUrl'] as String?) ?? (map['downloadUrl'] as String?) ?? '',
+      uploadedAt: _parseDateTime(map['uploadedAt']) ??
+          _parseDateTime(map['createdAt']) ??
+          DateTime.now(),
       lastOpened: _parseDateTime(map['lastOpened']) ?? DateTime.now(),
       conceptCount: (map['conceptCount'] as num?)?.toInt() ?? 0,
       quizCount: (map['quizCount'] as num?)?.toInt() ?? 0,
