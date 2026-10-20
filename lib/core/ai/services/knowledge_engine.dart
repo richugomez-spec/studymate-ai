@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, debugPrintStack;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../services/firestore_service.dart';
@@ -223,32 +223,92 @@ class KnowledgeEngine {
     String subtopic = '',
     Uint8List? sourceBytes,
     String? mimeType,
+    String? downloadUrl,
     void Function()? onGenerated,
   }) async {
     if (content.trim().isEmpty && sourceBytes == null) {
       throw StateError('No readable text was found in this source.');
     }
-    final structured = await _generateUncached(
-      task: 'index_knowledge',
-      prompt:
-          'Index this source as structured knowledge. Extract concepts, definitions, relationships, formulas, examples, important facts, and exam points. Include sourceConfidence as a decimal from 0 to 1 based on source clarity and completeness. Do not create flashcards, quizzes, or summaries.',
-      sourceText: content,
-      metadata: {
-        'title': title,
-        'subject': subject,
-        'topic': topic,
-        'subtopic': subtopic
-      },
-      sourceBytes: content.trim().isEmpty ? sourceBytes : null,
-      mimeType: mimeType,
+    final structured = await _uploadStage(
+      'AI INDEX GENERATION',
+      () => _generateUncached(
+        task: 'index_knowledge',
+        prompt:
+            'Index this source as structured knowledge. Extract concepts, definitions, relationships, formulas, examples, important facts, and exam points. Include sourceConfidence as a decimal from 0 to 1 based on source clarity and completeness. Do not create flashcards, quizzes, or summaries.',
+        sourceText: content,
+        metadata: {
+          'title': title,
+          'subject': subject,
+          'topic': topic,
+          'subtopic': subtopic
+        },
+        sourceBytes: content.trim().isEmpty ? sourceBytes : null,
+        mimeType: mimeType,
+      ),
     );
     onGenerated?.call();
-    await _ref.read(firestoreServiceProvider).saveKnowledgeIndex(
-        sourceId, structured,
-        sourceText: content, sourceKind: sourceKind, subjectId: subjectId);
+    final firestore = _ref.read(firestoreServiceProvider);
+    await _uploadStage(
+      'FIRESTORE INDEX UPDATE',
+      () => firestore.saveKnowledgeIndex(
+        sourceId,
+        structured,
+        sourceText: content,
+        sourceKind: sourceKind,
+        subjectId: subjectId,
+        downloadUrl: downloadUrl,
+      ),
+    );
     invalidateSubjectContext(subjectId,
         ownerId: _ref.read(firestoreServiceProvider).currentUserId);
     return structured;
+  }
+
+  Future<T> _uploadStage<T>(
+      String stage, Future<T> Function() operation) async {
+    debugPrint('UPLOAD $stage START');
+    try {
+      final result = await operation();
+      debugPrint('UPLOAD $stage COMPLETE');
+      return result;
+    } catch (error, stackTrace) {
+      debugPrint('UPLOAD $stage FAILED: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<void> _persistUploadFailure({
+    required FirestoreService firestore,
+    required String subjectId,
+    required String documentId,
+    required Object error,
+    required String label,
+  }) async {
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await _uploadStage(
+          '$label ($attempt/3)',
+          () => firestore.failDocumentPipeline(
+            subjectId: subjectId,
+            documentId: documentId,
+            error: error.toString(),
+          ),
+        );
+        return;
+      } catch (persistError, persistStackTrace) {
+        lastError = persistError;
+        lastStackTrace = persistStackTrace;
+        if (attempt == 3) break;
+        await _uploadStage(
+          'WAIT BEFORE FAILURE UPDATE RETRY',
+          () => Future<void>.delayed(Duration(milliseconds: 250 * attempt)),
+        );
+      }
+    }
+    Error.throwWithStackTrace(lastError!, lastStackTrace!);
   }
 
   Future<UploadResult> uploadAndIndex(
@@ -275,54 +335,74 @@ class KnowledgeEngine {
     final extension = (file.extension ?? 'bin').toLowerCase();
     final storagePath =
         'uploads/$ownerId/$subjectId/${documentId}_${file.name}';
-    var failedAt = 'upload_error';
+    var failedAt = 'firestore_create';
     debugPrint('UPLOAD START: ${file.name} subject=$subjectId');
     try {
-      await firestore.createDocumentRecord(
-        documentId: documentId,
-        subjectId: subjectId,
-        title: file.name,
-        fileType: extension.toUpperCase(),
-        byteSize: file.size,
-        storagePath: storagePath,
-        subject: subject,
-        folderId: folderId,
-        topic: topic,
-        subtopic: subtopic,
-        notes: notes,
-        tags: tags,
+      await _uploadStage(
+        'CREATE FIRESTORE DOCUMENT',
+        () => firestore.createDocumentRecord(
+          documentId: documentId,
+          subjectId: subjectId,
+          title: file.name,
+          fileType: extension.toUpperCase(),
+          byteSize: file.size,
+          storagePath: storagePath,
+          subject: subject,
+          folderId: folderId,
+          topic: topic,
+          subtopic: subtopic,
+          notes: notes,
+          tags: tags,
+        ),
       );
-      await firestore.updateDocumentPipelineState(
-        subjectId: subjectId,
-        documentId: documentId,
-        status: 'uploading',
-        uploadStatus: 'uploading',
+      failedAt = 'storage_upload';
+      await _uploadStage(
+        'SET UPLOADING STATE',
+        () => firestore.updateDocumentPipelineState(
+          subjectId: subjectId,
+          documentId: documentId,
+          status: 'uploading',
+          uploadStatus: 'uploading',
+        ),
       );
-      final downloadUrl = await upload.uploadToStorage(
-        file,
-        userId: ownerId,
-        storagePath: storagePath,
-        onProgress: onUploadProgress,
+      final downloadUrl = await _uploadStage(
+        'STORAGE UPLOAD AND DOWNLOAD URL',
+        () => upload.uploadToStorage(
+          file,
+          userId: ownerId,
+          storagePath: storagePath,
+          onProgress: onUploadProgress,
+        ),
       );
-      debugPrint('STORAGE COMPLETE: document=$documentId');
+      if (downloadUrl.trim().isEmpty) {
+        throw StateError('Storage returned an empty download URL.');
+      }
       failedAt = 'extract_error';
-      await firestore.updateDocumentPipelineState(
-        subjectId: subjectId,
-        documentId: documentId,
-        status: 'extracting',
-        uploadStatus: 'uploading',
-        downloadUrl: downloadUrl,
+      await _uploadStage(
+        'SAVE STORAGE DOWNLOAD URL',
+        () => firestore.updateDocumentPipelineState(
+          subjectId: subjectId,
+          documentId: documentId,
+          status: 'extracting',
+          uploadStatus: 'uploading',
+          downloadUrl: downloadUrl,
+        ),
       );
-      await _indexUploadedSource(
-        sourceId: documentId,
-        fileName: file.name,
-        file: file,
-        storagePath: storagePath,
-        subject: subject,
-        subjectId: subjectId,
-        topic: topic,
-        subtopic: subtopic,
-        onStage: (stage) => failedAt = stage,
+      failedAt = 'index_error';
+      await _uploadStage(
+        'EXTRACT AND INDEX DOCUMENT',
+        () => _indexUploadedSource(
+          sourceId: documentId,
+          fileName: file.name,
+          file: file,
+          storagePath: storagePath,
+          subject: subject,
+          subjectId: subjectId,
+          topic: topic,
+          subtopic: subtopic,
+          downloadUrl: downloadUrl,
+          onStage: (stage) => failedAt = stage,
+        ),
       );
       debugPrint('UPLOAD COMPLETE: document=$documentId');
       return UploadResult(
@@ -331,17 +411,20 @@ class KnowledgeEngine {
         firestoreDocId: documentId,
       );
     } catch (error, stackTrace) {
+      debugPrint('UPLOAD FAILED at $failedAt: $error');
+      debugPrintStack(stackTrace: stackTrace);
       try {
-        await firestore.failDocumentPipeline(
+        await _persistUploadFailure(
+          firestore: firestore,
           subjectId: subjectId,
           documentId: documentId,
-          error: 'unavailable',
-          status: failedAt,
+          error: error,
+          label: 'PERSIST FAILURE STATE',
         );
-      } catch (persistError) {
+      } catch (persistError, persistStackTrace) {
         debugPrint('UPLOAD FAILURE STATE WRITE FAILED: $persistError');
+        debugPrintStack(stackTrace: persistStackTrace);
       }
-      debugPrint('UPLOAD FAILED at $failedAt: $error');
       invalidateSubjectContext(subjectId, ownerId: ownerId);
       Error.throwWithStackTrace(error, stackTrace);
     }
@@ -365,56 +448,83 @@ class KnowledgeEngine {
     final ownerId = firestore.currentUserId;
     if (ownerId == null) throw StateError('Sign in to retry indexing.');
     var failedAt = 'upload_error';
+    debugPrint('UPLOAD RETRY START: document=$sourceId status=$status');
     invalidateSubjectContext(subjectId, ownerId: ownerId);
     try {
-      if (status == 'upload_error' || status == 'cancelled') {
+      final existingDocument = await _uploadStage(
+        'LOAD RETRY DOCUMENT',
+        () => firestore.getSubjectDocument(subjectId, sourceId),
+      );
+      var downloadUrl = existingDocument?.fileUrl ?? '';
+      if (downloadUrl.isEmpty) {
         if (replacementFile == null) {
           throw StateError('Select the source file to retry its upload.');
         }
         upload.validateFile(replacementFile);
-        await firestore.updateDocumentPipelineState(
-          subjectId: subjectId,
-          documentId: sourceId,
-          status: 'uploading',
-          uploadStatus: 'uploading',
+        failedAt = 'storage_upload';
+        await _uploadStage(
+          'SET RETRY UPLOADING STATE',
+          () => firestore.updateDocumentPipelineState(
+            subjectId: subjectId,
+            documentId: sourceId,
+            status: 'uploading',
+            uploadStatus: 'uploading',
+          ),
         );
-        final url = await upload.uploadToStorage(
-          replacementFile,
-          userId: ownerId,
-          storagePath: storagePath,
+        downloadUrl = await _uploadStage(
+          'RETRY STORAGE UPLOAD AND DOWNLOAD URL',
+          () => upload.uploadToStorage(
+            replacementFile,
+            userId: ownerId,
+            storagePath: storagePath,
+          ),
         );
-        await firestore.updateDocumentPipelineState(
-          subjectId: subjectId,
-          documentId: sourceId,
-          status: 'extracting',
-          uploadStatus: 'uploading',
-          downloadUrl: url,
+        if (downloadUrl.trim().isEmpty) {
+          throw StateError('Storage returned an empty download URL.');
+        }
+        await _uploadStage(
+          'SAVE RETRY DOWNLOAD URL',
+          () => firestore.updateDocumentPipelineState(
+            subjectId: subjectId,
+            documentId: sourceId,
+            status: 'extracting',
+            uploadStatus: 'uploading',
+            downloadUrl: downloadUrl,
+          ),
         );
       }
       failedAt = 'extract_error';
-      await _indexUploadedSource(
-        sourceId: sourceId,
-        fileName: title,
-        file: replacementFile,
-        storagePath: storagePath,
-        subject: subject,
-        subjectId: subjectId,
-        topic: topic,
-        subtopic: subtopic,
-        cachedText: extractedText,
-        mimeType: _mimeTypeFor(fileType),
-        onStage: (stage) => failedAt = stage,
+      await _uploadStage(
+        'RETRY EXTRACTION AND INDEXING',
+        () => _indexUploadedSource(
+          sourceId: sourceId,
+          fileName: title,
+          file: replacementFile,
+          storagePath: storagePath,
+          subject: subject,
+          subjectId: subjectId,
+          topic: topic,
+          subtopic: subtopic,
+          cachedText: extractedText,
+          mimeType: _mimeTypeFor(fileType),
+          downloadUrl: downloadUrl,
+          onStage: (stage) => failedAt = stage,
+        ),
       );
     } catch (error, stackTrace) {
+      debugPrint('UPLOAD RETRY FAILED at $failedAt: $error');
+      debugPrintStack(stackTrace: stackTrace);
       try {
-        await firestore.failDocumentPipeline(
+        await _persistUploadFailure(
+          firestore: firestore,
           subjectId: subjectId,
           documentId: sourceId,
-          error: 'unavailable',
-          status: failedAt,
+          error: error,
+          label: 'PERSIST RETRY FAILURE STATE',
         );
-      } catch (persistError) {
+      } catch (persistError, persistStackTrace) {
         debugPrint('RETRY FAILURE STATE WRITE FAILED: $persistError');
+        debugPrintStack(stackTrace: persistStackTrace);
       }
       Error.throwWithStackTrace(error, stackTrace);
     }
@@ -477,6 +587,7 @@ class KnowledgeEngine {
     required String subjectId,
     required String topic,
     required String subtopic,
+    required String downloadUrl,
     String cachedText = '',
     String? mimeType,
     void Function(String status)? onStage,
@@ -488,57 +599,68 @@ class KnowledgeEngine {
     Uint8List? bytes = file?.bytes;
     if (text.isEmpty) {
       onStage?.call('extract_error');
-      await firestore
-          .updateDocumentPipelineState(
-            subjectId: subjectId,
-            documentId: sourceId,
-            status: 'extracting',
-            uploadStatus: 'uploading',
-          )
-          .timeout(const Duration(seconds: 20));
-      bytes ??= await upload
-          .downloadDocument(storagePath)
-          .timeout(const Duration(minutes: 2));
-      text = await processing
-          .extractText(PlatformFile(
-            name: fileName,
-            size: bytes.length,
-            bytes: bytes,
-          ))
-          .timeout(const Duration(minutes: 2));
+      await _uploadStage(
+          'SET EXTRACTING STATE',
+          () => firestore.updateDocumentPipelineState(
+                subjectId: subjectId,
+                documentId: sourceId,
+                status: 'extracting',
+                uploadStatus: 'uploading',
+              ));
+      if (bytes == null) {
+        bytes = await _uploadStage(
+          'DOWNLOAD SOURCE FROM STORAGE',
+          () => upload.downloadDocument(storagePath),
+        );
+      }
+      final extractionBytes = bytes;
+      if (extractionBytes == null) {
+        throw StateError('The uploaded source could not be read.');
+      }
+      text = await _uploadStage(
+        'EXTRACT TEXT',
+        () => processing.extractText(PlatformFile(
+          name: fileName,
+          size: extractionBytes.length,
+          bytes: extractionBytes,
+        )),
+      );
       if (text.trim().isEmpty) {
         throw StateError('No readable source content was found.');
       }
-      debugPrint('TEXT EXTRACTED: document=$sourceId');
-      await firestore
-          .saveExtractedText(subjectId, sourceId, text)
-          .timeout(const Duration(seconds: 20));
-      debugPrint('TEXT SAVED: document=$sourceId');
+      await _uploadStage(
+        'SAVE EXTRACTED TEXT',
+        () => firestore.saveExtractedText(subjectId, sourceId, text),
+      );
     }
     if (text.isEmpty && (bytes == null || bytes.isEmpty)) {
       throw StateError('No readable source content was found.');
     }
     onStage?.call('index_error');
-    await firestore
-        .updateDocumentPipelineState(
-          subjectId: subjectId,
-          documentId: sourceId,
-          status: 'indexing',
-          uploadStatus: 'uploading',
-        )
-        .timeout(const Duration(seconds: 20));
-    await index(
-      sourceId: sourceId,
-      title: fileName,
-      content: text,
-      subject: subject,
-      subjectId: subjectId,
-      topic: topic,
-      subtopic: subtopic,
-      sourceBytes: bytes,
-      mimeType: mimeType ?? _mimeTypeFor(file?.extension),
-      onGenerated: () => debugPrint('INDEXING COMPLETE: document=$sourceId'),
-    ).timeout(const Duration(minutes: 4));
+    await _uploadStage(
+        'SET INDEXING STATE',
+        () => firestore.updateDocumentPipelineState(
+              subjectId: subjectId,
+              documentId: sourceId,
+              status: 'indexing',
+              uploadStatus: 'uploading',
+            ));
+    await _uploadStage(
+      'GENERATE AND SAVE INDEX',
+      () => index(
+        sourceId: sourceId,
+        title: fileName,
+        content: text,
+        subject: subject,
+        subjectId: subjectId,
+        topic: topic,
+        subtopic: subtopic,
+        sourceBytes: bytes,
+        mimeType: mimeType ?? _mimeTypeFor(file?.extension),
+        downloadUrl: downloadUrl,
+        onGenerated: () => debugPrint('INDEXING COMPLETE: document=$sourceId'),
+      ),
+    );
     debugPrint('FIRESTORE UPDATED: document=$sourceId');
   }
 
@@ -571,12 +693,14 @@ class KnowledgeEngine {
           content:
               'Task: $task\nMetadata: ${jsonEncode(metadata)}\n$prompt\nSource:\n$sourceText'),
     ]);
+    debugPrint('UPLOAD INDEX MODEL REQUEST START: $task');
     final response = await _completeWithFailover(
       request,
       temperature: 0.2,
       sourceBytes: sourceBytes,
       mimeType: mimeType,
     );
+    debugPrint('UPLOAD INDEX MODEL REQUEST COMPLETE: $task');
     final raw = response.content
         .trim()
         .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')

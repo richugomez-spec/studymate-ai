@@ -71,15 +71,21 @@ class FirebaseUploadService {
 
     StreamSubscription<TaskSnapshot>? progressSubscription;
     final extension = (file.extension ?? 'bin').toLowerCase();
-    final task = _storage.ref(storagePath).putData(
-          bytes,
-          SettableMetadata(contentType: _mimeType(extension), customMetadata: {
-            'originalName': file.name,
-            'uploadedBy': userId,
-            'uploadedAt': DateTime.now().toIso8601String(),
-          }),
-        );
+    late final UploadTask task;
     try {
+      debugPrint('UPLOAD STORAGE TASK CREATE START: $storagePath');
+      task = _storage.ref(storagePath).putData(
+            bytes,
+            SettableMetadata(
+              contentType: _mimeType(extension),
+              customMetadata: {
+                'originalName': file.name,
+                'uploadedBy': userId,
+                'uploadedAt': DateTime.now().toIso8601String(),
+              },
+            ),
+          );
+      debugPrint('UPLOAD STORAGE TASK CREATE COMPLETE: $storagePath');
       progressSubscription = task.snapshotEvents.listen(
         (snapshot) {
           if (snapshot.totalBytes > 0) {
@@ -88,26 +94,62 @@ class FirebaseUploadService {
         },
         onError: (Object error, StackTrace stackTrace) {
           debugPrint('Storage progress stream error: $error');
+          debugPrintStack(stackTrace: stackTrace);
         },
       );
+      debugPrint('UPLOAD STORAGE TASK WAIT START: $storagePath');
       final snapshot = await task.timeout(
         const Duration(minutes: 5),
         onTimeout: () async {
-          await task.cancel().timeout(const Duration(seconds: 5));
+          debugPrint('UPLOAD STORAGE TIMEOUT; CANCEL START: $storagePath');
+          try {
+            await task.cancel();
+            debugPrint('UPLOAD STORAGE TIMEOUT; CANCEL COMPLETE: $storagePath');
+          } catch (error, stackTrace) {
+            debugPrint('UPLOAD STORAGE TIMEOUT; CANCEL FAILED: $error');
+            debugPrintStack(stackTrace: stackTrace);
+            rethrow;
+          }
           throw TimeoutException('Storage upload timed out.');
         },
       );
-      return await snapshot.ref
+      debugPrint('UPLOAD STORAGE TASK COMPLETE: $storagePath');
+      debugPrint('UPLOAD DOWNLOAD URL FETCH START: $storagePath');
+      final downloadUrl = await snapshot.ref
           .getDownloadURL()
           .timeout(const Duration(seconds: 30));
+      debugPrint('UPLOAD DOWNLOAD URL FETCH COMPLETE: $storagePath');
+      debugPrint(
+          'UPLOAD DOWNLOAD URL RECEIVED: $storagePath (${downloadUrl.length} chars)');
+      return downloadUrl;
+    } catch (error, stackTrace) {
+      debugPrint('UPLOAD STORAGE FAILED: $storagePath: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
     } finally {
-      await progressSubscription?.cancel().timeout(const Duration(seconds: 5));
+      if (progressSubscription != null) {
+        debugPrint(
+            'UPLOAD STORAGE PROGRESS LISTENER CANCEL START: $storagePath');
+        try {
+          await progressSubscription.cancel().timeout(
+                const Duration(seconds: 5),
+              );
+          debugPrint(
+              'UPLOAD STORAGE PROGRESS LISTENER CANCEL COMPLETE: $storagePath');
+        } catch (error, stackTrace) {
+          debugPrint('UPLOAD STORAGE PROGRESS LISTENER CANCEL FAILED: $error');
+          debugPrintStack(stackTrace: stackTrace);
+          rethrow;
+        }
+      }
     }
   }
 
   Future<Uint8List> downloadDocument(String storagePath) async {
+    debugPrint('SOURCE STORAGE DOWNLOAD START: $storagePath');
     final data = await _storage.ref(storagePath).getData(kMaxFileSizeBytes);
     if (data == null) throw StateError('Document could not be downloaded.');
+    debugPrint('SOURCE STORAGE DOWNLOAD COMPLETE: $storagePath');
     return data;
   }
 

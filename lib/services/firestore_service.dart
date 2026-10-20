@@ -185,12 +185,16 @@ class FirestoreService {
     if (subjectId.trim().isEmpty) {
       throw ArgumentError('Choose a subject before uploading.');
     }
+    debugPrint('UPLOAD FIRESTORE SUBJECT READ START: subject=$subjectId');
     final subjectSnapshot = await _subjectsCol.doc(subjectId).get();
+    debugPrint('UPLOAD FIRESTORE SUBJECT READ COMPLETE: subject=$subjectId');
     if (subjectSnapshot.data()?['ownerId'] != uid) {
       throw StateError('The selected subject is not available.');
     }
     if (folderId.isNotEmpty) {
+      debugPrint('UPLOAD FIRESTORE FOLDER READ START: folder=$folderId');
       final folder = await _knowledgeCol.doc(folderId).get();
+      debugPrint('UPLOAD FIRESTORE FOLDER READ COMPLETE: folder=$folderId');
       final folderData = folder.data();
       if (folderData?['ownerId'] != uid ||
           folderData?['kind'] != 'folder' ||
@@ -231,7 +235,11 @@ class FirestoreService {
           'lastLogin': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true));
-    await batch.commit().timeout(const Duration(seconds: 30));
+    debugPrint(
+        'UPLOAD FIRESTORE DOCUMENT CREATE START: subject=$subjectId document=$documentId');
+    await batch.commit();
+    debugPrint(
+        'UPLOAD FIRESTORE DOCUMENT CREATE COMPLETE: subject=$subjectId document=$documentId');
   }
 
   Future<FirestoreDocumentModel?> getSubjectDocument(
@@ -260,6 +268,8 @@ class FirestoreService {
     String? downloadUrl,
     String? error,
   }) async {
+    debugPrint(
+        'UPLOAD FIRESTORE STATE UPDATE START: subject=$subjectId document=$documentId status=$status');
     await _subjectDocumentRef(subjectId, documentId).update({
       'status': status,
       if (uploadStatus != null) 'uploadStatus': uploadStatus,
@@ -267,9 +277,11 @@ class FirestoreService {
         'downloadUrl': downloadUrl,
         'fileUrl': downloadUrl,
       },
-      if (error != null) 'indexError': error,
+      if (error != null) ...{'error': error, 'indexError': error},
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    debugPrint(
+        'UPLOAD FIRESTORE STATE UPDATE COMPLETE: subject=$subjectId document=$documentId status=$status');
   }
 
   Future<void> renameSubject(String subjectId, String name) async {
@@ -743,10 +755,13 @@ class FirestoreService {
   Future<void> saveKnowledgeIndex(String documentId, Map<String, dynamic> index,
       {required String sourceText,
       required String subjectId,
-      String sourceKind = 'document'}) async {
+      String sourceKind = 'document',
+      String? downloadUrl}) async {
     final target = sourceKind == 'note'
         ? _knowledgeCol.doc(documentId)
         : _subjectDocumentRef(subjectId, documentId);
+    debugPrint(
+        'UPLOAD FIRESTORE FINAL UPDATE START: subject=$subjectId document=$documentId');
     await target.update({
       'structuredKnowledge': index,
       'extractedText': sourceText.length > 100000
@@ -755,6 +770,14 @@ class FirestoreService {
       'indexedAt': FieldValue.serverTimestamp(),
       'status': 'indexed',
       if (sourceKind == 'document') 'uploadStatus': 'completed',
+      if (sourceKind == 'document') ...{
+        'error': FieldValue.delete(),
+        'indexError': FieldValue.delete(),
+      },
+      if (sourceKind == 'document' && downloadUrl != null) ...{
+        'downloadUrl': downloadUrl,
+        'fileUrl': downloadUrl,
+      },
       'updatedAt': FieldValue.serverTimestamp(),
       if (subjectId.isNotEmpty) 'subjectId': subjectId,
       if (sourceKind == 'document') ...{
@@ -765,6 +788,8 @@ class FirestoreService {
           'quizCount': (index['quizzes'] as List).length,
       },
     });
+    debugPrint(
+        'UPLOAD FIRESTORE FINAL UPDATE COMPLETE: subject=$subjectId document=$documentId status=indexed uploadStatus=completed');
   }
 
   Future<void> saveExtractedText(
@@ -796,15 +821,18 @@ class FirestoreService {
     required String subjectId,
     required String documentId,
     required String error,
-    String status = 'index_error',
   }) async {
-    await updateDocumentPipelineState(
-      subjectId: subjectId,
-      documentId: documentId,
-      status: status,
-      uploadStatus: 'failed',
-      error: error,
-    );
+    debugPrint(
+        'UPLOAD FIRESTORE FAILURE UPDATE START: subject=$subjectId document=$documentId');
+    await _subjectDocumentRef(subjectId, documentId).update({
+      'status': 'failed',
+      'uploadStatus': 'failed',
+      'error': error,
+      'indexError': error,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    debugPrint(
+        'UPLOAD FIRESTORE FAILURE UPDATE COMPLETE: subject=$subjectId document=$documentId');
   }
 
   Future<void> cacheGeneration(String key, Map<String, dynamic> result,
@@ -1090,26 +1118,21 @@ class FirestoreService {
     final repairs = <Future<void> Function()>[
       for (final (subjectId, document) in completedRepairs)
         () => updateDocumentPipelineState(
-          subjectId: subjectId,
-          documentId: document.id,
-          status: 'indexed',
-          uploadStatus: 'completed',
-        ),
+              subjectId: subjectId,
+              documentId: document.id,
+              status: 'indexed',
+              uploadStatus: 'completed',
+            ),
       for (final (subjectId, document) in stale)
         () => failDocumentPipeline(
-          subjectId: subjectId,
-          documentId: document.id,
-          error: 'Upload processing did not finish. Please retry.',
-          status: (document.data()['downloadUrl'] ?? '').toString().isNotEmpty
-              ? 'index_error'
-              : 'upload_error',
-        ),
+              subjectId: subjectId,
+              documentId: document.id,
+              error: 'Upload processing did not finish. Please retry.',
+            ),
     ];
     for (var offset = 0; offset < repairs.length; offset += 200) {
-      await Future.wait(repairs
-          .skip(offset)
-          .take(200)
-          .map((repair) => repair()));
+      await Future.wait(
+          repairs.skip(offset).take(200).map((repair) => repair()));
     }
   }
 
