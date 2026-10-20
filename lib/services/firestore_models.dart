@@ -83,7 +83,7 @@ class FirestoreUserModel {
   }
 }
 
-/// Document metadata model stored in Firestore under /documents/{documentId}
+/// Document metadata stored under /subjects/{subjectId}/documents/{documentId}.
 class FirestoreDocumentModel {
   final String id;
   final String ownerId;

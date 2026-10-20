@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -100,7 +99,7 @@ class KnowledgeEngine {
     final cached =
         forceRefresh ? null : await firestore.getGenerationCache(cacheKey);
     if (cached != null) {
-      await _updateSourceCounts(firestore, task, topicId, cached);
+      await _updateSourceCounts(firestore, task, topicId, subjectId, cached);
       return cached;
     }
 
@@ -113,6 +112,7 @@ class KnowledgeEngine {
       prompt: prompt,
       options: options,
       topicId: topicId,
+      subjectId: subjectId,
       scopeId: subjectId ?? topicId,
       sources: relevant,
     );
@@ -133,6 +133,7 @@ class KnowledgeEngine {
     required String prompt,
     required Map<String, dynamic> options,
     required String? topicId,
+    required String? subjectId,
     required String? scopeId,
     required List<Map<String, dynamic>> sources,
   }) async {
@@ -179,7 +180,7 @@ class KnowledgeEngine {
           .map((r) => {'title': r['title'], 'url': r['url'], 'kind': 'web'}),
     ];
     await firestore.cacheGeneration(cacheKey, result, scopeId: scopeId);
-    await _updateSourceCounts(firestore, task, topicId, result);
+    await _updateSourceCounts(firestore, task, topicId, subjectId, result);
     return result;
   }
 
@@ -187,21 +188,25 @@ class KnowledgeEngine {
     FirestoreService firestore,
     String task,
     String? topicId,
+    String? subjectId,
     Map<String, dynamic> result,
   ) async {
     if (topicId == null ||
+        subjectId == null ||
+        subjectId.isEmpty ||
         topicId.isEmpty ||
         topicId == 'current' ||
         topicId.contains(',')) return;
     if (task == 'flashcards') {
       final cards = result['cards'];
       if (cards is List) {
-        await firestore.updateDocumentCounts(topicId, flashcards: cards.length);
+        await firestore.updateDocumentCounts(subjectId, topicId,
+            flashcards: cards.length);
       }
     } else if (task == 'quiz') {
       final questions = result['questions'];
       if (questions is List) {
-        await firestore.updateDocumentCounts(topicId,
+        await firestore.updateDocumentCounts(subjectId, topicId,
             quizzes: questions.length);
       }
     }
@@ -218,6 +223,7 @@ class KnowledgeEngine {
     String subtopic = '',
     Uint8List? sourceBytes,
     String? mimeType,
+    void Function()? onGenerated,
   }) async {
     if (content.trim().isEmpty && sourceBytes == null) {
       throw StateError('No readable text was found in this source.');
@@ -236,14 +242,12 @@ class KnowledgeEngine {
       sourceBytes: content.trim().isEmpty ? sourceBytes : null,
       mimeType: mimeType,
     );
+    onGenerated?.call();
     await _ref.read(firestoreServiceProvider).saveKnowledgeIndex(
         sourceId, structured,
         sourceText: content, sourceKind: sourceKind, subjectId: subjectId);
     invalidateSubjectContext(subjectId,
         ownerId: _ref.read(firestoreServiceProvider).currentUserId);
-    if (sourceKind == 'document') {
-      unawaited(_prepareDocumentStudyCounts(sourceId));
-    }
     return structured;
   }
 
@@ -257,41 +261,90 @@ class KnowledgeEngine {
     String notes = '',
     List<String> tags = const [],
     void Function(double)? onUploadProgress,
-    bool awaitIndexing = false,
   }) async {
     final upload = _ref.read(firebaseUploadServiceProvider);
     final firestore = _ref.read(firestoreServiceProvider);
-    invalidateSubjectContext(subjectId, ownerId: firestore.currentUserId);
-    final result = await upload.uploadFile(
-      file,
-      subject: subject,
-      subjectId: subjectId,
-      folderId: folderId,
-      topic: topic,
-      subtopic: subtopic,
-      notes: notes,
-      tags: tags,
-      onProgress: onUploadProgress,
-    );
-    invalidateSubjectContext(subjectId, ownerId: firestore.currentUserId);
-    final indexing = _indexUploadedSource(
-      sourceId: result.firestoreDocId,
-      fileName: file.name,
-      file: file,
-      storagePath: result.storagePath,
-      subject: subject,
-      subjectId: subjectId,
-      topic: topic,
-      subtopic: subtopic,
-    );
-    if (awaitIndexing) {
-      await indexing;
-    } else {
-      unawaited(indexing.catchError((Object error) {
-        debugPrint('Background source indexing did not complete: $error');
-      }));
+    final ownerId = firestore.currentUserId;
+    if (ownerId == null) throw StateError('Sign in to upload sources.');
+    if (subjectId.trim().isEmpty) {
+      throw ArgumentError('Upload requires an existing subject.');
     }
-    return result;
+    upload.validateFile(file);
+    invalidateSubjectContext(subjectId, ownerId: ownerId);
+    final documentId = firestore.newSubjectDocumentId(subjectId);
+    final extension = (file.extension ?? 'bin').toLowerCase();
+    final storagePath =
+        'uploads/$ownerId/$subjectId/${documentId}_${file.name}';
+    var failedAt = 'upload_error';
+    debugPrint('UPLOAD START: ${file.name} subject=$subjectId');
+    try {
+      await firestore.createDocumentRecord(
+        documentId: documentId,
+        subjectId: subjectId,
+        title: file.name,
+        fileType: extension.toUpperCase(),
+        byteSize: file.size,
+        storagePath: storagePath,
+        subject: subject,
+        folderId: folderId,
+        topic: topic,
+        subtopic: subtopic,
+        notes: notes,
+        tags: tags,
+      );
+      await firestore.updateDocumentPipelineState(
+        subjectId: subjectId,
+        documentId: documentId,
+        status: 'uploading',
+        uploadStatus: 'uploading',
+      );
+      final downloadUrl = await upload.uploadToStorage(
+        file,
+        userId: ownerId,
+        storagePath: storagePath,
+        onProgress: onUploadProgress,
+      );
+      debugPrint('STORAGE COMPLETE: document=$documentId');
+      failedAt = 'extract_error';
+      await firestore.updateDocumentPipelineState(
+        subjectId: subjectId,
+        documentId: documentId,
+        status: 'extracting',
+        uploadStatus: 'uploading',
+        downloadUrl: downloadUrl,
+      );
+      await _indexUploadedSource(
+        sourceId: documentId,
+        fileName: file.name,
+        file: file,
+        storagePath: storagePath,
+        subject: subject,
+        subjectId: subjectId,
+        topic: topic,
+        subtopic: subtopic,
+        onStage: (stage) => failedAt = stage,
+      );
+      debugPrint('UPLOAD COMPLETE: document=$documentId');
+      return UploadResult(
+        downloadUrl: downloadUrl,
+        storagePath: storagePath,
+        firestoreDocId: documentId,
+      );
+    } catch (error, stackTrace) {
+      try {
+        await firestore.failDocumentPipeline(
+          subjectId: subjectId,
+          documentId: documentId,
+          error: 'unavailable',
+          status: failedAt,
+        );
+      } catch (persistError) {
+        debugPrint('UPLOAD FAILURE STATE WRITE FAILED: $persistError');
+      }
+      debugPrint('UPLOAD FAILED at $failedAt: $error');
+      invalidateSubjectContext(subjectId, ownerId: ownerId);
+      Error.throwWithStackTrace(error, stackTrace);
+    }
   }
 
   Future<void> retryDocumentIndex({
@@ -309,24 +362,110 @@ class KnowledgeEngine {
   }) async {
     final upload = _ref.read(firebaseUploadServiceProvider);
     final firestore = _ref.read(firestoreServiceProvider);
-    invalidateSubjectContext(subjectId, ownerId: firestore.currentUserId);
-    if (status == 'upload_error' || status == 'cancelled') {
-      if (replacementFile == null) return;
-      await upload.retryUpload(replacementFile,
-          documentId: sourceId, storagePath: storagePath);
+    final ownerId = firestore.currentUserId;
+    if (ownerId == null) throw StateError('Sign in to retry indexing.');
+    var failedAt = 'upload_error';
+    invalidateSubjectContext(subjectId, ownerId: ownerId);
+    try {
+      if (status == 'upload_error' || status == 'cancelled') {
+        if (replacementFile == null) {
+          throw StateError('Select the source file to retry its upload.');
+        }
+        upload.validateFile(replacementFile);
+        await firestore.updateDocumentPipelineState(
+          subjectId: subjectId,
+          documentId: sourceId,
+          status: 'uploading',
+          uploadStatus: 'uploading',
+        );
+        final url = await upload.uploadToStorage(
+          replacementFile,
+          userId: ownerId,
+          storagePath: storagePath,
+        );
+        await firestore.updateDocumentPipelineState(
+          subjectId: subjectId,
+          documentId: sourceId,
+          status: 'extracting',
+          uploadStatus: 'uploading',
+          downloadUrl: url,
+        );
+      }
+      failedAt = 'extract_error';
+      await _indexUploadedSource(
+        sourceId: sourceId,
+        fileName: title,
+        file: replacementFile,
+        storagePath: storagePath,
+        subject: subject,
+        subjectId: subjectId,
+        topic: topic,
+        subtopic: subtopic,
+        cachedText: extractedText,
+        mimeType: _mimeTypeFor(fileType),
+        onStage: (stage) => failedAt = stage,
+      );
+    } catch (error, stackTrace) {
+      try {
+        await firestore.failDocumentPipeline(
+          subjectId: subjectId,
+          documentId: sourceId,
+          error: 'unavailable',
+          status: failedAt,
+        );
+      } catch (persistError) {
+        debugPrint('RETRY FAILURE STATE WRITE FAILED: $persistError');
+      }
+      Error.throwWithStackTrace(error, stackTrace);
     }
-    await _indexUploadedSource(
-      sourceId: sourceId,
-      fileName: title,
-      file: replacementFile,
-      storagePath: storagePath,
-      subject: subject,
+    invalidateSubjectContext(subjectId, ownerId: ownerId);
+  }
+
+  Future<void> deleteDocument({
+    required String subjectId,
+    required String documentId,
+  }) async {
+    final firestore = _ref.read(firestoreServiceProvider);
+    final upload = _ref.read(firebaseUploadServiceProvider);
+    final ownerId = firestore.currentUserId;
+    if (ownerId == null) throw StateError('Sign in to delete this file.');
+    final document = await firestore.getSubjectDocument(subjectId, documentId);
+    if (document == null) throw StateError('Document is not available.');
+    await _deleteStorageObjectIfPresent(upload, document.storagePath);
+    await firestore.deleteDocument(
+      documentId: documentId,
       subjectId: subjectId,
-      topic: topic,
-      subtopic: subtopic,
-      cachedText: extractedText,
-      mimeType: _mimeTypeFor(fileType),
+      ownerId: ownerId,
     );
+    invalidateSubjectContext(subjectId, ownerId: ownerId);
+    debugPrint('DELETE COMPLETE: document=$documentId');
+  }
+
+  Future<void> deleteSubject(String subjectId) async {
+    final firestore = _ref.read(firestoreServiceProvider);
+    final upload = _ref.read(firebaseUploadServiceProvider);
+    final ownerId = firestore.currentUserId;
+    if (ownerId == null) throw StateError('Sign in to delete this subject.');
+    final documents = await firestore.getSubjectDocuments(subjectId);
+    await Future.wait(documents.map((document) =>
+        _deleteStorageObjectIfPresent(upload, document.storagePath)));
+    await firestore.deleteSubject(subjectId);
+    invalidateSubjectContext(subjectId, ownerId: ownerId);
+    debugPrint('DELETE COMPLETE: subject=$subjectId');
+  }
+
+  Future<void> _deleteStorageObjectIfPresent(
+      FirebaseUploadService upload, String storagePath) async {
+    if (storagePath.isEmpty) return;
+    try {
+      await upload.deleteStoredDocument(storagePath);
+    } catch (error) {
+      if (error.toString().contains('object-not-found')) {
+        debugPrint('Storage object already missing: $storagePath');
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> _indexUploadedSource({
@@ -340,58 +479,67 @@ class KnowledgeEngine {
     required String subtopic,
     String cachedText = '',
     String? mimeType,
+    void Function(String status)? onStage,
   }) async {
     final firestore = _ref.read(firestoreServiceProvider);
     final upload = _ref.read(firebaseUploadServiceProvider);
     final processing = _ref.read(documentProcessingServiceProvider);
-    try {
-      var text = cachedText.trim();
-      Uint8List? bytes = file?.bytes;
-      if (text.isEmpty) {
-        await firestore
-            .setDocumentStatus(sourceId, 'extracting')
-            .timeout(const Duration(seconds: 20));
-        bytes ??= await upload
-            .downloadDocument(storagePath)
-            .timeout(const Duration(minutes: 2));
-        text = await processing
-            .extractText(PlatformFile(
-              name: fileName,
-              size: bytes.length,
-              bytes: bytes,
-            ))
-            .timeout(const Duration(minutes: 2));
-        await firestore
-            .saveExtractedText(sourceId, text)
-            .timeout(const Duration(seconds: 20));
-      }
-      if (text.isEmpty && (bytes == null || bytes.isEmpty)) {
+    var text = cachedText.trim();
+    Uint8List? bytes = file?.bytes;
+    if (text.isEmpty) {
+      onStage?.call('extract_error');
+      await firestore
+          .updateDocumentPipelineState(
+            subjectId: subjectId,
+            documentId: sourceId,
+            status: 'extracting',
+            uploadStatus: 'uploading',
+          )
+          .timeout(const Duration(seconds: 20));
+      bytes ??= await upload
+          .downloadDocument(storagePath)
+          .timeout(const Duration(minutes: 2));
+      text = await processing
+          .extractText(PlatformFile(
+            name: fileName,
+            size: bytes.length,
+            bytes: bytes,
+          ))
+          .timeout(const Duration(minutes: 2));
+      if (text.trim().isEmpty) {
         throw StateError('No readable source content was found.');
       }
+      debugPrint('TEXT EXTRACTED: document=$sourceId');
       await firestore
-          .setDocumentStatus(sourceId, 'indexing')
+          .saveExtractedText(subjectId, sourceId, text)
           .timeout(const Duration(seconds: 20));
-      await index(
-        sourceId: sourceId,
-        title: fileName,
-        content: text,
-        subject: subject,
-        subjectId: subjectId,
-        topic: topic,
-        subtopic: subtopic,
-        sourceBytes: bytes,
-        mimeType: mimeType ?? _mimeTypeFor(file?.extension),
-      ).timeout(const Duration(minutes: 4));
-    } catch (_) {
-      try {
-        await firestore
-            .setDocumentIndexError(sourceId, 'unavailable')
-            .timeout(const Duration(seconds: 20));
-      } catch (error) {
-        debugPrint('Could not persist source retry state: $error');
-      }
-      rethrow;
+      debugPrint('TEXT SAVED: document=$sourceId');
     }
+    if (text.isEmpty && (bytes == null || bytes.isEmpty)) {
+      throw StateError('No readable source content was found.');
+    }
+    onStage?.call('index_error');
+    await firestore
+        .updateDocumentPipelineState(
+          subjectId: subjectId,
+          documentId: sourceId,
+          status: 'indexing',
+          uploadStatus: 'uploading',
+        )
+        .timeout(const Duration(seconds: 20));
+    await index(
+      sourceId: sourceId,
+      title: fileName,
+      content: text,
+      subject: subject,
+      subjectId: subjectId,
+      topic: topic,
+      subtopic: subtopic,
+      sourceBytes: bytes,
+      mimeType: mimeType ?? _mimeTypeFor(file?.extension),
+      onGenerated: () => debugPrint('INDEXING COMPLETE: document=$sourceId'),
+    ).timeout(const Duration(minutes: 4));
+    debugPrint('FIRESTORE UPDATED: document=$sourceId');
   }
 
   String _mimeTypeFor(String? extension) =>
@@ -405,25 +553,6 @@ class KnowledgeEngine {
         'md' => 'text/markdown',
         _ => 'application/octet-stream',
       };
-
-  Future<void> _prepareDocumentStudyCounts(String sourceId) async {
-    final jobs = <String, Future<Map<String, dynamic>> Function()>{
-      'flashcards': () =>
-          generateFlashcards(topicId: sourceId, sourceIds: [sourceId]),
-      'quiz': () => generateQuiz(topicId: sourceId, sourceIds: [sourceId]),
-      'summary': () =>
-          generateSummary(topicId: sourceId, sourceIds: [sourceId]),
-      'mind_map': () =>
-          generateMindMap(topicId: sourceId, sourceIds: [sourceId]),
-    };
-    await Future.wait(jobs.entries.map((job) async {
-      try {
-        await job.value();
-      } catch (_) {
-        debugPrint('${job.key} pre-generation did not complete.');
-      }
-    }));
-  }
 
   Future<Map<String, dynamic>> _generateUncached(
       {required String task,

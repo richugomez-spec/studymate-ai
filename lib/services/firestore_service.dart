@@ -49,7 +49,7 @@ final userChatSessionsStreamProvider =
 ///
 /// Encapsulates all Firestore CRUD operations and data synchronization:
 /// - Users (/users)
-/// - Documents (/documents)
+/// - Subject documents (/subjects/{subjectId}/documents/{documentId})
 /// - Chat Sessions & Messages (/chat_sessions/{sessionId}/messages)
 /// - Study Progress (/study_progress)
 class FirestoreService {
@@ -60,6 +60,7 @@ class FirestoreService {
   static final Map<String, (FirestoreUserModel?, DateTime)> _userCache = {};
   static final Map<String, (FirestoreStudyProgressModel?, DateTime)>
       _progressCache = {};
+  static final Map<String, Future<void>> _legacyMigrationTasks = {};
   static const Duration _cacheTtl = Duration(minutes: 5);
 
   FirestoreService({
@@ -75,7 +76,7 @@ class FirestoreService {
   CollectionReference<Map<String, dynamic>> get _usersCol =>
       _firestore.collection('users');
 
-  CollectionReference<Map<String, dynamic>> get _docsCol =>
+  CollectionReference<Map<String, dynamic>> get _legacyDocumentsCol =>
       _firestore.collection('documents');
 
   CollectionReference<Map<String, dynamic>> get _chatSessionsCol =>
@@ -90,13 +91,117 @@ class FirestoreService {
   CollectionReference<Map<String, dynamic>> get _subjectsCol =>
       _firestore.collection('subjects');
 
+  CollectionReference<Map<String, dynamic>> _subjectDocumentsCol(
+          String subjectId) =>
+      _subjectsCol.doc(subjectId).collection('documents');
+
+  DocumentReference<Map<String, dynamic>> _subjectDocumentRef(
+          String subjectId, String documentId) =>
+      _subjectDocumentsCol(subjectId).doc(documentId);
+
   /// Subjects are user-owned workspace roots. Legacy text-only subject names
   /// remain readable while new uploads use stable subject IDs.
   Stream<List<Map<String, dynamic>>> streamSubjects(String ownerId) =>
-      _subjectsCol.where('ownerId', isEqualTo: ownerId).snapshots().map(
-            (snapshot) =>
-                snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList(),
-          );
+      Stream<void>.fromFuture(migrateLegacyRootDocuments(ownerId)).asyncExpand(
+        (_) => _subjectsCol
+            .where('ownerId', isEqualTo: ownerId)
+            .snapshots()
+            .map((snapshot) => snapshot.docs
+                .map((d) => {'id': d.id, ...d.data()})
+                .toList()),
+      );
+
+  /// Moves existing root-level document records into their owning subject.
+  /// All ongoing reads and writes use subjects/{subjectId}/documents.
+  Future<void> migrateLegacyRootDocuments([String? ownerId]) async {
+    final uid = ownerId ?? currentUserId;
+    if (uid == null) return;
+    final active = _legacyMigrationTasks[uid];
+    if (active != null) {
+      await active;
+      return;
+    }
+    final task = _migrateLegacyRootDocuments(uid);
+    _legacyMigrationTasks[uid] = task;
+    try {
+      await task;
+    } finally {
+      if (identical(_legacyMigrationTasks[uid], task)) {
+        _legacyMigrationTasks.remove(uid);
+      }
+    }
+  }
+
+  Future<void> _migrateLegacyRootDocuments(String uid) async {
+    final userRef = _usersCol.doc(uid);
+    final user = await userRef.get();
+    if (user.data()?['legacyDocumentsMigratedAt'] != null) return;
+
+    final legacy = await _legacyDocumentsCol
+        .where('ownerId', isEqualTo: uid)
+        .get();
+    final subjects = await _subjectsCol.where('ownerId', isEqualTo: uid).get();
+    final byId = <String, DocumentReference<Map<String, dynamic>>>{
+      for (final subject in subjects.docs) subject.id: subject.reference,
+    };
+    final byName = <String, DocumentReference<Map<String, dynamic>>>{
+      for (final subject in subjects.docs)
+        (subject.data()['name'] as String? ?? '').trim().toLowerCase():
+            subject.reference,
+    };
+
+    for (var offset = 0; offset < legacy.docs.length; offset += 150) {
+      final batch = _firestore.batch();
+      for (final oldDoc in legacy.docs.skip(offset).take(150)) {
+        final data = oldDoc.data();
+        final subjectName = (data['subject'] as String? ?? 'General').trim();
+        var subjectRef = byId[data['subjectId']?.toString() ?? ''];
+        subjectRef ??= byName[subjectName.toLowerCase()];
+        if (subjectRef == null) {
+          subjectRef = _subjectsCol.doc();
+          batch.set(subjectRef, {
+            'ownerId': uid,
+            'name': subjectName.isEmpty ? 'General' : subjectName,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+          byId[subjectRef.id] = subjectRef;
+          byName[subjectName.toLowerCase()] = subjectRef;
+        }
+
+        final priorStatus = data['status']?.toString() ?? '';
+        final priorUploadStatus = data['uploadStatus']?.toString() ?? '';
+        final settled = priorStatus == 'indexed' ||
+            priorUploadStatus == 'completed';
+        final hasStorage =
+            (data['downloadUrl'] ?? '').toString().isNotEmpty;
+        batch.set(_subjectDocumentRef(subjectRef.id, oldDoc.id), {
+          ...data,
+          'subjectId': subjectRef.id,
+          'status': settled
+              ? 'indexed'
+              : hasStorage
+                  ? 'index_error'
+                  : priorUploadStatus == 'cancelled'
+                      ? 'cancelled'
+                      : 'upload_error',
+          'uploadStatus': settled
+              ? 'completed'
+              : priorUploadStatus == 'cancelled'
+                  ? 'cancelled'
+                  : 'failed',
+          if (!settled)
+            'indexError': 'Legacy upload processing did not finish. Please retry.',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        batch.delete(oldDoc.reference);
+      }
+      await batch.commit();
+    }
+    await userRef.set({
+      'legacyDocumentsMigratedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
 
   Stream<List<FirestoreChatSessionModel>> streamUserChatSessions(
           String ownerId) =>
@@ -112,35 +217,20 @@ class FirestoreService {
     final clean = name.trim();
     if (uid == null) throw StateError('Sign in to create a subject.');
     if (clean.isEmpty) throw ArgumentError('Subject name is required.');
+    await migrateLegacyRootDocuments(uid);
+    final existing = await _subjectsCol.where('ownerId', isEqualTo: uid).get();
+    for (final subject in existing.docs) {
+      if ((subject.data()['name'] as String? ?? '').trim().toLowerCase() ==
+          clean.toLowerCase()) {
+        return subject.id;
+      }
+    }
     final ref = await _subjectsCol.add({
       'ownerId': uid,
       'name': clean,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
-    // Adopt legacy items that predate subject IDs when the user creates a
-    // subject with the same name.
-    final legacyItems = await Future.wait([
-      _docsCol.where('ownerId', isEqualTo: uid).get(),
-      _knowledgeCol.where('ownerId', isEqualTo: uid).get(),
-    ]);
-    final updates = <Future<void>>[
-      ...legacyItems[0]
-          .docs
-          .where((d) =>
-              d.data()['subjectId'] == null &&
-              (d.data()['subject'] as String? ?? '').toLowerCase() ==
-                  clean.toLowerCase())
-          .map((d) => d.reference.update({'subjectId': ref.id})),
-      ...legacyItems[1]
-          .docs
-          .where((d) =>
-              d.data()['subjectId'] == null &&
-              (d.data()['subject'] as String? ?? '').toLowerCase() ==
-                  clean.toLowerCase())
-          .map((d) => d.reference.update({'subjectId': ref.id})),
-    ];
-    await Future.wait(updates);
     return ref.id;
   }
 
@@ -174,11 +264,112 @@ class FirestoreService {
     }, SetOptions(merge: true));
   }
 
+  String newSubjectDocumentId(String subjectId) =>
+      _subjectDocumentsCol(subjectId).doc().id;
+
+  Future<void> createDocumentRecord({
+    required String documentId,
+    required String subjectId,
+    required String title,
+    required String fileType,
+    required int byteSize,
+    required String storagePath,
+    required String subject,
+    String folderId = '',
+    String topic = '',
+    String subtopic = '',
+    String notes = '',
+    List<String> tags = const [],
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to upload sources.');
+    if (subjectId.trim().isEmpty) {
+      throw ArgumentError('Choose a subject before uploading.');
+    }
+    await migrateLegacyRootDocuments(uid);
+    final subjectSnapshot = await _subjectsCol.doc(subjectId).get();
+    if (subjectSnapshot.data()?['ownerId'] != uid) {
+      throw StateError('The selected subject is not available.');
+    }
+    if (folderId.isNotEmpty) {
+      final folder = await _knowledgeCol.doc(folderId).get();
+      final folderData = folder.data();
+      if (folderData?['ownerId'] != uid ||
+          folderData?['kind'] != 'folder' ||
+          folderData?['subjectId'] != subjectId) {
+        throw StateError('The selected folder is not in this subject.');
+      }
+    }
+    final subjectName =
+        subjectSnapshot.data()?['name']?.toString() ?? subject;
+    final now = FieldValue.serverTimestamp();
+    final documentRef = _subjectDocumentRef(subjectId, documentId);
+    final batch = _firestore.batch();
+    batch.set(documentRef, {
+      'title': title,
+      'ownerId': uid,
+      'fileName': title,
+      'fileType': fileType,
+      'byteSize': byteSize,
+      'storagePath': storagePath,
+      'downloadUrl': '',
+      'uploadedAt': now,
+      'status': 'queued',
+      'uploadStatus': 'queued',
+      'subject': subjectName,
+      'subjectId': subjectId,
+      'folderId': folderId,
+      'topic': topic,
+      'subtopic': subtopic,
+      'notes': notes,
+      'tags': tags,
+      'indexedAt': null,
+      'createdAt': now,
+      'updatedAt': now,
+    });
+    batch.set(_usersCol.doc(uid), {
+      'documentsUploaded': FieldValue.increment(1),
+      'lastLogin': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await batch.commit().timeout(const Duration(seconds: 30));
+  }
+
+  Future<FirestoreDocumentModel?> getSubjectDocument(
+      String subjectId, String documentId) async {
+    final uid = currentUserId;
+    if (uid == null) return null;
+    final snapshot = await _subjectDocumentRef(subjectId, documentId).get();
+    final data = snapshot.data();
+    if (data == null || data['ownerId'] != uid) return null;
+    return FirestoreDocumentModel.fromMap(data, snapshot.id);
+  }
+
+  Future<void> updateDocumentPipelineState({
+    required String subjectId,
+    required String documentId,
+    required String status,
+    String? uploadStatus,
+    String? downloadUrl,
+    String? error,
+  }) async {
+    await _subjectDocumentRef(subjectId, documentId).update({
+      'status': status,
+      if (uploadStatus != null) 'uploadStatus': uploadStatus,
+      if (downloadUrl != null) ...{
+        'downloadUrl': downloadUrl,
+        'fileUrl': downloadUrl,
+      },
+      if (error != null) 'indexError': error,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   Future<void> renameSubject(String subjectId, String name) async {
     final clean = name.trim();
     if (clean.isEmpty) throw ArgumentError('Subject name is required.');
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to rename a subject.');
+    await migrateLegacyRootDocuments(uid);
     final subjectRef = _subjectsCol.doc(subjectId);
     final subject = await subjectRef.get();
     if (subject.data()?['ownerId'] != uid) {
@@ -189,9 +380,8 @@ class FirestoreService {
       'updatedAt': FieldValue.serverTimestamp(),
     });
     await Future.wait([
-      _docsCol
+      _subjectDocumentsCol(subjectId)
           .where('ownerId', isEqualTo: uid)
-          .where('subjectId', isEqualTo: subjectId)
           .get()
           .then((s) => Future.wait(
               s.docs.map((d) => d.reference.update({'subject': clean})))),
@@ -207,13 +397,14 @@ class FirestoreService {
   Future<void> deleteSubject(String subjectId) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to delete a subject.');
+    await migrateLegacyRootDocuments(uid);
     final subjectRef = _subjectsCol.doc(subjectId);
     final subject = await subjectRef.get();
     if (subject.data()?['ownerId'] != uid) {
       throw StateError('Subject is not available.');
     }
     final snapshots = await Future.wait([
-      _docsCol.where('ownerId', isEqualTo: uid).get(),
+      _subjectDocumentsCol(subjectId).where('ownerId', isEqualTo: uid).get(),
       _knowledgeCol.where('ownerId', isEqualTo: uid).get(),
       _chatSessionsCol.where('ownerId', isEqualTo: uid).get(),
       _usersCol.doc(uid).collection('generation_cache').get(),
@@ -236,12 +427,7 @@ class FirestoreService {
             folderIds.add(item.id)) changed = true;
       }
     }
-    final subjectDocs = docs.where((doc) {
-      final data = doc.data();
-      return data['subjectId'] == subjectId ||
-          folderIds.contains(data['subjectId']) ||
-          folderIds.contains(data['folderId']);
-    }).toList();
+    final subjectDocs = docs;
     final documentIds = subjectDocs.map((doc) => doc.id).toSet();
     final subjectItems = knowledge.where((item) {
       final data = item.data();
@@ -274,46 +460,25 @@ class FirestoreService {
       ...subjectItems.map((item) => item.reference),
       ...staleCache.map((cache) => cache.reference),
     ]);
-    await _usersCol.doc(uid).set({
+    final user = await _usersCol.doc(uid).get();
+    final batch = _firestore.batch();
+    batch.set(_usersCol.doc(uid), {
       'documentsUploaded': FieldValue.increment(-subjectDocs.length),
-      if ((await _usersCol.doc(uid).get()).data()?['activeSubjectId'] ==
-          subjectId)
-        'activeSubjectId': '',
+      if (user.data()?['activeSubjectId'] == subjectId) 'activeSubjectId': '',
     }, SetOptions(merge: true));
-    await subjectRef.delete();
+    batch.delete(subjectRef);
+    await batch.commit();
   }
 
   Future<List<FirestoreDocumentModel>> getSubjectDocuments(
       String subjectId) async {
     final uid = currentUserId;
     if (uid == null) return const [];
-    final snapshots = await Future.wait([
-      _docsCol.where('ownerId', isEqualTo: uid).get(),
-      _knowledgeCol.where('ownerId', isEqualTo: uid).get(),
-    ]);
-    final knowledge = snapshots[1].docs;
-    final folderIds = <String>{
-      for (final item in knowledge)
-        if (item.data()['kind'] == 'folder' &&
-            (item.data()['subjectId'] == subjectId ||
-                item.data()['parentId'] == subjectId))
-          item.id,
-    };
-    var changed = true;
-    while (changed) {
-      changed = false;
-      for (final item in knowledge) {
-        if (item.data()['kind'] == 'folder' &&
-            folderIds.contains(item.data()['parentId']) &&
-            folderIds.add(item.id)) changed = true;
-      }
-    }
-    return snapshots[0]
-        .docs
-        .where((doc) =>
-            doc.data()['subjectId'] == subjectId ||
-            folderIds.contains(doc.data()['subjectId']) ||
-            folderIds.contains(doc.data()['folderId']))
+    await migrateLegacyRootDocuments(uid);
+    final documents = await _subjectDocumentsCol(subjectId)
+        .where('ownerId', isEqualTo: uid)
+        .get();
+    return documents.docs
         .map((doc) => FirestoreDocumentModel.fromMap(doc.data(), doc.id))
         .toList();
   }
@@ -325,13 +490,13 @@ class FirestoreService {
   }) async {
     final uid = ownerId ?? currentUserId;
     if (uid == null) return const [];
+    await migrateLegacyRootDocuments(uid);
     late final List<Map<String, dynamic>> documents;
     late final List<Map<String, dynamic>> notes;
     if (sourceIds.isEmpty && subjectId != null && subjectId.isNotEmpty) {
       final root = await Future.wait([
-        _docsCol
+        _subjectDocumentsCol(subjectId)
             .where('ownerId', isEqualTo: uid)
-            .where('subjectId', isEqualTo: subjectId)
             .get(),
         _knowledgeCol
             .where('ownerId', isEqualTo: uid)
@@ -366,17 +531,10 @@ class FirestoreService {
         frontier = next;
       }
       if (folderIds.isNotEmpty) {
-        final nested = await Future.wait([
-          _queryIn(_docsCol, 'subjectId', folderIds, ownerId: uid),
-          _queryIn(_docsCol, 'folderId', folderIds, ownerId: uid),
-          _queryIn(_knowledgeCol, 'subjectId', folderIds, ownerId: uid),
-        ]);
-        for (final doc in [...nested[0], ...nested[1]]) {
-          if (doc.data()['ownerId'] == uid) {
-            docMap[doc.id] = {'id': doc.id, ...doc.data()};
-          }
-        }
-        for (final item in nested[2]) {
+        final nested = await _queryIn(
+            _knowledgeCol, 'subjectId', folderIds,
+            ownerId: uid);
+        for (final item in nested) {
           if (item.data()['ownerId'] == uid) {
             noteMap[item.id] = {'id': item.id, ...item.data()};
           }
@@ -388,19 +546,27 @@ class FirestoreService {
       documents = const [];
       notes = const [];
     } else {
-      final selected = await Future.wait(sourceIds.map((id) => Future.wait([
-            _docsCol.doc(id).get(),
-            _knowledgeCol.doc(id).get(),
-          ])));
+      final selected = await Future.wait(sourceIds.map((id) async {
+        final Future<DocumentSnapshot<Map<String, dynamic>>?> documentFuture =
+            subjectId != null && subjectId.isNotEmpty
+                ? _subjectDocumentRef(subjectId, id).get()
+                : Future.value(null);
+        final Future<DocumentSnapshot<Map<String, dynamic>>?> noteFuture =
+            _knowledgeCol.doc(id).get();
+        return Future.wait<DocumentSnapshot<Map<String, dynamic>>?>(
+            [documentFuture, noteFuture]);
+      }));
       documents = [];
       notes = [];
       for (final pair in selected) {
         final document = pair[0];
         final note = pair[1];
-        if (document.exists && document.data()?['ownerId'] == uid) {
+        if (document != null &&
+            document.exists &&
+            document.data()?['ownerId'] == uid) {
           documents.add({'id': document.id, ...document.data()!});
         }
-        if (note.exists && note.data()?['ownerId'] == uid) {
+        if (note != null && note.exists && note.data()?['ownerId'] == uid) {
           notes.add({'id': note.id, ...note.data()!});
         }
       }
@@ -573,7 +739,9 @@ class FirestoreService {
       return;
     await ref
         .update({'title': clean, 'updatedAt': FieldValue.serverTimestamp()});
-    final docs = await _docsCol
+    final subjectId = folder.data()?['subjectId']?.toString() ?? '';
+    if (subjectId.isEmpty) return;
+    final docs = await _subjectDocumentsCol(subjectId)
         .where('ownerId', isEqualTo: uid)
         .where('folderId', isEqualTo: folderId)
         .get();
@@ -588,9 +756,11 @@ class FirestoreService {
     final folder = await _knowledgeCol.doc(folderId).get();
     if (folder.data()?['ownerId'] != uid || folder.data()?['kind'] != 'folder')
       return;
-    await _docsCol.doc(documentId).update({
+    final subjectId = folder.data()?['subjectId']?.toString() ?? '';
+    if (subjectId.isEmpty) return;
+    await _subjectDocumentRef(subjectId, documentId).update({
       'folderId': folderId,
-      'subjectId': folder.data()?['subjectId'] ?? folderId,
+      'subjectId': subjectId,
       'subject': folder.data()?['subject'] ?? folderName,
       'updatedAt': FieldValue.serverTimestamp(),
     });
@@ -611,15 +781,18 @@ class FirestoreService {
         in children.docs.where((d) => d.data()['kind'] == 'folder')) {
       await deleteWorkspaceFolder(child.id);
     }
-    final docs = await _docsCol
+    final subjectId = data?['subjectId']?.toString() ?? '';
+    final docs = subjectId.isEmpty
+        ? null
+        : await _subjectDocumentsCol(subjectId)
         .where('ownerId', isEqualTo: uid)
         .where('folderId', isEqualTo: folderId)
         .get();
-    final documentIds = docs.docs.map((d) => d.id).toSet();
-    for (final doc in docs.docs) {
+    final documentIds = docs?.docs.map((d) => d.id).toSet() ?? <String>{};
+    for (final doc in docs?.docs ?? const []) {
       await doc.reference.update({
         'folderId': '',
-        'subjectId': data?['subjectId'] ?? '',
+        'subjectId': subjectId,
         'subject': data?['subject'] ?? 'General',
       });
     }
@@ -650,11 +823,11 @@ class FirestoreService {
 
   Future<void> saveKnowledgeIndex(String documentId, Map<String, dynamic> index,
       {required String sourceText,
-      String sourceKind = 'document',
-      String subjectId = ''}) async {
+      required String subjectId,
+      String sourceKind = 'document'}) async {
     final target = sourceKind == 'note'
         ? _knowledgeCol.doc(documentId)
-        : _docsCol.doc(documentId);
+        : _subjectDocumentRef(subjectId, documentId);
     await target.update({
       'structuredKnowledge': index,
       'extractedText': sourceText.length > 100000
@@ -675,46 +848,44 @@ class FirestoreService {
     });
   }
 
-  Future<void> setDocumentStatus(String documentId, String status) =>
-      _docsCol.doc(documentId).update({
-        'status': status,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-  Future<void> saveExtractedText(String documentId, String text) =>
-      _docsCol.doc(documentId).update({
+  Future<void> saveExtractedText(
+          String subjectId, String documentId, String text) =>
+      _subjectDocumentRef(subjectId, documentId).update({
         'extractedText':
             text.length > 100000 ? text.substring(0, 100000) : text,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-  Future<void> updateDocumentCounts(String documentId,
+  Future<void> updateDocumentCounts(String subjectId, String documentId,
       {int? concepts, int? flashcards, int? quizzes}) async {
-    try {
-      await _docsCol.doc(documentId).update({
-        if (concepts != null) 'conceptCount': concepts,
-        if (flashcards != null) 'flashcardCount': flashcards,
-        if (quizzes != null) 'quizCount': quizzes,
-      });
-    } catch (error) {
-      debugPrint('Study asset counters could not be updated.');
-    }
+    await _subjectDocumentRef(subjectId, documentId).update({
+      if (concepts != null) 'conceptCount': concepts,
+      if (flashcards != null) 'flashcardCount': flashcards,
+      if (quizzes != null) 'quizCount': quizzes,
+    });
   }
 
-  Future<void> renameDocument(String documentId, String title) async {
-    await _docsCol.doc(documentId).update({
+  Future<void> renameDocument(
+      String subjectId, String documentId, String title) async {
+    await _subjectDocumentRef(subjectId, documentId).update({
       'title': title,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
 
-  Future<void> setDocumentIndexError(String documentId, String error) async {
-    await _docsCol.doc(documentId).set({
-      'uploadStatus': 'failed',
-      'status': 'index_error',
-      'indexError': error,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+  Future<void> failDocumentPipeline({
+    required String subjectId,
+    required String documentId,
+    required String error,
+    String status = 'index_error',
+  }) async {
+    await updateDocumentPipelineState(
+      subjectId: subjectId,
+      documentId: documentId,
+      status: status,
+      uploadStatus: 'failed',
+      error: error,
+    );
   }
 
   Future<void> cacheGeneration(String key, Map<String, dynamic> result,
@@ -829,42 +1000,50 @@ class FirestoreService {
     }
   }
 
-  // ── 2. Documents Collection (/documents/{docId}) ───────────────────────────
+  // ── 2. Subject Documents ───────────────────────────────────────────────────
 
   /// Permanently delete a document from Firestore and decrement user's count
   Future<void> deleteDocument({
     required String documentId,
+    required String subjectId,
     required String ownerId,
   }) async {
     try {
+      final documentRef = _subjectDocumentRef(subjectId, documentId);
+      final existing = await documentRef.get();
+      if (existing.data()?['ownerId'] != ownerId) {
+        throw StateError('Document is not available.');
+      }
+      final related = await Future.wait<dynamic>([
+        _chatSessionsCol
+            .where('ownerId', isEqualTo: ownerId)
+            .where('documentId', isEqualTo: documentId)
+            .get(),
+        _knowledgeCol
+            .where('ownerId', isEqualTo: ownerId)
+            .where('sourceId', isEqualTo: documentId)
+            .get(),
+        _usersCol.doc(ownerId).collection('generation_cache').get(),
+      ]);
       final batch = _firestore.batch();
-      batch.delete(_docsCol.doc(documentId));
+      batch.delete(documentRef);
       batch.set(
         _usersCol.doc(ownerId),
         {'documentsUploaded': FieldValue.increment(-1)},
         SetOptions(merge: true),
       );
       await batch.commit();
-      final relatedSessions = await _chatSessionsCol
-          .where('ownerId', isEqualTo: ownerId)
-          .where('documentId', isEqualTo: documentId)
-          .get();
-      for (final session in relatedSessions.docs) {
+      for (final session in related[0].docs) {
         await _deleteCollection(session.reference.collection('messages'));
         await session.reference.delete();
       }
-      final relatedNotes = await _knowledgeCol
-          .where('ownerId', isEqualTo: ownerId)
-          .where('sourceId', isEqualTo: documentId)
-          .get();
       await _deleteDocuments(
-          relatedNotes.docs.map((d) => d.reference).toList());
-      final cache =
-          await _usersCol.doc(ownerId).collection('generation_cache').get();
-      final staleCache = cache.docs.where((d) {
+          related[1].docs.map((d) => d.reference).toList());
+      final staleCache = related[2].docs.where((d) {
         final result = d.data()['result'];
         if (result is! Map || result['sources'] is! List) return false;
-        return (result['sources'] as List)
+        return d.data()['scopeId'] == subjectId ||
+            (result['sources'] as List)
             .any((s) => s is Map && s['id'] == documentId);
       });
       await _deleteDocuments(staleCache.map((d) => d.reference).toList());
@@ -875,9 +1054,9 @@ class FirestoreService {
   }
 
   /// Update the lastOpened timestamp on a document
-  Future<void> updateLastOpened(String documentId) async {
+  Future<void> updateLastOpened(String subjectId, String documentId) async {
     try {
-      await _docsCol.doc(documentId).update({
+      await _subjectDocumentRef(subjectId, documentId).update({
         'lastOpened': Timestamp.fromDate(DateTime.now()),
       });
     } catch (e) {
@@ -887,18 +1066,90 @@ class FirestoreService {
 
   /// Stream of user's uploaded documents
   Stream<List<FirestoreDocumentModel>> streamUserDocuments(String ownerId) {
-    return _docsCol
-        .where('ownerId', isEqualTo: ownerId)
-        .snapshots()
-        .map((snapshot) {
-      final documents = snapshot.docs
-          .map((doc) => FirestoreDocumentModel.fromMap(doc.data(), doc.id))
-          .toList();
-      documents.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
-      return documents;
-    }).handleError((e) {
+    return Stream<void>.fromFuture(migrateLegacyRootDocuments(ownerId))
+        .asyncExpand((_) => _firestore
+            .collectionGroup('documents')
+            .where('ownerId', isEqualTo: ownerId)
+            .snapshots()
+            .map((snapshot) {
+              final documents = snapshot.docs
+                  .map((doc) =>
+                      FirestoreDocumentModel.fromMap(doc.data(), doc.id))
+                  .toList();
+              documents.sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
+              return documents;
+            }))
+        .handleError((e) {
       debugPrint('FirestoreService.streamUserDocuments error: $e');
     });
+  }
+
+  Future<void> recoverStaleUploads({
+    Duration staleAfter = const Duration(minutes: 10),
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    await migrateLegacyRootDocuments(uid);
+    final snapshot = await _firestore
+        .collectionGroup('documents')
+        .where('ownerId', isEqualTo: uid)
+        .get();
+    final cutoff = DateTime.now().subtract(staleAfter);
+    final completedRepairs =
+        <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    final stale = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    for (final document in snapshot.docs) {
+      final data = document.data();
+      final uploadStatus = data['uploadStatus']?.toString() ?? '';
+      if (data['status'] == 'indexed') {
+        if (uploadStatus != 'completed') completedRepairs.add(document);
+        continue;
+      }
+      if (!const {'queued', 'uploading', 'uploaded'}.contains(uploadStatus)) {
+        continue;
+      }
+      final value = data['updatedAt'] ??
+          data['uploadStartedAt'] ??
+          data['createdAt'] ??
+          data['uploadedAt'];
+      final started = value is Timestamp ? value.toDate() : null;
+      if (started == null || started.isBefore(cutoff)) stale.add(document);
+    }
+    for (var offset = 0;
+        offset < completedRepairs.length + stale.length;
+        offset += 200) {
+      final pending = <Future<void>>[];
+      for (final document in completedRepairs.skip(offset).take(200)) {
+        final subjectId = document.reference.parent.parent?.id;
+        if (subjectId == null) {
+          throw StateError('Indexed document is outside a subject.');
+        }
+        pending.add(updateDocumentPipelineState(
+          subjectId: subjectId,
+          documentId: document.id,
+          status: 'indexed',
+          uploadStatus: 'completed',
+        ));
+      }
+      final staleOffset = offset <= completedRepairs.length
+          ? 0
+          : offset - completedRepairs.length;
+      for (final document in stale.skip(staleOffset).take(200 - pending.length)) {
+        final subjectId = document.reference.parent.parent?.id;
+        if (subjectId == null) {
+          throw StateError('Stale document is outside a subject.');
+        }
+        final hasStorage =
+            (document.data()['downloadUrl'] ?? '').toString().isNotEmpty;
+        pending.add(failDocumentPipeline(
+          subjectId: subjectId,
+          documentId: document.id,
+          error: 'Upload processing did not finish. Please retry.',
+          status: hasStorage ? 'index_error' : 'upload_error',
+        ));
+      }
+      await Future.wait(pending);
+    }
   }
 
   // ── 3. Chat Sessions & Messages ────────────────────────────────────────────

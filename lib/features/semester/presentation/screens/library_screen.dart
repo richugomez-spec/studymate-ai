@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -68,33 +67,27 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final Set<String> _selectedDocIds = {};
   final Set<String> _deletingDocIds = {};
   String _viewMode = 'grid'; // grid | list
-  Timer? _uploadRecoveryTimer;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      _recoverStaleUploads();
-      _uploadRecoveryTimer = Timer.periodic(
-          const Duration(minutes: 5), (_) => _recoverStaleUploads());
+      await _recoverStaleUploads();
       final id = await ref.read(firestoreServiceProvider).getActiveSubjectId();
       if (!mounted || id == null || id.isEmpty) return;
       ref.read(activeKnowledgeSubjectIdProvider.notifier).state = id;
     });
   }
 
-  void _recoverStaleUploads() {
-    unawaited(ref
-        .read(firebaseUploadServiceProvider)
-        .recoverStaleUploads()
-        .catchError((Object error) {
+  Future<void> _recoverStaleUploads() async {
+    try {
+      await ref.read(firestoreServiceProvider).recoverStaleUploads();
+    } catch (error) {
       debugPrint('Stale upload recovery did not complete: $error');
-    }));
+    }
   }
 
   @override
   void dispose() {
-    _uploadRecoveryTimer?.cancel();
     super.dispose();
   }
 
@@ -334,7 +327,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         .toList();
   }
 
-  void _openSubject(Map<String, dynamic> subject) {
+  Future<void> _openSubject(Map<String, dynamic> subject) async {
     final id = subject['id'] as String;
     final name = subject['name']?.toString() ?? 'Subject';
     final userId = ref.read(currentUserProvider)?.id ??
@@ -365,7 +358,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (!ids.contains(ref.read(activeDocumentProvider)?.id)) {
       ref.read(activeDocumentProvider.notifier).clearDocument();
     }
-    unawaited(ref.read(firestoreServiceProvider).setActiveSubjectId(id));
+    await ref.read(firestoreServiceProvider).setActiveSubjectId(id);
   }
 
   void _navigateSubjectRoot() {
@@ -381,7 +374,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
   }
 
-  void _navigateLibraryRoot() {
+  Future<void> _navigateLibraryRoot() async {
     setState(() {
       _activeSubjectId = null;
       _activeSubjectName = 'General';
@@ -395,10 +388,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = null;
     ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
     ref.read(activeDocumentProvider.notifier).clearDocument();
-    unawaited(ref.read(firestoreServiceProvider).setActiveSubjectId(null));
+    await ref.read(firestoreServiceProvider).setActiveSubjectId(null);
   }
 
-  void _onDocTap(FirestoreDocumentModel doc) {
+  Future<void> _onDocTap(FirestoreDocumentModel doc) async {
     UploadedDocument active;
     if (doc.documentData != null && doc.documentData!.isNotEmpty) {
       try {
@@ -410,8 +403,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       active = _buildFallback(doc);
     }
     ref.read(activeDocumentProvider.notifier).setDocument(active);
-    // Update lastOpened in Firestore (fire-and-forget)
-    ref.read(firestoreServiceProvider).updateLastOpened(doc.id);
+    await ref
+        .read(firestoreServiceProvider)
+        .updateLastOpened(doc.subjectId, doc.id);
   }
 
   void _onDocSelect(String docId) {
@@ -426,7 +420,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         List<String>.unmodifiable(_selectedDocIds);
   }
 
-  Future<void> _onDocDelete(FirestoreDocumentModel doc, String userId) async {
+  Future<void> _onDocDelete(FirestoreDocumentModel doc, String _) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -461,17 +455,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (confirm != true) return;
     setState(() => _deletingDocIds.add(doc.id));
     try {
-      await ref
-          .read(firebaseUploadServiceProvider)
-          .deleteStoredDocument(doc.storagePath);
-      await ref.read(firestoreServiceProvider).deleteDocument(
+      await ref.read(knowledgeEngineProvider).deleteDocument(
+            subjectId: doc.subjectId,
             documentId: doc.id,
-            ownerId: userId.isNotEmpty ? userId : doc.ownerId,
           );
-      KnowledgeEngine.invalidateSubjectContext(doc.subjectId,
-          ownerId: userId.isNotEmpty
-              ? userId
-              : ref.read(firestoreServiceProvider).currentUserId);
       _selectedDocIds.remove(doc.id);
       ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
           List.unmodifiable(_selectedDocIds);
@@ -514,7 +501,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
     controller.dispose();
     if (title == null || title.isEmpty) return;
-    await ref.read(firestoreServiceProvider).renameDocument(doc.id, title);
+    await ref
+        .read(firestoreServiceProvider)
+        .renameDocument(doc.subjectId, doc.id, title);
     KnowledgeEngine.invalidateSubjectContext(doc.subjectId,
         ownerId: ref.read(firestoreServiceProvider).currentUserId);
   }
@@ -532,8 +521,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               PlatformFile(
                   name: doc.fileName, size: bytes.length, bytes: bytes),
             );
-      } catch (_) {
-        return '';
+      } catch (error) {
+        debugPrint('Document preview could not be loaded: $error');
+        rethrow;
       }
     }();
     await showDialog<void>(
@@ -647,7 +637,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             replacementFile: replacementFile,
           );
     } catch (error) {
-      debugPrint('Document re-indexing did not complete.');
+      debugPrint('Document re-indexing did not complete: $error');
     }
   }
 
@@ -776,39 +766,24 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ));
     if (confirm != true) return;
     final id = subject['id'] as String;
-    final firestore = ref.read(firestoreServiceProvider);
-    KnowledgeEngine.invalidateSubjectContext(id,
-        ownerId: firestore.currentUserId);
     final deletingActiveSubject = _activeSubjectId == id;
-    if (deletingActiveSubject && mounted) {
-      setState(() {
-        _activeSubjectId = null;
-        _activeSubjectName = 'General';
-        _activeFolderId = null;
-        _activeFolderName = null;
-        _activeFolderParentId = null;
-        _selectedDocIds.clear();
-      });
-      ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = null;
-      ref.read(activeKnowledgeSubjectIdProvider.notifier).state = null;
-      ref.read(activeKnowledgeSubjectNameProvider.notifier).state = null;
-      ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
-      ref.read(activeDocumentProvider.notifier).clearDocument();
-      unawaited(firestore.setActiveSubjectId(null));
-    }
     try {
-      final docs = await firestore.getSubjectDocuments(id);
-      final upload = ref.read(firebaseUploadServiceProvider);
-      await Future.wait(docs.map((doc) async {
-        if (doc.storagePath.isEmpty) return;
-        try {
-          await upload.deleteStoredDocument(doc.storagePath);
-        } catch (error) {
-          if (error.toString().contains('object-not-found')) return;
-          rethrow;
-        }
-      }));
-      await firestore.deleteSubject(id);
+      await ref.read(knowledgeEngineProvider).deleteSubject(id);
+      if (deletingActiveSubject && mounted) {
+        setState(() {
+          _activeSubjectId = null;
+          _activeSubjectName = 'General';
+          _activeFolderId = null;
+          _activeFolderName = null;
+          _activeFolderParentId = null;
+          _selectedDocIds.clear();
+        });
+        ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = null;
+        ref.read(activeKnowledgeSubjectIdProvider.notifier).state = null;
+        ref.read(activeKnowledgeSubjectNameProvider.notifier).state = null;
+        ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
+        ref.read(activeDocumentProvider.notifier).clearDocument();
+      }
     } catch (error) {
       debugPrint('Subject cleanup did not complete: $error');
       if (mounted) {
@@ -887,20 +862,19 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           ownerId:
                               ref.read(firestoreServiceProvider).currentUserId);
                       final engine = ref.read(knowledgeEngineProvider);
-                      unawaited(() async {
-                        try {
-                          await engine.index(
-                              sourceId: noteId,
-                              sourceKind: 'note',
-                              title: noteTitle,
-                              content: noteContent,
-                              subject: noteSubject,
-                              subjectId: subjectId,
-                              topic: noteTopic);
-                        } catch (error) {
-                          debugPrint('Note indexing failed: $error');
-                        }
-                      }());
+                      try {
+                        await engine.index(
+                            sourceId: noteId,
+                            sourceKind: 'note',
+                            title: noteTitle,
+                            content: noteContent,
+                            subject: noteSubject,
+                            subjectId: subjectId,
+                            topic: noteTopic);
+                      } catch (error) {
+                        debugPrint('Note indexing failed: $error');
+                        return;
+                      }
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
                     child: const Text('Save note'))
@@ -2436,7 +2410,6 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
       {List<String>? extensions, List<PlatformFile>? selectedFiles}) async {
     final processingService = ref.read(documentProcessingServiceProvider);
     final knowledgeEngine = ref.read(knowledgeEngineProvider);
-    final firestore = ref.read(firestoreServiceProvider);
     final subject = _subjectController.text.trim().isEmpty
         ? 'General'
         : _subjectController.text.trim();
@@ -2464,8 +2437,10 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
         return;
       }
 
-      final subjectId =
-          widget.subjectId ?? await firestore.getOrCreateSubject(subject);
+      final subjectId = widget.subjectId;
+      if (subjectId == null || subjectId.isEmpty) {
+        throw StateError('Open a subject before uploading files.');
+      }
 
       setState(() {
         _currentStep = 'Saving sources to your workspace…';
@@ -2493,15 +2468,16 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
               notes: notes,
               tags: tags,
             );
-          } catch (_) {
+          } catch (error) {
+            debugPrint('Upload failed for ${file.name}: $error');
             return null;
           }
         }),
       );
 
       setState(() {
-        _currentStep = 'Sources saved. Indexing continues in the background.';
-        _progress = 0.35;
+        _currentStep = 'Upload and indexing complete.';
+        _progress = 1;
       });
 
       if (mounted) {
@@ -2513,7 +2489,8 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
           ));
         }
       }
-    } catch (_) {
+    } catch (error) {
+      debugPrint('Upload workflow did not complete: $error');
       setState(() => _isProcessing = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

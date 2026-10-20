@@ -107,11 +107,10 @@ class _QuestionPaperAnalyzerScreenState
             folderId: workspaceId == subjectId ? '' : workspaceId ?? '',
             topic: 'PYQ',
             tags: const ['pyq'],
-            awaitIndexing: true,
           );
       await _analyzePaper(result.firestoreDocId, file.name);
-    } catch (_) {
-      debugPrint('Previous-year paper processing did not complete.');
+    } catch (error) {
+      debugPrint('Previous-year paper processing did not complete: $error');
       if (mounted) {
         setState(() => _error =
             'We could not process this paper. Please try another file.');
