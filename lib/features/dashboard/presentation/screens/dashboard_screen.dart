@@ -5,8 +5,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
-import '../../../../core/ai/engines/ai_engine_providers.dart';
-import '../../../../core/ai/engines/ai_learning_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -27,9 +25,6 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final userId = user?.id ?? 'guest_user';
-    final missionAsync = ref.watch(dailyLearningMissionProvider(userId));
-    final examReadinessAsync = ref.watch(examReadinessScoreProvider(userId));
     final activeDoc = ref.watch(activeDocumentProvider);
 
     return Scaffold(
@@ -127,22 +122,8 @@ class DashboardScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
 
                 // ── 2. Today's Learning Mission (Hero Card) ──────────────────
-                missionAsync.when(
-                  data: (mission) => mission != null
-                      ? _TodayLearningMissionCard(mission: mission)
-                          .animate(delay: 100.ms).fadeIn().slideY(begin: 0.05, end: 0)
-                      : const _EmptyLearningMissionCard()
-                          .animate(delay: 100.ms).fadeIn().slideY(begin: 0.05, end: 0),
-                  loading: () => Container(
-                    height: 110,
-                    decoration: BoxDecoration(
-                      color: AppColors.darkSurfaceVariant,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.darkBorderSubtle),
-                    ),
-                  ),
-                  error: (_, __) => const _EmptyLearningMissionCard(),
-                ),
+                const _EmptyLearningMissionCard()
+                    .animate(delay: 100.ms).fadeIn().slideY(begin: 0.05, end: 0),
 
                 const SizedBox(height: 24),
 
@@ -153,12 +134,8 @@ class DashboardScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
 
                 // ── 4. Today's Progress & Study Streak ──────────────────────
-                examReadinessAsync.when(
-                  data: (readiness) => _CognitiveRadarVitalsRow(readinessScore: readiness)
-                      .animate(delay: 240.ms).fadeIn().slideY(begin: 0.05, end: 0),
-                  loading: () => const _CognitiveRadarVitalsRow(readinessScore: 0.0),
-                  error: (_, __) => const _CognitiveRadarVitalsRow(readinessScore: 0.0),
-                ),
+                const _CognitiveRadarVitalsRow(readinessScore: 0.0)
+                    .animate(delay: 240.ms).fadeIn().slideY(begin: 0.05, end: 0),
 
                 const SizedBox(height: 36),
               ]),
@@ -291,151 +268,6 @@ class _StatusPill extends StatelessWidget {
 }
 
 // ── 2. Today's Learning Mission Hero Card ────────────────────────────────────
-
-class _TodayLearningMissionCard extends StatelessWidget {
-  final DailyLearningMission mission;
-
-  const _TodayLearningMissionCard({required this.mission});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.darkBorderSubtle, width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text(
-                'IN PROGRESS',
-                style: TextStyle(
-                  fontFamily: 'JetBrains Mono',
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.emerald,
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text('•', style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10)),
-              const SizedBox(width: 8),
-              Text(
-                'CORPUS 04 / ${mission.subjectName.toUpperCase()}',
-                style: const TextStyle(
-                  fontFamily: 'JetBrains Mono',
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.darkTextTertiary,
-                  letterSpacing: 0.6,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            mission.title,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
-              height: 1.35,
-              letterSpacing: -0.3,
-              color: AppColors.darkTextPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            mission.description,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 13,
-              height: 1.45,
-              color: AppColors.darkTextSecondary,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 16,
-            runSpacing: 14,
-            children: [
-              Wrap(
-                spacing: 20,
-                runSpacing: 8,
-                children: [
-                  _StitchMetric(label: 'RETENTION', value: '${mission.expectedMasteryGainPercent + 75}% Optimal'),
-                  _StitchMetric(label: 'STAGE', value: 'L-4 (${mission.estimatedMinutes} mins)'),
-                  _StitchMetric(label: 'SUBJECT', value: mission.subjectName.isNotEmpty ? mission.subjectName : 'Course Material'),
-                ],
-              ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ElevatedButton(
-                    onPressed: () {
-                      final targetId = mission.targetConcepts.isNotEmpty
-                          ? mission.targetConcepts.first.topicId
-                          : 'general';
-                      context.push(AppRoutes.quiz.replaceFirst(':topicId', targetId));
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.darkSurfaceContainerHigh,
-                      foregroundColor: AppColors.darkTextPrimary,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                        side: const BorderSide(color: AppColors.darkBorder),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          mission.callToAction.isNotEmpty ? mission.callToAction : 'Start Practice Drill',
-                          style: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.arrow_forward_rounded, size: 14),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  TextButton.icon(
-                    onPressed: () => context.push(AppRoutes.library),
-                    icon: const Icon(Icons.menu_book_outlined, size: 14, color: AppColors.darkTextSecondary),
-                    label: const Text(
-                      'Open Material',
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12,
-                        color: AppColors.darkTextSecondary,
-                      ),
-                    ),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _EmptyLearningMissionCard extends ConsumerWidget {
   const _EmptyLearningMissionCard();

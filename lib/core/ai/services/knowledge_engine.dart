@@ -209,11 +209,11 @@ class KnowledgeEngine {
   }
 
   String _stableKey(String value) {
-    var hash = 0xcbf29ce484222325;
+    var hash = 0;
     for (final unit in value.codeUnits) {
-      hash = ((hash ^ unit) * 0x100000001b3) & 0xffffffffffffffff;
+      hash = (hash * 31 + unit) & 0x7fffffff;
     }
-    return hash.toRadixString(16).padLeft(16, '0');
+    return hash.toRadixString(16).padLeft(8, '0');
   }
 
   Future<Map<String, dynamic>> generateFlashcards(
