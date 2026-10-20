@@ -37,6 +37,22 @@ class RealAIChatService {
   final Ref _ref;
   static String cleanMarkdownArtifacts(String text) => text.trim();
 
+  Stream<String> streamAI(
+      {required String prompt,
+      required List<RealChatMessage> conversationHistory,
+      String? subjectId,
+      List<String> sourceIds = const []}) {
+    final history = conversationHistory
+        .take(12)
+        .map((m) => '${m.role}: ${m.content}')
+        .join('\n');
+    return _ref.read(knowledgeEngineProvider).answerStream(
+        prompt: prompt,
+        history: history,
+        subjectId: subjectId,
+        sourceIds: sourceIds);
+  }
+
   Future<String> askAI(
       {required String prompt,
       required List<RealChatMessage> conversationHistory,

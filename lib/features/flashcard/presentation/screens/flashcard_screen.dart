@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/ai/services/knowledge_engine.dart';
+import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -77,6 +78,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     try {
       final result = await ref.read(knowledgeEngineProvider).generateFlashcards(
           topicId: widget.topicId,
+          subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
           prompt:
               'Create useful active recall cards. Return cards as a list of objects with a concise front question and a correct, clear back answer.');
       final generated = result['cards'];

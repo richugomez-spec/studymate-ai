@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,7 +47,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (ownerId != null && ownerId.isNotEmpty) {
         final session = await firestoreService.getOrCreateChatSession(
           ownerId: ownerId,
-          subjectId: activeDoc?.subjectId,
+          subjectId: activeDoc?.subjectId.isNotEmpty == true
+              ? activeDoc!.subjectId
+              : ref.read(activeKnowledgeWorkspaceIdProvider),
         );
         _currentSessionId = session.id;
 
@@ -208,16 +212,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         if (_currentSessionId == null) {
           final session = await firestoreService.getOrCreateChatSession(
             ownerId: ownerId,
-            subjectId: activeDoc?.subjectId,
+            subjectId: activeDoc?.subjectId.isNotEmpty == true
+                ? activeDoc!.subjectId
+                : ref.read(activeKnowledgeWorkspaceIdProvider),
           );
           _currentSessionId = session.id;
         }
-        await firestoreService.saveChatMessage(
+        unawaited(firestoreService.saveChatMessage(
           sessionId: _currentSessionId!,
           role: 'user',
           content: clean,
           timestamp: userMsg.timestamp,
-        );
+        ));
       } catch (e) {
         debugPrint('Firestore chat user message save notice: $e');
       }
@@ -225,12 +231,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     try {
       final chatService = ref.read(realAIChatServiceProvider);
-      final responseText = await chatService.askAI(
+      final responseBuffer = StringBuffer();
+      await for (final part in chatService.streamAI(
         prompt: clean,
         conversationHistory: _messages.where((m) => !m.isThinking).toList(),
-        subjectId: activeDoc?.subjectId,
+        subjectId: activeDoc?.subjectId.isNotEmpty == true
+            ? activeDoc!.subjectId
+            : ref.read(activeKnowledgeWorkspaceIdProvider),
         sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
-      );
+      )) {
+        responseBuffer.write(part);
+        if (mounted) {
+          setState(() {
+            final idx = _messages.indexWhere((m) => m.id == placeholderMsg.id);
+            if (idx != -1)
+              _messages[idx] = RealChatMessage(
+                  id: placeholderMsg.id,
+                  role: 'assistant',
+                  content: responseBuffer.toString(),
+                  timestamp: placeholderMsg.timestamp);
+          });
+          _scrollToBottom();
+        }
+      }
+      final responseText = responseBuffer.toString().trim();
 
       final aiTimestamp = DateTime.now();
       if (_currentSessionId != null) {

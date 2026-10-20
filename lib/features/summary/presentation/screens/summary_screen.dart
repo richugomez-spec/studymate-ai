@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/ai/services/knowledge_engine.dart';
+import '../../../../core/services/document_processing_service.dart';
 
 enum SummaryMode { short, detailed, exam, formula }
 
@@ -24,9 +25,11 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
     _generate();
   }
 
-  void _generate() =>
+  void _generate({bool forceRefresh = false}) =>
       _result = ref.read(knowledgeEngineProvider).generateSummary(
             topicId: widget.topicId,
+            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
+            forceRefresh: forceRefresh,
             prompt: switch (_mode) {
               SummaryMode.short =>
                 'Create concise study notes. Return JSON with exactly these keys: overview (string), key_takeaways (list).',
@@ -51,7 +54,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
           leading: BackButton(onPressed: () => Navigator.maybePop(context)),
           actions: [
             IconButton(
-                onPressed: () => setState(_generate),
+                onPressed: () => setState(() => _generate(forceRefresh: true)),
                 icon: const Icon(Icons.refresh))
           ]),
       body: Column(children: [

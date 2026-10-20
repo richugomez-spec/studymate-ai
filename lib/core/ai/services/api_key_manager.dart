@@ -90,6 +90,63 @@ class ApiKeyManager {
     throw const AiGenerationUnavailable();
   }
 
+  Stream<String> runStream(
+    Stream<String> Function(String apiKey, String model) request,
+  ) async* {
+    final keys = _configuredKeys()
+        .map((key) => key.trim())
+        .where((key) => key.isNotEmpty)
+        .toSet()
+        .toList();
+    if (keys.isEmpty) throw const AiGenerationUnavailable();
+    Object? lastFailure;
+    for (final model in modelFallbacks) {
+      var unsupported = false;
+      for (var offset = 0; offset < keys.length; offset++) {
+        final index = (_nextKeyIndex + offset) % keys.length;
+        final key = keys[index];
+        if (_isCoolingDown(key)) continue;
+        _nextKeyIndex = (index + 1) % keys.length;
+        for (var retry = 0; retry <= _maxRetries; retry++) {
+          var emitted = false;
+          try {
+            await for (final chunk
+                in request(key, model).timeout(_requestTimeout)) {
+              emitted = true;
+              yield chunk;
+            }
+            return;
+          } catch (error) {
+            lastFailure = error;
+            if (emitted) rethrow;
+            final failure = _classify(error);
+            if (failure == _FailureKind.quota ||
+                failure == _FailureKind.invalidKey) {
+              _cooldowns[key] = DateTime.now().add(failure == _FailureKind.quota
+                  ? const Duration(minutes: 1)
+                  : const Duration(minutes: 10));
+              break;
+            }
+            if (failure == _FailureKind.unsupportedModel) {
+              unsupported = true;
+              break;
+            }
+            if (failure == _FailureKind.transient && retry < _maxRetries) {
+              await Future<void>.delayed(
+                  Duration(milliseconds: 500 * (1 << retry)));
+              continue;
+            }
+            break;
+          }
+        }
+        if (unsupported) break;
+      }
+      if (!_hasAvailableKey(keys)) break;
+    }
+    if (lastFailure != null) debugPrint('Gemini streaming retries exhausted.');
+    throw const AiGenerationUnavailable();
+  }
+
   bool _isCoolingDown(String key) {
     final until = _cooldowns[key];
     if (until == null) return false;

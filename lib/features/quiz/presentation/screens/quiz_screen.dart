@@ -76,6 +76,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     try {
       final result = await ref.read(knowledgeEngineProvider).generateQuiz(
             topicId: widget.topicId ?? doc.id,
+            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
             prompt:
                 'Create exactly $_questionCount ${_difficulty.name} ${_quizType.name} practice questions. Return a JSON questions list. Each question must include non-empty question, options, answer, answerIndex, explanation, and conceptTitle. For non-multiple-choice formats, still provide valid options where appropriate.',
           );

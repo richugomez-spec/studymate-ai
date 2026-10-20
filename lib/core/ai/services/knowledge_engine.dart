@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -16,6 +17,7 @@ import 'web_search_service.dart';
 class KnowledgeEngine {
   KnowledgeEngine(this._ref);
   final Ref _ref;
+  static final Map<String, Future<Map<String, dynamic>>> _inFlight = {};
 
   Future<Map<String, dynamic>> generate({
     required String task,
@@ -23,6 +25,7 @@ class KnowledgeEngine {
     String? topicId,
     String? subjectId,
     List<String> sourceIds = const [],
+    bool forceRefresh = false,
     Map<String, dynamic> options = const {},
   }) async {
     final firestore = _ref.read(firestoreServiceProvider);
@@ -48,33 +51,53 @@ class KnowledgeEngine {
         ? DateTime.now().toIso8601String().substring(0, 10)
         : '';
     final cacheKey = _stableKey(
-      '${task.toLowerCase()}|${subjectId ?? ''}|${topicId ?? ''}|${scopedIds.join(',')}|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|$dateSignature',
+      '${firestore.currentUserId ?? 'guest'}|${task.toLowerCase()}|${subjectId ?? ''}|${topicId ?? ''}|${scopedIds.join(',')}|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|$dateSignature',
     );
-    final cached = await firestore.getGenerationCache(cacheKey);
+    final cached =
+        forceRefresh ? null : await firestore.getGenerationCache(cacheKey);
     if (cached != null) {
       await _updateSourceCounts(firestore, task, topicId, cached);
       return cached;
     }
 
-    final webResults = _needsWeb(prompt, relevant)
+    final pending = _inFlight[cacheKey];
+    if (pending != null) return pending;
+    final generation = _generateAndCache(
+      firestore: firestore,
+      cacheKey: cacheKey,
+      task: task,
+      prompt: prompt,
+      options: options,
+      topicId: topicId,
+      sources: relevant,
+    );
+    _inFlight[cacheKey] = generation;
+    try {
+      return await generation;
+    } finally {
+      if (identical(_inFlight[cacheKey], generation)) {
+        _inFlight.remove(cacheKey);
+      }
+    }
+  }
+
+  Future<Map<String, dynamic>> _generateAndCache({
+    required FirestoreService firestore,
+    required String cacheKey,
+    required String task,
+    required String prompt,
+    required Map<String, dynamic> options,
+    required String? topicId,
+    required List<Map<String, dynamic>> sources,
+  }) async {
+    final webResults = _needsWeb(prompt, sources)
         ? await _ref
             .read(webSearchServiceProvider)
             .search(prompt)
             .catchError((_) => <Map<String, String>>[])
         : const <Map<String, String>>[];
 
-    final sources = relevant;
-    final context = sources
-        .map((r) {
-          final type = r['kind'] ?? 'document';
-          final title = r['title'] ?? r['fileName'] ?? 'Untitled source';
-          final body = _rankedContext(r, prompt);
-          return body.isEmpty
-              ? ''
-              : '[$type: $title | ${r['subject'] ?? ''} / ${r['topic'] ?? ''}]\n$body';
-        })
-        .where((s) => s.trim().isNotEmpty)
-        .join('\n\n');
+    final context = _rankedContexts(sources, prompt);
     final webContext = webResults
         .map((r) => '[web: ${r['title']} | ${r['url']}]\n${r['snippet']}')
         .join('\n\n');
@@ -171,17 +194,20 @@ class KnowledgeEngine {
         sourceId, structured,
         sourceText: content, sourceKind: sourceKind, subjectId: subjectId);
     if (sourceKind == 'document') {
-      unawaited(_prepareDocumentStudyCounts(sourceId));
+      unawaited(_prepareDocumentStudyCounts(sourceId, subjectId));
     }
     return structured;
   }
 
-  Future<void> _prepareDocumentStudyCounts(String sourceId) async {
+  Future<void> _prepareDocumentStudyCounts(
+      String sourceId, String subjectId) async {
     final jobs = <String, Future<Map<String, dynamic>> Function()>{
-      'flashcards': () => generateFlashcards(topicId: sourceId),
-      'quiz': () => generateQuiz(topicId: sourceId),
-      'summary': () => generateSummary(topicId: sourceId),
-      'mind_map': () => generateMindMap(topicId: sourceId),
+      'flashcards': () =>
+          generateFlashcards(topicId: sourceId, subjectId: subjectId),
+      'quiz': () => generateQuiz(topicId: sourceId, subjectId: subjectId),
+      'summary': () => generateSummary(topicId: sourceId, subjectId: subjectId),
+      'mind_map': () =>
+          generateMindMap(topicId: sourceId, subjectId: subjectId),
     };
     await Future.wait(jobs.entries.map((job) async {
       try {
@@ -269,37 +295,75 @@ class KnowledgeEngine {
     return sourceIds.isNotEmpty ? ordered : ordered.take(24).toList();
   }
 
-  String _rankedContext(Map<String, dynamic> record, String prompt) {
-    final raw = <String>[
-      if (record['content'] is String) record['content'] as String,
-      if (record['structuredKnowledge'] is Map)
-        jsonEncode(record['structuredKnowledge']),
-      if (record['extractedText'] is String) record['extractedText'] as String,
-    ].where((part) => part.trim().isNotEmpty).join('\n\n');
-    if (raw.isEmpty) return '';
-    final terms = prompt
-        .toLowerCase()
-        .split(RegExp(r'[^a-z0-9]+'))
-        .where((term) => term.length > 2)
-        .toSet();
-    final paragraphs = raw
-        .split(RegExp(r'\n\s*\n|(?<=[.!?])\s+(?=[A-Z0-9])'))
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty)
-        .toSet()
-        .toList();
-    paragraphs.sort((a, b) {
-      int score(String text) {
-        final lower = text.toLowerCase();
-        return terms.fold<int>(
-            0, (n, term) => n + (lower.contains(term) ? 1 : 0));
+  String _rankedContexts(List<Map<String, dynamic>> sources, String prompt) {
+    final query = _terms(prompt);
+    final chunks =
+        <({Map<String, dynamic> source, String text, double score})>[];
+    for (final source in sources) {
+      final raw = <String>[
+        if (source['content'] is String) source['content'] as String,
+        if (source['structuredKnowledge'] is Map)
+          jsonEncode(source['structuredKnowledge']),
+        if (source['extractedText'] is String)
+          source['extractedText'] as String,
+      ].where((part) => part.trim().isNotEmpty).join('\n');
+      if (raw.isEmpty) continue;
+      final words = raw.split(RegExp(r'\s+'));
+      const window = 150;
+      const overlap = 30;
+      for (var start = 0; start < words.length; start += window - overlap) {
+        final text = words.skip(start).take(window).join(' ').trim();
+        if (text.isEmpty) continue;
+        final terms = _terms(text);
+        final intersection = query.intersection(terms).length;
+        final score = query.isEmpty || terms.isEmpty
+            ? 0.0
+            : intersection /
+                math.sqrt((query.length * terms.length).toDouble());
+        chunks.add((source: source, text: text, score: score));
+        if (start + window >= words.length) break;
       }
-
-      return score(b).compareTo(score(a));
-    });
-    final selected = paragraphs.take(5).join('\n');
-    return selected.length <= 5000 ? selected : selected.substring(0, 5000);
+    }
+    chunks.sort((a, b) => b.score.compareTo(a.score));
+    final selected = <String>[];
+    final perSource = <String, int>{};
+    var chars = 0;
+    final sourceOrder =
+        sources.map((source) => (source['id'] ?? '').toString()).toSet();
+    final sourceHeads =
+        <String, ({Map<String, dynamic> source, String text, double score})>{};
+    for (final chunk in chunks) {
+      sourceHeads.putIfAbsent(
+          (chunk.source['id'] ?? '').toString(), () => chunk);
+    }
+    final prioritized =
+        <({Map<String, dynamic> source, String text, double score})>[
+      ...sourceOrder.map((id) => sourceHeads[id]).whereType<
+          ({Map<String, dynamic> source, String text, double score})>(),
+      ...chunks,
+    ];
+    final seen = <String>{};
+    for (final chunk in prioritized) {
+      final id = (chunk.source['id'] ?? '').toString();
+      final identity = '$id:${chunk.text.hashCode}';
+      if (!seen.add(identity)) continue;
+      if ((perSource[id] ?? 0) >= 4) continue;
+      final header =
+          '[${chunk.source['kind'] ?? 'document'}: ${chunk.source['title'] ?? chunk.source['fileName'] ?? 'Source'} | ${chunk.source['subject'] ?? ''} / ${chunk.source['topic'] ?? ''}]';
+      final entry = '$header\n${chunk.text}';
+      if (chars + entry.length > 9000) continue;
+      selected.add(entry);
+      chars += entry.length;
+      perSource[id] = (perSource[id] ?? 0) + 1;
+    }
+    return selected.join('\n\n');
   }
+
+  Set<String> _terms(String text) => text
+      .toLowerCase()
+      .split(RegExp(r'[^a-z0-9]+'))
+      .where((term) => term.length > 2)
+      .toSet();
 
   bool _needsWeb(String prompt, List<Map<String, dynamic>> sources) {
     final q = prompt.toLowerCase();
@@ -352,6 +416,18 @@ class KnowledgeEngine {
     });
   }
 
+  Stream<String> _completeStream(AIRequest request) =>
+      _ref.read(apiKeyManagerProvider).runStream((apiKey, model) {
+        final provider = GeminiProvider(AIConfig(
+          providerType: AIProviderType.gemini,
+          apiKey: apiKey,
+          model: model,
+          temperature: 0.4,
+          maxTokens: 4096,
+        ));
+        return provider.stream(request);
+      });
+
   String _stableKey(String value) {
     var hash = 0;
     for (final unit in value.codeUnits) {
@@ -362,98 +438,142 @@ class KnowledgeEngine {
 
   Future<Map<String, dynamic>> generateFlashcards(
           {String? topicId,
+          String? subjectId,
           String prompt = 'Create useful active recall flashcards.'}) =>
-      generate(task: 'flashcards', prompt: prompt, topicId: topicId, options: {
-        'shape': {
-          'cards': [
-            {'front': 'question', 'back': 'answer'}
-          ]
-        }
-      });
+      generate(
+          task: 'flashcards',
+          prompt: prompt,
+          topicId: topicId,
+          subjectId: subjectId,
+          options: {
+            'shape': {
+              'cards': [
+                {'front': 'question', 'back': 'answer'}
+              ]
+            }
+          });
   Future<Map<String, dynamic>> generateQuiz(
           {String? topicId,
+          String? subjectId,
           String prompt =
               'Create a varied practice quiz with answers, explanations, confidence guidance, and weak-topic labels.'}) =>
-      generate(task: 'quiz', prompt: prompt, topicId: topicId, options: {
-        'shape': {
-          'questions': [
-            {
-              'question': '',
-              'options': [],
-              'answer': '',
-              'answerIndex': 0,
-              'explanation': '',
-              'confidence': 'low|medium|high',
-              'topic': ''
+      generate(
+          task: 'quiz',
+          prompt: prompt,
+          topicId: topicId,
+          subjectId: subjectId,
+          options: {
+            'shape': {
+              'questions': [
+                {
+                  'question': '',
+                  'options': [],
+                  'answer': '',
+                  'answerIndex': 0,
+                  'explanation': '',
+                  'confidence': 'low|medium|high',
+                  'topic': ''
+                }
+              ]
             }
-          ]
-        }
-      });
+          });
   Future<Map<String, dynamic>> generateMindMap(
           {String? topicId,
+          String? subjectId,
+          bool forceRefresh = false,
           String prompt =
-              'Create a complete hierarchical mind map with multiple concept levels. Give every node a stable id and parentId, and connect related nodes with edges.'}) =>
-      generate(task: 'mind_map', prompt: prompt, topicId: topicId, options: {
-        'shape': {
-          'root': 'topic title',
-          'nodes': [
-            {
-              'id': 'unique-id',
-              'parentId': 'parent-id',
-              'name': '',
-              'description': ''
+              'Build a complete hierarchical mind map from extracted concepts in every selected source. Include a root, major branches, and nested sub-concepts; create at least three meaningful levels when source material supports them. Return non-empty nodes and edges, preserving relationships between concepts. Give every node a stable id and parentId.'}) =>
+      generate(
+          task: 'mind_map',
+          prompt: prompt,
+          topicId: topicId,
+          subjectId: subjectId,
+          forceRefresh: forceRefresh,
+          options: {
+            'shape': {
+              'root': 'topic title',
+              'nodes': [
+                {
+                  'id': 'unique-id',
+                  'parentId': 'parent-id',
+                  'name': '',
+                  'description': ''
+                }
+              ],
+              'edges': [
+                {
+                  'from': 'parent-id',
+                  'to': 'unique-id',
+                  'label': 'relationship'
+                }
+              ]
             }
-          ],
-          'edges': [
-            {'from': 'parent-id', 'to': 'unique-id', 'label': 'relationship'}
-          ]
-        }
-      });
+          });
   Future<Map<String, dynamic>> generateSummary(
           {String? topicId,
+          String? subjectId,
+          bool forceRefresh = false,
           String prompt = 'Write a concise, accurate study summary.'}) =>
-      generate(task: 'summary', prompt: prompt, topicId: topicId, options: {
-        'shape': {
-          'overview': '',
-          'key_takeaways': [],
-          'key_concepts': [],
-          'important_points': [],
-          'examples': [],
-          'exam_tips': [],
-          'formulas': [],
-          'variable_meanings': []
-        }
-      });
+      generate(
+          task: 'summary',
+          prompt: prompt,
+          topicId: topicId,
+          subjectId: subjectId,
+          forceRefresh: forceRefresh,
+          options: {
+            'shape': {
+              'overview': '',
+              'key_takeaways': [],
+              'key_concepts': [],
+              'important_points': [],
+              'examples': [],
+              'exam_tips': [],
+              'formulas': [],
+              'variable_meanings': []
+            }
+          });
   Future<Map<String, dynamic>> generateExam(
           {String? topicId,
+          String? subjectId,
           String prompt = 'Create a balanced mock exam with an answer key.'}) =>
-      generate(task: 'exam', prompt: prompt, topicId: topicId, options: {
-        'shape': {
-          'title': '',
-          'questions': [
-            {
-              'prompt': '',
-              'marks': 0,
-              'modelAnswer': '',
-              'markingScheme': [],
-              'commonMistakes': []
+      generate(
+          task: 'exam',
+          prompt: prompt,
+          topicId: topicId,
+          subjectId: subjectId,
+          options: {
+            'shape': {
+              'title': '',
+              'questions': [
+                {
+                  'prompt': '',
+                  'marks': 0,
+                  'modelAnswer': '',
+                  'markingScheme': [],
+                  'commonMistakes': []
+                }
+              ]
             }
-          ]
-        }
-      });
+          });
   Future<Map<String, dynamic>> generatePYQ(
           {String? topicId,
+          String? subjectId,
           String prompt =
               'Analyze uploaded previous-year questions for patterns. Do not claim frequency without evidence.'}) =>
-      generate(task: 'pyq', prompt: prompt, topicId: topicId, options: {
-        'shape': {
-          'frequently_repeated_questions': [],
-          'topic_frequency': [],
-          'marks_distribution': [],
-          'important_units': [],
-          'predicted_questions': []
-        }
-      });
+      generate(
+          task: 'pyq',
+          prompt: prompt,
+          topicId: topicId,
+          subjectId: subjectId,
+          options: {
+            'shape': {
+              'frequently_repeated_questions': [],
+              'topic_frequency': [],
+              'marks_distribution': [],
+              'important_units': [],
+              'predicted_questions': []
+            }
+          });
   Future<Map<String, dynamic>> answer(
           {required String prompt,
           String? topicId,
@@ -469,6 +589,47 @@ class KnowledgeEngine {
           options: const {
             'shape': {'answer': '', 'citations': []}
           });
+
+  Stream<String> answerStream(
+      {required String prompt,
+      String? subjectId,
+      List<String> sourceIds = const [],
+      String history = ''}) async* {
+    final firestore = _ref.read(firestoreServiceProvider);
+    final records = await firestore.loadKnowledge(
+        subjectId: subjectId, sourceIds: sourceIds);
+    final sources = _prioritize(records, null, prompt, sourceIds: sourceIds);
+    final context = _rankedContexts(sources, prompt);
+    var web = const <Map<String, String>>[];
+    if (_needsWeb(prompt, sources)) {
+      try {
+        web = await _ref.read(webSearchServiceProvider).search(prompt);
+      } catch (_) {
+        debugPrint('Optional web context was unavailable.');
+      }
+    }
+    final webContext = web
+        .map((item) =>
+            '[web: ${item['title']} | ${item['url']}] ${item['snippet']}')
+        .join('\n');
+    final messages = <AIMessage>[
+      const AIMessage(
+          role: AIRole.system,
+          content:
+              'You are StudyMate, an expert study tutor. Synthesize an original answer using source context; never reproduce source passages. Return a clear answer, not JSON.'),
+      AIMessage(
+          role: AIRole.user,
+          content:
+              'Conversation: $history\nQuestion: $prompt\nReference context:\n${[
+            context,
+            webContext
+          ].where((part) => part.isNotEmpty).join('\n\n').isEmpty ? '(No source material found; use general knowledge.)' : [
+                  context,
+                  webContext
+                ].where((part) => part.isNotEmpty).join('\n\n')}')
+    ];
+    yield* _completeStream(AIRequest(messages: messages));
+  }
 }
 
 final knowledgeEngineProvider =

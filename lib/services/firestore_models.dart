@@ -90,6 +90,7 @@ class FirestoreDocumentModel {
   final String title;
   final String subject;
   final String subjectId;
+  final String folderId;
   final String fileName;
   final String fileUrl;
   final DateTime uploadedAt;
@@ -111,6 +112,7 @@ class FirestoreDocumentModel {
     required this.title,
     required this.subject,
     this.subjectId = '',
+    this.folderId = '',
     required this.fileName,
     required this.fileUrl,
     required this.uploadedAt,
@@ -135,6 +137,7 @@ class FirestoreDocumentModel {
       title: (map['title'] as String?) ?? '',
       subject: (map['subject'] as String?) ?? 'General',
       subjectId: (map['subjectId'] as String?) ?? '',
+      folderId: (map['folderId'] as String?) ?? '',
       fileName: (map['fileName'] as String?) ?? '',
       fileUrl: (map['fileUrl'] as String?) ?? '',
       uploadedAt: _parseDateTime(map['uploadedAt']) ?? DateTime.now(),
@@ -163,6 +166,7 @@ class FirestoreDocumentModel {
       'title': title,
       'subject': subject,
       'subjectId': subjectId,
+      'folderId': folderId,
       'fileName': fileName,
       'fileUrl': fileUrl,
       'uploadedAt': Timestamp.fromDate(uploadedAt),
@@ -187,6 +191,7 @@ class FirestoreDocumentModel {
     String? title,
     String? subject,
     String? subjectId,
+    String? folderId,
     String? fileName,
     String? fileUrl,
     DateTime? uploadedAt,
@@ -205,6 +210,7 @@ class FirestoreDocumentModel {
       title: title ?? this.title,
       subject: subject ?? this.subject,
       subjectId: subjectId ?? this.subjectId,
+      folderId: folderId ?? this.folderId,
       fileName: fileName ?? this.fileName,
       fileUrl: fileUrl ?? this.fileUrl,
       uploadedAt: uploadedAt ?? this.uploadedAt,

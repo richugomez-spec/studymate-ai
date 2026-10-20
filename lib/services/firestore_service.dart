@@ -246,10 +246,10 @@ class FirestoreService {
           snapshots[0].docs.map((d) => {'id': d.id, ...d.data()}).toList();
       notes = snapshots[1].docs.map((d) => {'id': d.id, ...d.data()}).toList();
     } else {
-      final selected = await Future.wait(sourceIds.map((id) async => [
-            await _docsCol.doc(id).get(),
-            await _knowledgeCol.doc(id).get(),
-          ]));
+      final selected = await Future.wait(sourceIds.map((id) => Future.wait([
+            _docsCol.doc(id).get(),
+            _knowledgeCol.doc(id).get(),
+          ])));
       documents = [];
       notes = [];
       for (final pair in selected) {
@@ -378,6 +378,88 @@ class FirestoreService {
       'updatedAt': FieldValue.serverTimestamp()
     });
     return ref.id;
+  }
+
+  Future<void> renameWorkspaceFolder(String folderId, String name) async {
+    final uid = currentUserId;
+    final clean = name.trim();
+    if (uid == null || clean.isEmpty) return;
+    final ref = _knowledgeCol.doc(folderId);
+    final folder = await ref.get();
+    if (folder.data()?['ownerId'] != uid || folder.data()?['kind'] != 'folder')
+      return;
+    await ref
+        .update({'title': clean, 'updatedAt': FieldValue.serverTimestamp()});
+    final docs = await _docsCol
+        .where('ownerId', isEqualTo: uid)
+        .where('folderId', isEqualTo: folderId)
+        .get();
+    await Future.wait(
+        docs.docs.map((d) => d.reference.update({'subject': clean})));
+  }
+
+  Future<void> moveDocumentToFolder(String documentId, String folderId,
+      {String folderName = ''}) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    final folder = await _knowledgeCol.doc(folderId).get();
+    if (folder.data()?['ownerId'] != uid || folder.data()?['kind'] != 'folder')
+      return;
+    await _docsCol.doc(documentId).update({
+      'folderId': folderId,
+      'subjectId': folderId,
+      'subject': folderName.isNotEmpty
+          ? folderName
+          : folder.data()?['title'] ?? 'Folder',
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteWorkspaceFolder(String folderId) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    final ref = _knowledgeCol.doc(folderId);
+    final snapshot = await ref.get();
+    final data = snapshot.data();
+    if (data?['ownerId'] != uid || data?['kind'] != 'folder') return;
+    final children = await _knowledgeCol
+        .where('ownerId', isEqualTo: uid)
+        .where('parentId', isEqualTo: folderId)
+        .get();
+    for (final child
+        in children.docs.where((d) => d.data()['kind'] == 'folder')) {
+      await deleteWorkspaceFolder(child.id);
+    }
+    final docs = await _docsCol
+        .where('ownerId', isEqualTo: uid)
+        .where('folderId', isEqualTo: folderId)
+        .get();
+    final documentIds = docs.docs.map((d) => d.id).toSet();
+    for (final doc in docs.docs) {
+      await doc.reference.update({
+        'folderId': '',
+        'subjectId': data?['subjectId'] ?? '',
+        'subject': data?['subject'] ?? 'General',
+      });
+    }
+    final sessions = await _chatSessionsCol
+        .where('ownerId', isEqualTo: uid)
+        .where('subjectId', isEqualTo: folderId)
+        .get();
+    for (final session in sessions.docs) {
+      await _deleteCollection(session.reference.collection('messages'));
+      await session.reference.delete();
+    }
+    final cache = await _usersCol.doc(uid).collection('generation_cache').get();
+    final stale = cache.docs.where((d) {
+      final sources = d.data()['result'] is Map
+          ? (d.data()['result'] as Map)['sources']
+          : null;
+      return sources is List &&
+          sources.any((s) => s is Map && documentIds.contains(s['id']));
+    });
+    await _deleteDocuments(stale.map((d) => d.reference).toList());
+    await ref.delete();
   }
 
   Stream<List<Map<String, dynamic>>> streamWorkspaceItems(String ownerId) =>

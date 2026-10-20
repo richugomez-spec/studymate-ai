@@ -56,6 +56,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   String _searchQuery = '';
   String? _activeSubjectId;
   String _activeSubjectName = 'General';
+  String? _activeFolderId;
+  String? _activeFolderName;
+  String? _activeFolderParentId;
   final Set<String> _selectedDocIds = {};
   String _viewMode = 'grid'; // grid | list
 
@@ -68,6 +71,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       setState(() {
         _activeSubjectId = id;
       });
+      ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = id;
       final active = ref.read(activeDocumentProvider);
       if (active != null && active.subjectId != id) {
         ref.read(activeDocumentProvider.notifier).clearDocument();
@@ -128,11 +132,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     }
 
     // Automatically restore last opened document from Firestore if none is active
-    final restoreDocs = _activeSubjectId == null
-        ? firestoreDocs
-        : firestoreDocs
-            .where((doc) => doc.subjectId == _activeSubjectId)
-            .toList();
+    final restoreDocs = _activeFolderId != null
+        ? firestoreDocs.where((doc) => doc.folderId == _activeFolderId).toList()
+        : _activeSubjectId == null
+            ? firestoreDocs
+            : firestoreDocs
+                .where((doc) => doc.subjectId == _activeSubjectId)
+                .toList();
     if (activeDoc == null && restoreDocs.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -148,8 +154,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final isDesktop = MediaQuery.of(context).size.width >= 1100;
 
     final filteredDocs = firestoreDocs.where((doc) {
-      if (_activeSubjectId != null && doc.subjectId != _activeSubjectId)
-        return false;
+      if (_activeFolderId != null &&
+          doc.folderId != _activeFolderId &&
+          doc.subjectId != _activeFolderId) return false;
+      if (_activeFolderId == null &&
+          _activeSubjectId != null &&
+          doc.subjectId != _activeSubjectId) return false;
       if (_searchQuery.isEmpty) return true;
       final q = _searchQuery.toLowerCase();
       return doc.title.toLowerCase().contains(q) ||
@@ -184,10 +194,21 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                     _activeSubjectId = subject?['id'] as String?;
                     _activeSubjectName =
                         subject?['name']?.toString() ?? 'General';
+                    _activeFolderId = null;
+                    _activeFolderName = null;
+                    _activeFolderParentId = null;
+                    ref
+                        .read(activeKnowledgeWorkspaceIdProvider.notifier)
+                        .state = _activeSubjectId;
                     _selectedDocIds.clear();
+                    if (_activeSubjectId != null) {
+                      _selectedDocIds.addAll(firestoreDocs
+                          .where((doc) => doc.subjectId == _activeSubjectId)
+                          .map((doc) => doc.id));
+                    }
                     ref
                         .read(selectedKnowledgeSourceIdsProvider.notifier)
-                        .state = const [];
+                        .state = List.unmodifiable(_selectedDocIds);
                     if (activeDoc != null &&
                         _activeSubjectId != null &&
                         activeDoc.subjectId != _activeSubjectId) {
@@ -221,12 +242,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         ),
                 ),
                 _WorkspaceShelf(
-                    items: _activeSubjectId == null
+                    items: _activeFolderId != null
                         ? workspaceItems
-                        : workspaceItems
                             .where(
-                                (item) => item['subjectId'] == _activeSubjectId)
-                            .toList()),
+                                (item) => item['subjectId'] == _activeFolderId)
+                            .toList()
+                        : _activeSubjectId == null
+                            ? workspaceItems
+                            : workspaceItems
+                                .where((item) =>
+                                    item['subjectId'] == _activeSubjectId)
+                                .toList(),
+                    onOpenFolder: _openFolder,
+                    onRenameFolder: _renameFolder,
+                    onDeleteFolder: _deleteFolder,
+                    onMoveToFolder: _moveSelectedToFolder,
+                    showUp: _activeFolderId != null,
+                    onNavigateUp: () => _navigateFolderUp(workspaceItems)),
               ],
             ),
           ),
@@ -289,10 +321,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   void _onQuickAction(FirestoreDocumentModel doc, String route) {
     final active = _buildFallback(doc);
     ref.read(activeDocumentProvider.notifier).setDocument(active);
+    final ids = _selectedDocIds.length > 1
+        ? _selectedDocIds.toList(growable: false)
+        : <String>[doc.id];
+    ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = ids;
     if (route == AppRoutes.aiChat) {
       context.go(route);
     } else {
-      context.push(route.replaceFirst(':topicId', doc.id));
+      context.push(route.replaceFirst(':topicId', ids.join(',')));
     }
   }
 
@@ -384,13 +420,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       final upload = ref.read(firebaseUploadServiceProvider);
       final processing = ref.read(documentProcessingServiceProvider);
       await firestore.setDocumentStatus(doc.id, 'processing');
-      final bytes = doc.storagePath.isEmpty
+      final cachedText = doc.extractedText?.trim() ?? '';
+      final bytes = cachedText.isNotEmpty || doc.storagePath.isEmpty
           ? null
           : await upload.downloadDocument(doc.storagePath);
-      final text = bytes == null
-          ? (doc.extractedText ?? '')
-          : await processing.extractText(PlatformFile(
-              name: doc.fileName, size: bytes.length, bytes: bytes));
+      final text = cachedText.isNotEmpty
+          ? cachedText
+          : bytes == null
+              ? ''
+              : await processing.extractText(PlatformFile(
+                  name: doc.fileName, size: bytes.length, bytes: bytes));
       if (text.trim().isEmpty && bytes == null) {
         throw StateError('No source content is available.');
       }
@@ -399,6 +438,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             title: doc.title,
             content: text,
             subject: doc.subject,
+            subjectId: doc.subjectId,
             sourceBytes: bytes,
             mimeType: _mimeTypeFor(doc.fileType),
           );
@@ -445,7 +485,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       context: context,
       barrierColor: Colors.black.withOpacity(0.75),
       builder: (ctx) => _UploadModal(
-        defaultSubject: _activeSubjectName,
+        defaultSubject: _activeFolderName ?? _activeSubjectName,
+        folderId: _activeFolderId,
         onFilesUploaded: (docs) {
           if (docs.isNotEmpty) {
             ref.read(activeDocumentProvider.notifier).setDocument(docs.first);
@@ -659,14 +700,167 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           .read(firestoreServiceProvider)
                           .createWorkspaceFolder(
                               name: name.text.trim(),
-                              subject: _activeSubjectName,
-                              subjectId: _activeSubjectId ?? '');
+                              parentId: _activeFolderId ?? '',
+                              subject: _activeFolderName ?? _activeSubjectName,
+                              subjectId:
+                                  _activeFolderId ?? _activeSubjectId ?? '');
                       if (ctx.mounted) Navigator.pop(ctx);
                     },
                     child: const Text('Create'))
               ],
             ));
     name.dispose();
+  }
+
+  void _openFolder(Map<String, dynamic> folder) {
+    final userId = ref.read(currentUserProvider)?.id ??
+        ref.read(firestoreServiceProvider).currentUserId ??
+        '';
+    final docs = userId.isEmpty
+        ? const <FirestoreDocumentModel>[]
+        : ref.read(userDocumentsStreamProvider(userId)).asData?.value ??
+            const <FirestoreDocumentModel>[];
+    final folderDocs = docs
+        .where((doc) =>
+            doc.folderId == folder['id'] || doc.subjectId == folder['id'])
+        .toList();
+    setState(() {
+      _activeFolderId = folder['id'] as String;
+      _activeFolderName = folder['title']?.toString() ?? 'Folder';
+      final parentId = folder['parentId']?.toString() ?? '';
+      _activeFolderParentId = parentId.isEmpty ? null : parentId;
+      ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state =
+          _activeFolderId;
+      _selectedDocIds.clear();
+      _selectedDocIds.addAll(folderDocs.map((doc) => doc.id));
+      ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
+          List.unmodifiable(_selectedDocIds);
+      final active = ref.read(activeDocumentProvider);
+      if (active != null && active.subjectId != _activeFolderId) {
+        ref.read(activeDocumentProvider.notifier).clearDocument();
+      }
+    });
+    if (folderDocs.isNotEmpty) _onDocTap(folderDocs.first);
+  }
+
+  Future<void> _renameFolder(Map<String, dynamic> folder) async {
+    final controller =
+        TextEditingController(text: folder['title']?.toString() ?? '');
+    final name = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Rename folder'),
+              content: TextField(controller: controller, autofocus: true),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+                    child: const Text('Save'))
+              ],
+            ));
+    controller.dispose();
+    if (name == null || name.isEmpty) return;
+    await ref
+        .read(firestoreServiceProvider)
+        .renameWorkspaceFolder(folder['id'] as String, name);
+    if (_activeFolderId == folder['id'] && mounted)
+      setState(() => _activeFolderName = name);
+  }
+
+  Future<void> _deleteFolder(Map<String, dynamic> folder) async {
+    final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Delete folder?'),
+              content:
+                  const Text('Documents will remain in the parent workspace.'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Delete'))
+              ],
+            ));
+    if (confirmed != true) return;
+    await ref
+        .read(firestoreServiceProvider)
+        .deleteWorkspaceFolder(folder['id'] as String);
+    if (_activeFolderId == folder['id'] && mounted) {
+      setState(() {
+        _activeFolderId = null;
+        _activeFolderName = null;
+        _activeFolderParentId = null;
+        _selectedDocIds.clear();
+        ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state =
+            _activeSubjectId;
+        ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
+      });
+    }
+  }
+
+  Future<void> _moveSelectedToFolder(Map<String, dynamic> folder) async {
+    if (_selectedDocIds.isEmpty) return;
+    final movedIds = _selectedDocIds.toList(growable: false);
+    final firestore = ref.read(firestoreServiceProvider);
+    await Future.wait(movedIds.map((id) => firestore.moveDocumentToFolder(
+          id,
+          folder['id'] as String,
+          folderName: folder['title']?.toString() ?? 'Folder',
+        )));
+    if (mounted)
+      setState(() {
+        _selectedDocIds
+          ..clear()
+          ..addAll(movedIds);
+        _activeFolderId = folder['id'] as String;
+        _activeFolderName = folder['title']?.toString() ?? 'Folder';
+        final parentId = folder['parentId']?.toString() ?? '';
+        _activeFolderParentId = parentId.isEmpty ? null : parentId;
+        ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state =
+            _activeFolderId;
+        ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
+            List.unmodifiable(_selectedDocIds);
+        if (movedIds.contains(ref.read(activeDocumentProvider)?.id)) {
+          ref.read(activeDocumentProvider.notifier).clearDocument();
+        }
+      });
+  }
+
+  void _navigateFolderUp(List<Map<String, dynamic>> items) {
+    final parentId = _activeFolderParentId;
+    if (parentId != null) {
+      final parents = items.where((item) => item['id'] == parentId);
+      if (parents.isNotEmpty) {
+        _openFolder(parents.first);
+        return;
+      }
+    }
+    final userId = ref.read(currentUserProvider)?.id ??
+        ref.read(firestoreServiceProvider).currentUserId ??
+        '';
+    final docs = userId.isEmpty
+        ? const <FirestoreDocumentModel>[]
+        : ref.read(userDocumentsStreamProvider(userId)).asData?.value ??
+            const <FirestoreDocumentModel>[];
+    setState(() {
+      _activeFolderId = null;
+      _activeFolderName = null;
+      _activeFolderParentId = null;
+      ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state =
+          _activeSubjectId;
+      _selectedDocIds
+        ..clear()
+        ..addAll(docs
+            .where((doc) =>
+                _activeSubjectId == null || doc.subjectId == _activeSubjectId)
+            .map((doc) => doc.id));
+      ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
+          List.unmodifiable(_selectedDocIds);
+    });
   }
 
   UploadedDocument _buildFallback(FirestoreDocumentModel doc) {
@@ -717,13 +911,28 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 // ── Library Header ────────────────────────────────────────────────────────────
 
 class _WorkspaceShelf extends StatelessWidget {
-  const _WorkspaceShelf({required this.items});
+  const _WorkspaceShelf({
+    required this.items,
+    required this.onOpenFolder,
+    required this.onRenameFolder,
+    required this.onDeleteFolder,
+    required this.onMoveToFolder,
+    required this.showUp,
+    required this.onNavigateUp,
+  });
   final List<Map<String, dynamic>> items;
+  final ValueChanged<Map<String, dynamic>> onOpenFolder;
+  final ValueChanged<Map<String, dynamic>> onRenameFolder;
+  final ValueChanged<Map<String, dynamic>> onDeleteFolder;
+  final ValueChanged<Map<String, dynamic>> onMoveToFolder;
+  final bool showUp;
+  final VoidCallback onNavigateUp;
   @override
   Widget build(BuildContext context) {
     final folders = items.where((item) => item['kind'] == 'folder').toList();
     final notes = items.where((item) => item['kind'] == 'note').toList();
-    if (folders.isEmpty && notes.isEmpty) return const SizedBox(height: 8);
+    if (folders.isEmpty && notes.isEmpty && !showUp)
+      return const SizedBox(height: 8);
     return SizedBox(
         height: 126,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -736,12 +945,44 @@ class _WorkspaceShelf extends StatelessWidget {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   children: [
+                if (showUp)
+                  SizedBox(
+                      width: 100,
+                      child: Card(
+                          child: ListTile(
+                        onTap: onNavigateUp,
+                        leading: const Icon(Icons.arrow_upward),
+                        title: const Text('Up'),
+                      ))),
                 for (final folder in folders)
-                  _WorkspaceItemCard(
-                      icon: Icons.folder_outlined,
-                      title: folder['title']?.toString() ?? 'Folder',
-                      subtitle:
-                          folder['subject']?.toString() ?? 'Workspace folder'),
+                  SizedBox(
+                    width: 220,
+                    child: Card(
+                      child: ListTile(
+                        onTap: () => onOpenFolder(folder),
+                        leading: const Icon(Icons.folder_outlined),
+                        title: Text(folder['title']?.toString() ?? 'Folder',
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: const Text('Open folder'),
+                        trailing: PopupMenuButton<String>(
+                          onSelected: (action) {
+                            if (action == 'move') onMoveToFolder(folder);
+                            if (action == 'rename') onRenameFolder(folder);
+                            if (action == 'delete') onDeleteFolder(folder);
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                                value: 'move',
+                                child: Text('Move selected here')),
+                            PopupMenuItem(
+                                value: 'rename', child: Text('Rename')),
+                            PopupMenuItem(
+                                value: 'delete', child: Text('Delete')),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 for (final note in notes)
                   _WorkspaceItemCard(
                       icon: Icons.sticky_note_2_outlined,
@@ -1934,8 +2175,11 @@ class _StudyToolsStudio extends StatelessWidget {
 class _UploadModal extends ConsumerStatefulWidget {
   final ValueChanged<List<UploadedDocument>> onFilesUploaded;
   final String defaultSubject;
+  final String? folderId;
   const _UploadModal(
-      {required this.onFilesUploaded, required this.defaultSubject});
+      {required this.onFilesUploaded,
+      required this.defaultSubject,
+      this.folderId});
 
   @override
   ConsumerState<_UploadModal> createState() => _UploadModalState();
@@ -2000,7 +2244,8 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
         return;
       }
 
-      final subjectId = await firestore.getOrCreateSubject(subject);
+      final subjectId =
+          widget.folderId ?? await firestore.getOrCreateSubject(subject);
 
       setState(() {
         _currentStep = 'Saving sources to your workspace…';
@@ -2011,6 +2256,7 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
                 file,
                 subject: subject,
                 subjectId: subjectId,
+                folderId: widget.folderId ?? '',
                 topic: topic,
                 subtopic: subtopic,
                 notes: notes,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/ai/services/knowledge_engine.dart';
+import '../../../../core/services/document_processing_service.dart';
 
 class MindMapScreen extends ConsumerStatefulWidget {
   final String? topicId;
@@ -20,9 +21,11 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     _generate();
   }
 
-  void _generate() => _result = ref
-      .read(knowledgeEngineProvider)
-      .generateMindMap(topicId: widget.topicId);
+  void _generate({bool forceRefresh = false}) =>
+      _result = ref.read(knowledgeEngineProvider).generateMindMap(
+          topicId: widget.topicId,
+          subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
+          forceRefresh: forceRefresh);
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +35,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
           leading: BackButton(onPressed: () => Navigator.maybePop(context)),
           actions: [
             IconButton(
-                onPressed: () => setState(_generate),
+                onPressed: () => setState(() => _generate(forceRefresh: true)),
                 icon: const Icon(Icons.refresh))
           ]),
       body: FutureBuilder<Map<String, dynamic>>(

@@ -22,6 +22,46 @@ class _QuestionPaperAnalyzerScreenState
   bool _isBusy = false;
   String? _error;
   String? _paperName;
+  bool _manualMode = false;
+  final _questionController = TextEditingController();
+  final _marksController = TextEditingController(text: '5');
+
+  @override
+  void dispose() {
+    _questionController.dispose();
+    _marksController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _answerManualQuestion() async {
+    final question = _questionController.text.trim();
+    final marks = int.tryParse(_marksController.text.trim());
+    if (question.isEmpty || marks == null || marks < 1) {
+      setState(() => _error = 'Enter a question and valid marks.');
+      return;
+    }
+    setState(() {
+      _isBusy = true;
+      _error = null;
+      _paperName = 'Manual question';
+    });
+    try {
+      final result = ref.read(knowledgeEngineProvider).generatePYQ(
+            topicId: widget.topicId,
+            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
+            prompt:
+                'Answer this manually entered exam question using available workspace notes when relevant; otherwise use general knowledge. Question: $question. Marks: $marks. Return JSON with question, marks, model_answer, marking_scheme, and common_mistakes.',
+          );
+      setState(() => _analysis = result);
+      await result;
+    } catch (_) {
+      if (mounted)
+        setState(() =>
+            _error = 'We could not answer this question. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isBusy = false);
+    }
+  }
 
   Future<void> _uploadAndAnalyze() async {
     final picked = await FilePicker.platform.pickFiles(
@@ -57,6 +97,7 @@ class _QuestionPaperAnalyzerScreenState
       final result = await ref.read(firebaseUploadServiceProvider).uploadFile(
         file,
         subject: 'Previous Year Papers',
+        subjectId: ref.read(activeKnowledgeWorkspaceIdProvider) ?? '',
         topic: 'PYQ',
         tags: const ['pyq'],
       );
@@ -70,6 +111,7 @@ class _QuestionPaperAnalyzerScreenState
             title: file.name,
             content: text,
             subject: 'Previous Year Papers',
+            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider) ?? '',
             topic: 'PYQ',
             sourceBytes: file.bytes,
             mimeType: _mimeType(file.extension),
@@ -107,6 +149,7 @@ class _QuestionPaperAnalyzerScreenState
     try {
       final result = ref.read(knowledgeEngineProvider).generatePYQ(
             topicId: id,
+            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
             prompt:
                 'Analyze only this uploaded previous-year question paper. Return JSON with frequently_repeated_questions (list, only evidence present in the paper), topic_frequency (list of topic and count), marks_distribution (list), important_units (list), and predicted_questions (list grounded in observed patterns). Do not invent repeated questions, frequencies, or marks.',
           );
@@ -160,27 +203,64 @@ class _QuestionPaperAnalyzerScreenState
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.fact_check_outlined, size: 48),
-              const SizedBox(height: 12),
-              const Text('Analyze a previous-year paper',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              const Text(
-                  'Upload a paper for question, topic, marks, and unit analysis. Predictions are based only on the uploaded paper.'),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!, textAlign: TextAlign.center),
-              ],
-              const SizedBox(height: 18),
-              FilledButton.icon(
-                  onPressed: _uploadAndAnalyze,
-                  icon: const Icon(Icons.upload_file),
-                  label: const Text('Upload Previous Year Question Paper')),
-              if (widget.topicId != null && widget.topicId != 'current') ...[
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(
+                      value: false,
+                      label: Text('Upload paper'),
+                      icon: Icon(Icons.upload_file)),
+                  ButtonSegment(
+                      value: true,
+                      label: Text('Manual question'),
+                      icon: Icon(Icons.edit_note)),
+                ],
+                selected: {_manualMode},
+                onSelectionChanged: (value) =>
+                    setState(() => _manualMode = value.first),
+              ),
+              const SizedBox(height: 16),
+              if (_manualMode) ...[
+                TextField(
+                    controller: _questionController,
+                    minLines: 3,
+                    maxLines: 6,
+                    decoration: const InputDecoration(labelText: 'Question')),
                 const SizedBox(height: 8),
-                TextButton(
-                    onPressed: _analyzeSelectedPaper,
-                    child: const Text('Analyze selected paper')),
+                TextField(
+                    controller: _marksController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Marks')),
+                if (_error != null)
+                  Padding(
+                      padding: const EdgeInsets.all(8), child: Text(_error!)),
+                FilledButton.icon(
+                    onPressed: _answerManualQuestion,
+                    icon: const Icon(Icons.auto_awesome),
+                    label: const Text('Generate answer')),
+              ] else ...[
+                const Icon(Icons.fact_check_outlined, size: 48),
+                const SizedBox(height: 12),
+                const Text('Analyze a previous-year paper',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                const Text(
+                    'Upload a paper for question, topic, marks, and unit analysis. Predictions are based only on the uploaded paper.'),
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(_error!, textAlign: TextAlign.center),
+                ],
+                const SizedBox(height: 18),
+                FilledButton.icon(
+                    onPressed: _uploadAndAnalyze,
+                    icon: const Icon(Icons.upload_file),
+                    label: const Text('Upload Previous Year Question Paper')),
+                if (widget.topicId != null && widget.topicId != 'current') ...[
+                  const SizedBox(height: 8),
+                  TextButton(
+                      onPressed: _analyzeSelectedPaper,
+                      child: const Text('Analyze selected paper')),
+                ],
               ],
             ]),
           ),
@@ -197,6 +277,17 @@ class _QuestionPaperAnalyzerScreenState
       );
 
   Widget _analysisView(BuildContext context, Map<String, dynamic> data) {
+    if (data.containsKey('model_answer')) {
+      return ListView(padding: const EdgeInsets.all(20), children: [
+        Text((data['question'] ?? _questionController.text).toString(),
+            style: Theme.of(context).textTheme.titleLarge),
+        Text('${data['marks'] ?? _marksController.text} marks'),
+        const SizedBox(height: 12),
+        _resultCard('Model Answer', data['model_answer']),
+        _resultCard('Marking Scheme', data['marking_scheme']),
+        _resultCard('Common Mistakes', data['common_mistakes']),
+      ]);
+    }
     const sections = <(String, List<String>)>[
       (
         'Frequently Repeated Questions',
@@ -234,6 +325,23 @@ class _QuestionPaperAnalyzerScreenState
       if (_paperName != null) Text(_paperName!),
       ...widgets,
     ]);
+  }
+
+  Widget _resultCard(String title, dynamic content) {
+    final items = content is List ? content : [content];
+    return Card(
+        child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                for (final item in items.where((item) => item != null))
+                  Text('• ${_display(item)}'),
+              ],
+            )));
   }
 
   String _display(dynamic item) {

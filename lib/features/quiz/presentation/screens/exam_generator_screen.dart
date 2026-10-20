@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/ai/services/knowledge_engine.dart';
+import '../../../../core/services/document_processing_service.dart';
 
 class ExamGeneratorScreen extends ConsumerStatefulWidget {
   final String? topicId;
@@ -28,6 +29,7 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
       _revealedAnswers.clear();
       _result = ref.read(knowledgeEngineProvider).generateExam(
             topicId: widget.topicId,
+            subjectId: ref.read(activeKnowledgeWorkspaceIdProvider),
             prompt:
                 'Generate a $_marks mark exam for $_minutes minutes at $_difficulty difficulty. Create precise, varied questions grounded in workspace knowledge. Return JSON with title and questions. Each question must have prompt, marks, modelAnswer, markingScheme (list), and commonMistakes (list). Do not include the answer in the question prompt.',
           );
