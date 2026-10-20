@@ -327,14 +327,66 @@ class FirestoreService {
     if (uid == null) return const [];
     late final List<Map<String, dynamic>> documents;
     late final List<Map<String, dynamic>> notes;
-    if (sourceIds.isEmpty) {
-      final snapshots = await Future.wait([
-        _docsCol.where('ownerId', isEqualTo: uid).get(),
-        _knowledgeCol.where('ownerId', isEqualTo: uid).get(),
+    if (sourceIds.isEmpty && subjectId != null && subjectId.isNotEmpty) {
+      final root = await Future.wait([
+        _docsCol
+            .where('ownerId', isEqualTo: uid)
+            .where('subjectId', isEqualTo: subjectId)
+            .get(),
+        _knowledgeCol
+            .where('ownerId', isEqualTo: uid)
+            .where('subjectId', isEqualTo: subjectId)
+            .get(),
       ]);
-      documents =
-          snapshots[0].docs.map((d) => {'id': d.id, ...d.data()}).toList();
-      notes = snapshots[1].docs.map((d) => {'id': d.id, ...d.data()}).toList();
+      final docMap = <String, Map<String, dynamic>>{
+        for (final doc in root[0].docs)
+          if (doc.data()['ownerId'] == uid)
+            doc.id: {'id': doc.id, ...doc.data()},
+      };
+      final noteMap = <String, Map<String, dynamic>>{
+        for (final item in root[1].docs)
+          if (item.data()['ownerId'] == uid)
+            item.id: {'id': item.id, ...item.data()},
+      };
+      final folderIds = <String>{
+        for (final item in noteMap.values)
+          if (item['kind'] == 'folder') item['id'].toString(),
+      };
+      var frontier = Set<String>.from(folderIds);
+      while (frontier.isNotEmpty) {
+        final children =
+            await _queryIn(_knowledgeCol, 'parentId', frontier, ownerId: uid);
+        final next = <String>{};
+        for (final child in children) {
+          if (child.data()['ownerId'] != uid) continue;
+          noteMap[child.id] = {'id': child.id, ...child.data()};
+          if (child.data()['kind'] == 'folder' && folderIds.add(child.id))
+            next.add(child.id);
+        }
+        frontier = next;
+      }
+      if (folderIds.isNotEmpty) {
+        final nested = await Future.wait([
+          _queryIn(_docsCol, 'subjectId', folderIds, ownerId: uid),
+          _queryIn(_docsCol, 'folderId', folderIds, ownerId: uid),
+          _queryIn(_knowledgeCol, 'subjectId', folderIds, ownerId: uid),
+        ]);
+        for (final doc in [...nested[0], ...nested[1]]) {
+          if (doc.data()['ownerId'] == uid) {
+            docMap[doc.id] = {'id': doc.id, ...doc.data()};
+          }
+        }
+        for (final item in nested[2]) {
+          if (item.data()['ownerId'] == uid) {
+            noteMap[item.id] = {'id': item.id, ...item.data()};
+          }
+        }
+      }
+      documents = docMap.values.toList();
+      notes = noteMap.values.toList();
+    } else if (sourceIds.isEmpty) {
+      documents = const [];
+      notes = const [];
     } else {
       final selected = await Future.wait(sourceIds.map((id) => Future.wait([
             _docsCol.doc(id).get(),
@@ -377,6 +429,7 @@ class FirestoreService {
       if (subjectId != null && subjectId.isNotEmpty) {
         return data['subjectId'] == subjectId ||
             folderIds.contains(data['subjectId']) ||
+            folderIds.contains(data['parentId']) ||
             folderIds.contains(data['folderId']) ||
             (data['subjectId'] == null && data['subject'] == subjectId);
       }
@@ -440,6 +493,24 @@ class FirestoreService {
       }
     }
     return items;
+  }
+
+  Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _queryIn(
+      CollectionReference<Map<String, dynamic>> collection,
+      String field,
+      Iterable<String> values,
+      {required String ownerId}) async {
+    final unique = values.toSet().toList(growable: false);
+    if (unique.isEmpty) return const [];
+    final batches = <List<String>>[
+      for (var i = 0; i < unique.length; i += 30)
+        unique.skip(i).take(30).toList(growable: false),
+    ];
+    final snapshots = await Future.wait(batches.map((batch) => collection
+        .where('ownerId', isEqualTo: ownerId)
+        .where(field, whereIn: batch)
+        .get()));
+    return snapshots.expand((snapshot) => snapshot.docs).toList();
   }
 
   Future<String> saveKnowledgeNote(
@@ -591,6 +662,8 @@ class FirestoreService {
           : sourceText,
       'indexedAt': FieldValue.serverTimestamp(),
       'status': 'indexed',
+      if (sourceKind == 'document') 'uploadStatus': 'completed',
+      'updatedAt': FieldValue.serverTimestamp(),
       if (subjectId.isNotEmpty) 'subjectId': subjectId,
       if (sourceKind == 'document') ...{
         'conceptCount': (index['concepts'] as List?)?.length ?? 0,
@@ -605,6 +678,13 @@ class FirestoreService {
   Future<void> setDocumentStatus(String documentId, String status) =>
       _docsCol.doc(documentId).update({
         'status': status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+  Future<void> saveExtractedText(String documentId, String text) =>
+      _docsCol.doc(documentId).update({
+        'extractedText':
+            text.length > 100000 ? text.substring(0, 100000) : text,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -630,6 +710,7 @@ class FirestoreService {
 
   Future<void> setDocumentIndexError(String documentId, String error) async {
     await _docsCol.doc(documentId).set({
+      'uploadStatus': 'failed',
       'status': 'index_error',
       'indexError': error,
       'updatedAt': FieldValue.serverTimestamp(),

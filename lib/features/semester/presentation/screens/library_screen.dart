@@ -16,25 +16,22 @@ import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/auth_required_modal.dart';
 
-String _mimeTypeFor(String? extension) => switch (extension?.toLowerCase()) {
-      'pdf' => 'application/pdf',
-      'png' => 'image/png',
-      'jpg' || 'jpeg' => 'image/jpeg',
-      'webp' => 'image/webp',
-      _ => 'application/octet-stream',
-    };
-
 String _statusLabel(FirestoreDocumentModel doc) {
+  if (doc.status == 'indexed' || doc.uploadStatus == 'completed') {
+    return 'AI Ready';
+  }
+  if (doc.status == 'extracting') return 'Extracting';
+  if (doc.status == 'indexing') return 'Indexing';
+  if (doc.uploadStatus == 'cancelled' || doc.status == 'cancelled') {
+    return 'Cancelled · Retry';
+  }
   if (doc.status == 'queued' || doc.uploadStatus == 'queued') return 'Queued';
   if (doc.uploadStatus == 'uploading' || doc.status == 'uploading') {
     return 'Uploading';
   }
-  if (doc.status == 'indexed') return 'AI Ready';
-  if (doc.status == 'extracting') return 'Extracting';
-  if (doc.status == 'indexing') return 'Indexing';
   if (doc.status == 'upload_error' ||
       doc.status == 'index_error' ||
-      doc.uploadStatus == 'error') {
+      doc.uploadStatus == 'failed') {
     return 'Needs Retry';
   }
   return 'Processing';
@@ -43,7 +40,11 @@ String _statusLabel(FirestoreDocumentModel doc) {
 Color _statusColor(FirestoreDocumentModel doc) {
   return doc.status == 'indexed'
       ? AppColors.teal
-      : (doc.status == 'upload_error' || doc.status == 'index_error')
+      : (doc.status == 'upload_error' ||
+              doc.status == 'index_error' ||
+              doc.status == 'cancelled' ||
+              doc.uploadStatus == 'failed' ||
+              doc.uploadStatus == 'cancelled')
           ? AppColors.amber
           : AppColors.electricVioletLight;
 }
@@ -67,15 +68,34 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final Set<String> _selectedDocIds = {};
   final Set<String> _deletingDocIds = {};
   String _viewMode = 'grid'; // grid | list
+  Timer? _uploadRecoveryTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _recoverStaleUploads();
+      _uploadRecoveryTimer = Timer.periodic(
+          const Duration(minutes: 5), (_) => _recoverStaleUploads());
       final id = await ref.read(firestoreServiceProvider).getActiveSubjectId();
       if (!mounted || id == null || id.isEmpty) return;
       ref.read(activeKnowledgeSubjectIdProvider.notifier).state = id;
     });
+  }
+
+  void _recoverStaleUploads() {
+    unawaited(ref
+        .read(firebaseUploadServiceProvider)
+        .recoverStaleUploads()
+        .catchError((Object error) {
+      debugPrint('Stale upload recovery did not complete: $error');
+    }));
+  }
+
+  @override
+  void dispose() {
+    _uploadRecoveryTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -500,20 +520,22 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Future<void> _viewDocument(FirestoreDocumentModel doc) async {
-    var content = doc.extractedText?.trim() ?? '';
-    if (content.isEmpty && doc.storagePath.isNotEmpty) {
+    final preview = () async {
+      final cached = doc.extractedText?.trim() ?? '';
+      if (cached.isNotEmpty) return cached;
+      if (doc.storagePath.isEmpty) return '';
       try {
         final bytes = await ref
             .read(firebaseUploadServiceProvider)
             .downloadDocument(doc.storagePath);
-        content = await ref.read(documentProcessingServiceProvider).extractText(
+        return await ref.read(documentProcessingServiceProvider).extractText(
               PlatformFile(
                   name: doc.fileName, size: bytes.length, bytes: bytes),
             );
       } catch (_) {
-        content = '';
+        return '';
       }
-    }
+    }();
     await showDialog<void>(
       context: context,
       builder: (context) => Dialog(
@@ -531,14 +553,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             ),
             const Divider(height: 1),
             Expanded(
-              child: content.isEmpty
-                  ? const Center(
-                      child: Text('A preview is not available for this file.'),
-                    )
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
-                      child: SelectableText(content),
-                    ),
+              child: FutureBuilder<String>(
+                future: preview,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final content = snapshot.data?.trim() ?? '';
+                  if (content.isEmpty) {
+                    return const Center(
+                        child: Text('No readable preview is available yet.'));
+                  }
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: SelectableText(content),
+                  );
+                },
+              ),
             ),
           ]),
         ),
@@ -594,57 +625,29 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     KnowledgeEngine.invalidateSubjectContext(doc.subjectId,
         ownerId: ref.read(firestoreServiceProvider).currentUserId);
     try {
-      final firestore = ref.read(firestoreServiceProvider);
-      final upload = ref.read(firebaseUploadServiceProvider);
-      final processing = ref.read(documentProcessingServiceProvider);
-      if (doc.uploadStatus == 'error' || doc.status == 'upload_error') {
+      PlatformFile? replacementFile;
+      if (doc.status == 'upload_error' || doc.status == 'cancelled') {
         final picked = await FilePicker.platform.pickFiles(
           type: FileType.custom,
           allowedExtensions: [doc.fileType.toLowerCase().replaceAll('.', '')],
           withData: true,
         );
         if (picked == null || picked.files.isEmpty) return;
-        await upload.retryUpload(
-          picked.files.first,
-          documentId: doc.id,
-          storagePath: doc.storagePath,
-        );
+        replacementFile = picked.files.first;
       }
-      final cachedText = doc.extractedText?.trim() ?? '';
-      await firestore.setDocumentStatus(
-          doc.id, cachedText.isEmpty ? 'extracting' : 'indexing');
-      final bytes = doc.storagePath.isEmpty
-          ? null
-          : await upload.downloadDocument(doc.storagePath);
-      final text = cachedText.isNotEmpty
-          ? cachedText
-          : bytes == null
-              ? ''
-              : await processing
-                  .extractText(PlatformFile(
-                      name: doc.fileName, size: bytes.length, bytes: bytes))
-                  .timeout(const Duration(minutes: 2));
-      if (text.trim().isEmpty && bytes == null) {
-        throw StateError('No source content is available.');
-      }
-      await firestore.setDocumentStatus(doc.id, 'indexing');
-      await ref
-          .read(knowledgeEngineProvider)
-          .index(
+      await ref.read(knowledgeEngineProvider).retryDocumentIndex(
             sourceId: doc.id,
             title: doc.title,
-            content: text,
             subject: doc.subject,
             subjectId: doc.subjectId,
-            sourceBytes: bytes,
-            mimeType: _mimeTypeFor(doc.fileType),
-          )
-          .timeout(const Duration(minutes: 3));
+            storagePath: doc.storagePath,
+            status: doc.status,
+            fileType: doc.fileType,
+            extractedText: doc.extractedText ?? '',
+            replacementFile: replacementFile,
+          );
     } catch (error) {
       debugPrint('Document re-indexing did not complete.');
-      await ref
-          .read(firestoreServiceProvider)
-          .setDocumentIndexError(doc.id, 'unavailable');
     }
   }
 
@@ -1474,7 +1477,7 @@ class _LibraryHeader extends StatelessWidget {
                     onPressed: () => onSubjectRename(
                         subjects.firstWhere((s) => s['id'] == activeSubjectId)),
                     icon: const Icon(Icons.drive_file_rename_outline, size: 15),
-                    label: const Text('Rename'),
+                    label: const Text('Rename Subject'),
                   ),
                   TextButton.icon(
                     onPressed: () => onSubjectDelete(
@@ -1572,7 +1575,7 @@ class _LibraryHeader extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8)),
               ),
               icon: const Icon(Icons.add_rounded, size: 15),
-              label: const Text('Upload'),
+              label: const Text('Upload Files'),
             ),
           ],
         ],
@@ -2030,7 +2033,9 @@ class _DocumentCardState extends State<_DocumentCard> {
                             icon: Icons.refresh_rounded,
                             tooltip: doc.status == 'index_error' ||
                                     doc.status == 'upload_error' ||
-                                    doc.uploadStatus == 'error'
+                                    doc.status == 'cancelled' ||
+                                    doc.uploadStatus == 'failed' ||
+                                    doc.uploadStatus == 'cancelled'
                                 ? 'Retry'
                                 : 'Re-index',
                             color: AppColors.amber,
@@ -2218,7 +2223,9 @@ class _DocumentListRowState extends State<_DocumentListRow> {
                     icon: Icons.refresh_rounded,
                     tooltip: doc.status == 'index_error' ||
                             doc.status == 'upload_error' ||
-                            doc.uploadStatus == 'error'
+                            doc.status == 'cancelled' ||
+                            doc.uploadStatus == 'failed' ||
+                            doc.uploadStatus == 'cancelled'
                         ? 'Retry'
                         : 'Re-index',
                     color: AppColors.amber,
@@ -2428,7 +2435,6 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
   Future<void> _pickAndUpload(
       {List<String>? extensions, List<PlatformFile>? selectedFiles}) async {
     final processingService = ref.read(documentProcessingServiceProvider);
-    final uploadService = ref.read(firebaseUploadServiceProvider);
     final knowledgeEngine = ref.read(knowledgeEngineProvider);
     final firestore = ref.read(firestoreServiceProvider);
     final subject = _subjectController.text.trim().isEmpty
@@ -2465,15 +2471,13 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
         _currentStep = 'Saving sources to your workspace…';
         _progress = 0.25;
       });
-      KnowledgeEngine.invalidateSubjectContext(subjectId,
-          ownerId: firestore.currentUserId);
       final results = await Future.wait<UploadResult?>(
         files.asMap().entries.map((entry) async {
           final file = entry.value;
           try {
-            return await uploadService.uploadFile(
+            return await knowledgeEngine.uploadAndIndex(
               file,
-              onProgress: (progress) {
+              onUploadProgress: (progress) {
                 if (!mounted) return;
                 setState(() {
                   _currentStep = 'Uploading ${file.name}';
@@ -2494,41 +2498,6 @@ class _UploadModalState extends ConsumerState<_UploadModal> {
           }
         }),
       );
-      KnowledgeEngine.invalidateSubjectContext(subjectId,
-          ownerId: firestore.currentUserId);
-      for (var i = 0; i < files.length; i++) {
-        final file = files[i];
-        final result = results[i];
-        if (result == null) continue;
-        unawaited(() async {
-          try {
-            await firestore.setDocumentStatus(
-                result.firestoreDocId, 'extracting');
-            final text = await processingService
-                .extractText(file)
-                .timeout(const Duration(minutes: 2));
-            await firestore.setDocumentStatus(
-                result.firestoreDocId, 'indexing');
-            await knowledgeEngine
-                .index(
-                  sourceId: result.firestoreDocId,
-                  title: file.name,
-                  content: text,
-                  subject: subject,
-                  subjectId: subjectId,
-                  topic: topic,
-                  subtopic: subtopic,
-                  sourceBytes: file.bytes,
-                  mimeType: _mimeTypeFor(file.extension),
-                )
-                .timeout(const Duration(minutes: 3));
-          } catch (_) {
-            debugPrint('Background indexing did not complete.');
-            await firestore.setDocumentIndexError(
-                result.firestoreDocId, 'unavailable');
-          }
-        }());
-      }
 
       setState(() {
         _currentStep = 'Sources saved. Indexing continues in the background.';

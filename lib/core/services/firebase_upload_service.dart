@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -128,48 +129,52 @@ class FirebaseUploadService {
         'uploads/$uid/${timestamp.millisecondsSinceEpoch}_${docRef.id}_${file.name}';
 
     // Persist the source record before starting the Storage transfer.
-    await docRef.set({
-      'title': file.name,
-      'ownerId': uid,
-      'fileName': file.name,
-      'fileType': ext.toUpperCase(),
-      'byteSize': file.size,
-      'storagePath': storagePath,
-      'downloadUrl': '',
-      'uploadedAt': FieldValue.serverTimestamp(),
-      'status': 'queued',
-      'uploadStatus': 'queued',
-      'subject': subject,
-      'subjectId': subjectId,
-      'folderId': folderId,
-      'topic': topic,
-      'subtopic': subtopic,
-      'notes': notes,
-      'tags': tags,
-      'indexedAt': null,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-    await _firestore.collection('users').doc(uid).set({
-      'documentsUploaded': FieldValue.increment(1),
-      'lastLogin': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    final downloadUrl = await _uploadInBackground(
-      bytes: bytes,
-      uid: uid,
-      fileName: file.name,
-      ext: ext,
-      storagePath: storagePath,
-      documentId: docRef.id,
-      uploadedAt: timestamp,
-      onProgress: onProgress,
-    );
-
-    return UploadResult(
-      downloadUrl: downloadUrl,
-      storagePath: storagePath,
-      firestoreDocId: docRef.id,
-    );
+    try {
+      await docRef.set({
+        'title': file.name,
+        'ownerId': uid,
+        'fileName': file.name,
+        'fileType': ext.toUpperCase(),
+        'byteSize': file.size,
+        'storagePath': storagePath,
+        'downloadUrl': '',
+        'uploadedAt': FieldValue.serverTimestamp(),
+        'status': 'queued',
+        'uploadStatus': 'queued',
+        'subject': subject,
+        'subjectId': subjectId,
+        'folderId': folderId,
+        'topic': topic,
+        'subtopic': subtopic,
+        'notes': notes,
+        'tags': tags,
+        'indexedAt': null,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      }).timeout(const Duration(seconds: 20));
+      await _firestore.collection('users').doc(uid).set({
+        'documentsUploaded': FieldValue.increment(1),
+        'lastLogin': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true)).timeout(const Duration(seconds: 20));
+      final downloadUrl = await _uploadInBackground(
+        bytes: bytes,
+        uid: uid,
+        fileName: file.name,
+        ext: ext,
+        storagePath: storagePath,
+        documentId: docRef.id,
+        uploadedAt: timestamp,
+        onProgress: onProgress,
+      );
+      return UploadResult(
+        downloadUrl: downloadUrl,
+        storagePath: storagePath,
+        firestoreDocId: docRef.id,
+      );
+    } catch (_) {
+      await _markUploadFailed(docRef.id, 'upload_error');
+      rethrow;
+    }
   }
 
   Future<String> _uploadInBackground(
@@ -181,10 +186,13 @@ class FirebaseUploadService {
       required String documentId,
       required DateTime uploadedAt,
       void Function(double)? onProgress}) async {
+    StreamSubscription<TaskSnapshot>? progressSubscription;
     try {
       await _firestore.collection('documents').doc(documentId).update({
         'uploadStatus': 'uploading',
         'status': 'uploading',
+        'updatedAt': FieldValue.serverTimestamp(),
+        'uploadStartedAt': FieldValue.serverTimestamp(),
       });
       final ref = _storage.ref(storagePath);
       final task = ref.putData(
@@ -194,27 +202,41 @@ class FirebaseUploadService {
             'uploadedBy': uid,
             'uploadedAt': uploadedAt.toIso8601String(),
           }));
-      task.snapshotEvents.listen((snapshot) {
+      progressSubscription = task.snapshotEvents.listen((snapshot) {
         if (snapshot.totalBytes > 0) {
           onProgress?.call(snapshot.bytesTransferred / snapshot.totalBytes);
         }
       }, onError: (_) {});
-      final snapshot = await task.timeout(const Duration(minutes: 5));
-      final url = await snapshot.ref.getDownloadURL();
+      final snapshot =
+          await task.timeout(const Duration(minutes: 5), onTimeout: () async {
+        await task.cancel().timeout(const Duration(seconds: 5));
+        throw TimeoutException('Storage upload timed out.');
+      });
+      final url = await snapshot.ref
+          .getDownloadURL()
+          .timeout(const Duration(seconds: 30));
       await _firestore.collection('documents').doc(documentId).update({
         'downloadUrl': url,
         'fileUrl': url,
-        'uploadStatus': 'uploaded',
         'status': 'processing',
-      });
+        'updatedAt': FieldValue.serverTimestamp(),
+      }).timeout(const Duration(seconds: 30));
       return url;
     } catch (error) {
-      await _firestore.collection('documents').doc(documentId).update({
-        'uploadStatus': 'error',
-        'status': 'upload_error',
-      });
+      final cancelled = error is FirebaseException && error.code == 'canceled';
+      await _markUploadFailed(
+          documentId, cancelled ? 'cancelled' : 'upload_error',
+          uploadStatus: cancelled ? 'cancelled' : 'failed');
       debugPrint('Background upload failed: $error');
       rethrow;
+    } finally {
+      try {
+        await progressSubscription
+            ?.cancel()
+            .timeout(const Duration(seconds: 5));
+      } catch (error) {
+        debugPrint('Upload progress listener did not close cleanly: $error');
+      }
     }
   }
 
@@ -238,6 +260,76 @@ class FirebaseUploadService {
       documentId: documentId,
       uploadedAt: DateTime.now(),
     );
+  }
+
+  Future<void> recoverStaleUploads(
+      {Duration staleAfter = const Duration(minutes: 10)}) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    final snapshot = await _firestore
+        .collection('documents')
+        .where('ownerId', isEqualTo: uid)
+        .where('uploadStatus',
+            whereIn: const ['queued', 'uploading', 'uploaded']).get();
+    final cutoff = DateTime.now().subtract(staleAfter);
+    final completed = snapshot.docs.where((doc) =>
+        doc.data()['status'] == 'indexed' &&
+        doc.data()['uploadStatus'] != 'completed');
+    final completedDocs = completed.toList();
+    for (var i = 0; i < completedDocs.length; i += 450) {
+      final batch = _firestore.batch();
+      for (final doc in completedDocs.skip(i).take(450)) {
+        batch.update(doc.reference, {
+          'uploadStatus': 'completed',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
+    final stale = snapshot.docs.where((doc) {
+      final data = doc.data();
+      if (data['status'] == 'indexed' ||
+          data['uploadStatus'] == 'completed' ||
+          data['uploadStatus'] == 'failed' ||
+          data['uploadStatus'] == 'cancelled') return false;
+      if (!const {'queued', 'uploading', 'uploaded'}
+          .contains(data['uploadStatus'])) {
+        return false;
+      }
+      final value = data['updatedAt'] ??
+          data['uploadStartedAt'] ??
+          data['createdAt'] ??
+          data['uploadedAt'];
+      final started = value is Timestamp ? value.toDate() : null;
+      return started != null && started.isBefore(cutoff);
+    }).toList();
+    for (var i = 0; i < stale.length; i += 450) {
+      final batch = _firestore.batch();
+      for (final doc in stale.skip(i).take(450)) {
+        final storageComplete =
+            (doc.data()['downloadUrl'] ?? '').toString().isNotEmpty;
+        batch.update(doc.reference, {
+          'uploadStatus': 'failed',
+          'status': storageComplete ? 'index_error' : 'upload_error',
+          'indexError': 'Upload processing did not finish. Please retry.',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> _markUploadFailed(String documentId, String status,
+      {String uploadStatus = 'failed'}) async {
+    try {
+      await _firestore.collection('documents').doc(documentId).update({
+        'uploadStatus': uploadStatus,
+        'status': status,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }).timeout(const Duration(seconds: 15));
+    } catch (error) {
+      debugPrint('Could not persist failed upload state: $error');
+    }
   }
 
   Future<Uint8List> downloadDocument(String storagePath) async {

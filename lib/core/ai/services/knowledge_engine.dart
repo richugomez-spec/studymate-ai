@@ -3,10 +3,13 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../services/firestore_service.dart';
+import '../../services/document_processing_service.dart';
+import '../../services/firebase_upload_service.dart';
 import '../ai_config.dart';
 import '../ai_message.dart';
 import '../providers/gemini_provider.dart';
@@ -244,12 +247,174 @@ class KnowledgeEngine {
     return structured;
   }
 
+  Future<UploadResult> uploadAndIndex(
+    PlatformFile file, {
+    required String subject,
+    required String subjectId,
+    String folderId = '',
+    String topic = '',
+    String subtopic = '',
+    String notes = '',
+    List<String> tags = const [],
+    void Function(double)? onUploadProgress,
+    bool awaitIndexing = false,
+  }) async {
+    final upload = _ref.read(firebaseUploadServiceProvider);
+    final firestore = _ref.read(firestoreServiceProvider);
+    invalidateSubjectContext(subjectId, ownerId: firestore.currentUserId);
+    final result = await upload.uploadFile(
+      file,
+      subject: subject,
+      subjectId: subjectId,
+      folderId: folderId,
+      topic: topic,
+      subtopic: subtopic,
+      notes: notes,
+      tags: tags,
+      onProgress: onUploadProgress,
+    );
+    invalidateSubjectContext(subjectId, ownerId: firestore.currentUserId);
+    final indexing = _indexUploadedSource(
+      sourceId: result.firestoreDocId,
+      fileName: file.name,
+      file: file,
+      storagePath: result.storagePath,
+      subject: subject,
+      subjectId: subjectId,
+      topic: topic,
+      subtopic: subtopic,
+    );
+    if (awaitIndexing) {
+      await indexing;
+    } else {
+      unawaited(indexing.catchError((Object error) {
+        debugPrint('Background source indexing did not complete: $error');
+      }));
+    }
+    return result;
+  }
+
+  Future<void> retryDocumentIndex({
+    required String sourceId,
+    required String title,
+    required String subject,
+    required String subjectId,
+    required String storagePath,
+    required String status,
+    required String fileType,
+    String extractedText = '',
+    String topic = '',
+    String subtopic = '',
+    PlatformFile? replacementFile,
+  }) async {
+    final upload = _ref.read(firebaseUploadServiceProvider);
+    final firestore = _ref.read(firestoreServiceProvider);
+    invalidateSubjectContext(subjectId, ownerId: firestore.currentUserId);
+    if (status == 'upload_error' || status == 'cancelled') {
+      if (replacementFile == null) return;
+      await upload.retryUpload(replacementFile,
+          documentId: sourceId, storagePath: storagePath);
+    }
+    await _indexUploadedSource(
+      sourceId: sourceId,
+      fileName: title,
+      file: replacementFile,
+      storagePath: storagePath,
+      subject: subject,
+      subjectId: subjectId,
+      topic: topic,
+      subtopic: subtopic,
+      cachedText: extractedText,
+      mimeType: _mimeTypeFor(fileType),
+    );
+  }
+
+  Future<void> _indexUploadedSource({
+    required String sourceId,
+    required String fileName,
+    required PlatformFile? file,
+    required String storagePath,
+    required String subject,
+    required String subjectId,
+    required String topic,
+    required String subtopic,
+    String cachedText = '',
+    String? mimeType,
+  }) async {
+    final firestore = _ref.read(firestoreServiceProvider);
+    final upload = _ref.read(firebaseUploadServiceProvider);
+    final processing = _ref.read(documentProcessingServiceProvider);
+    try {
+      var text = cachedText.trim();
+      Uint8List? bytes = file?.bytes;
+      if (text.isEmpty) {
+        await firestore
+            .setDocumentStatus(sourceId, 'extracting')
+            .timeout(const Duration(seconds: 20));
+        bytes ??= await upload
+            .downloadDocument(storagePath)
+            .timeout(const Duration(minutes: 2));
+        text = await processing
+            .extractText(PlatformFile(
+              name: fileName,
+              size: bytes.length,
+              bytes: bytes,
+            ))
+            .timeout(const Duration(minutes: 2));
+        await firestore
+            .saveExtractedText(sourceId, text)
+            .timeout(const Duration(seconds: 20));
+      }
+      if (text.isEmpty && (bytes == null || bytes.isEmpty)) {
+        throw StateError('No readable source content was found.');
+      }
+      await firestore
+          .setDocumentStatus(sourceId, 'indexing')
+          .timeout(const Duration(seconds: 20));
+      await index(
+        sourceId: sourceId,
+        title: fileName,
+        content: text,
+        subject: subject,
+        subjectId: subjectId,
+        topic: topic,
+        subtopic: subtopic,
+        sourceBytes: bytes,
+        mimeType: mimeType ?? _mimeTypeFor(file?.extension),
+      ).timeout(const Duration(minutes: 4));
+    } catch (_) {
+      try {
+        await firestore
+            .setDocumentIndexError(sourceId, 'unavailable')
+            .timeout(const Duration(seconds: 20));
+      } catch (error) {
+        debugPrint('Could not persist source retry state: $error');
+      }
+      rethrow;
+    }
+  }
+
+  String _mimeTypeFor(String? extension) =>
+      switch (extension?.toLowerCase().replaceAll('.', '')) {
+        'pdf' => 'application/pdf',
+        'pptx' =>
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'docx' =>
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'txt' => 'text/plain',
+        'md' => 'text/markdown',
+        _ => 'application/octet-stream',
+      };
+
   Future<void> _prepareDocumentStudyCounts(String sourceId) async {
     final jobs = <String, Future<Map<String, dynamic>> Function()>{
-      'flashcards': () => generateFlashcards(topicId: sourceId),
-      'quiz': () => generateQuiz(topicId: sourceId),
-      'summary': () => generateSummary(topicId: sourceId),
-      'mind_map': () => generateMindMap(topicId: sourceId),
+      'flashcards': () =>
+          generateFlashcards(topicId: sourceId, sourceIds: [sourceId]),
+      'quiz': () => generateQuiz(topicId: sourceId, sourceIds: [sourceId]),
+      'summary': () =>
+          generateSummary(topicId: sourceId, sourceIds: [sourceId]),
+      'mind_map': () =>
+          generateMindMap(topicId: sourceId, sourceIds: [sourceId]),
     };
     await Future.wait(jobs.entries.map((job) async {
       try {

@@ -4,8 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
-import '../../../../core/services/firebase_upload_service.dart';
-import '../../../../services/firestore_service.dart';
 
 class QuestionPaperAnalyzerScreen extends ConsumerStatefulWidget {
   final String? topicId;
@@ -94,42 +92,26 @@ class _QuestionPaperAnalyzerScreenState
       _paperName = file.name;
       _analysis = null;
     });
-    String? documentId;
     try {
-      final result = await ref.read(firebaseUploadServiceProvider).uploadFile(
-        file,
-        subject: 'Previous Year Papers',
-        subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
-            ref.read(activeKnowledgeWorkspaceIdProvider) ??
-            '',
-        topic: 'PYQ',
-        tags: const ['pyq'],
-      );
-      documentId = result.firestoreDocId;
-      final firestore = ref.read(firestoreServiceProvider);
-      await firestore.setDocumentStatus(documentId, 'processing');
-      final text =
-          await ref.read(documentProcessingServiceProvider).extractText(file);
-      await ref.read(knowledgeEngineProvider).index(
-            sourceId: documentId,
-            title: file.name,
-            content: text,
-            subject: 'Previous Year Papers',
-            subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
-                ref.read(activeKnowledgeWorkspaceIdProvider) ??
-                '',
+      final subjectId = ref.read(activeKnowledgeSubjectIdProvider) ??
+          ref.read(activeKnowledgeWorkspaceIdProvider);
+      if (subjectId == null || subjectId.isEmpty) {
+        throw StateError('Open a subject before uploading a question paper.');
+      }
+      final workspaceId = ref.read(activeKnowledgeWorkspaceIdProvider);
+      final result = await ref.read(knowledgeEngineProvider).uploadAndIndex(
+            file,
+            subject:
+                ref.read(activeKnowledgeSubjectNameProvider) ?? 'Study Subject',
+            subjectId: subjectId,
+            folderId: workspaceId == subjectId ? '' : workspaceId ?? '',
             topic: 'PYQ',
-            sourceBytes: file.bytes,
-            mimeType: _mimeType(file.extension),
+            tags: const ['pyq'],
+            awaitIndexing: true,
           );
-      await _analyzePaper(documentId, file.name);
+      await _analyzePaper(result.firestoreDocId, file.name);
     } catch (_) {
       debugPrint('Previous-year paper processing did not complete.');
-      if (documentId != null) {
-        await ref
-            .read(firestoreServiceProvider)
-            .setDocumentIndexError(documentId, 'unavailable');
-      }
       if (mounted) {
         setState(() => _error =
             'We could not process this paper. Please try another file.');
@@ -363,17 +345,4 @@ class _QuestionPaperAnalyzerScreenState
     if (item is List) return item.map(_display).join(', ');
     return item?.toString() ?? '';
   }
-
-  String _mimeType(String? extension) => switch (extension?.toLowerCase()) {
-        'pdf' => 'application/pdf',
-        'docx' =>
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'pptx' =>
-          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        'txt' => 'text/plain',
-        'md' => 'text/markdown',
-        'png' => 'image/png',
-        'jpg' || 'jpeg' => 'image/jpeg',
-        _ => 'application/octet-stream',
-      };
 }
