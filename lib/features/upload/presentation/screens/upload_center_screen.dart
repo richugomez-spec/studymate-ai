@@ -115,16 +115,18 @@ class _UploadCenterScreenState extends ConsumerState<UploadCenterScreen> {
                 sourceBytes: file.bytes,
                 mimeType: _mimeType(file.extension));
           } catch (error) {
-            await firestore.setDocumentIndexError(sourceId, error.toString());
+            debugPrint('Knowledge indexing did not complete.');
+            await firestore.setDocumentIndexError(sourceId, 'unavailable');
           }
         }());
       }
       _openTarget(results.first.firestoreDocId);
     } catch (e) {
+      debugPrint('Source upload did not complete.');
       if (mounted)
         setState(() {
           _saving = false;
-          _error = e.toString();
+          _error = 'Could not add sources right now. Please try again.';
         });
     }
   }

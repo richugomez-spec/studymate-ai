@@ -77,8 +77,7 @@ class StudyToolsScreen extends ConsumerWidget {
       _ToolItem(
         icon: Icons.functions_rounded,
         title: 'Formula Sheet',
-        subtitle:
-            'Gemini builds a formula reference from your workspace sources.',
+        subtitle: 'Build a formula reference from your workspace knowledge.',
         badge: 'AI Generated',
         color: AppColors.skyBlue,
         onTap: () => navigateOrPrompt(AppRoutes.summary, 'formula',

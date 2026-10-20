@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/ai/services/knowledge_engine.dart';
-import '../../../../core/services/document_processing_service.dart';
 
 enum SummaryMode { short, detailed, exam, formula }
 
@@ -42,7 +41,6 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final doc = ref.watch(activeDocumentProvider);
     return Scaffold(
       appBar: AppBar(
           title: Text(switch (_mode) {
@@ -78,14 +76,9 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                   if (snapshot.connectionState != ConnectionState.done)
                     return const Center(child: CircularProgressIndicator());
                   if (snapshot.hasError)
-                    return Center(
-                        child: Text(
-                            'Could not generate notes: ${snapshot.error}'));
+                    return const Center(child: Text('Please try again.'));
                   final result = snapshot.data!;
                   return ListView(padding: const EdgeInsets.all(20), children: [
-                    if (doc != null)
-                      Text(doc.fileName,
-                          style: Theme.of(context).textTheme.titleSmall),
                     for (final entry
                         in result.entries.where((e) => e.key != 'sources'))
                       Card(
@@ -114,8 +107,6 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                                     else
                                       Text(entry.value.toString()),
                                   ]))),
-                    if ((result['sources'] as List? ?? []).isNotEmpty)
-                      const Text('Generated using your workspace sources.'),
                   ]);
                 })),
       ]),

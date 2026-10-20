@@ -41,9 +41,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
             if (snapshot.connectionState != ConnectionState.done)
               return const Center(child: CircularProgressIndicator());
             if (snapshot.hasError)
-              return Center(
-                  child:
-                      Text('Could not generate mind map: ${snapshot.error}'));
+              return const Center(child: Text('Please try again.'));
             final map = snapshot.data!;
             final root =
                 (map['root'] ?? map['title'] ?? 'Main topic').toString();

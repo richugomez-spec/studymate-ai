@@ -409,7 +409,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 _FeatureBullet(
                   icon: Icons.psychology_outlined,
                   iconColor: AppColors.electricVioletLight,
-                  title: 'Gemini 3.8 Flash Synthesis',
+                  title: 'AI-Powered Study Synthesis',
                   subtitle: 'Synthesizes deep conceptual answers grounded in your real materials.',
                 ).animate(delay: 200.ms).fadeIn().slideX(begin: -0.05, end: 0),
 

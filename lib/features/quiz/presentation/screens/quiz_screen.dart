@@ -48,6 +48,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   QuizDifficulty _difficulty = QuizDifficulty.medium;
   QuizType _quizType = QuizType.mcq;
   bool _quizStarted = false;
+  bool _isGenerating = false;
 
   // Active quiz state
   int _currentIndex = 0;
@@ -67,42 +68,51 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   }
 
   Future<void> _generateQuiz(UploadedDocument doc) async {
+    if (_isGenerating) return;
+    setState(() => _isGenerating = true);
     _questions.clear();
-    final result = await ref.read(knowledgeEngineProvider).generateQuiz(
-          topicId: widget.topicId ?? doc.id,
-          prompt:
-              'Create $_questionCount ${_difficulty.name} ${_quizType.name} questions. Return questions with question, options, answer, explanation, and conceptTitle.',
-        );
-    final generated = result['questions'];
-    if (generated is List) {
-      for (final item in generated.whereType<Map>()) {
-        final q = Map<String, dynamic>.from(item);
-        final options = (q['options'] as List? ?? const [])
-            .map((e) => e.toString())
-            .toList();
-        final answer = (q['answer'] ?? '').toString();
-        _questions.add(_GeneratedQuizQuestion(
-          question: (q['question'] ?? '').toString(),
-          options: options,
-          correctIndex:
-              (q['answerIndex'] as num?)?.toInt() ?? options.indexOf(answer),
-          correctAnswer: answer,
-          explanation: (q['explanation'] ?? '').toString(),
-          conceptTitle: (q['conceptTitle'] ?? '').toString(),
-          type: _quizType,
-        ));
+    try {
+      final result = await ref.read(knowledgeEngineProvider).generateQuiz(
+            topicId: widget.topicId ?? doc.id,
+            prompt:
+                'Create $_questionCount ${_difficulty.name} ${_quizType.name} questions. Return questions with question, options, answer, explanation, and conceptTitle.',
+          );
+      final generated = result['questions'];
+      if (generated is List) {
+        for (final item in generated.whereType<Map>()) {
+          final q = Map<String, dynamic>.from(item);
+          final options = (q['options'] as List? ?? const [])
+              .map((e) => e.toString())
+              .toList();
+          final answer = (q['answer'] ?? '').toString();
+          _questions.add(_GeneratedQuizQuestion(
+            question: (q['question'] ?? '').toString(),
+            options: options,
+            correctIndex:
+                (q['answerIndex'] as num?)?.toInt() ?? options.indexOf(answer),
+            correctAnswer: answer,
+            explanation: (q['explanation'] ?? '').toString(),
+            conceptTitle: (q['conceptTitle'] ?? '').toString(),
+            type: _quizType,
+          ));
+        }
       }
-    }
 
-    setState(() {
-      _quizStarted = true;
-      _currentIndex = 0;
-      _selectedAnswer = null;
-      _answered = false;
-      _score = 0;
-      _quizComplete = false;
-      _weakTopics.clear();
-    });
+      if (!mounted) return;
+      setState(() {
+        _quizStarted = true;
+        _currentIndex = 0;
+        _selectedAnswer = null;
+        _answered = false;
+        _score = 0;
+        _quizComplete = false;
+        _weakTopics.clear();
+      });
+    } catch (_) {
+      debugPrint('Quiz generation did not complete after failover.');
+    } finally {
+      if (mounted) setState(() => _isGenerating = false);
+    }
   }
 
   void _submitChoice(int index) {
@@ -375,7 +385,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                   const SizedBox(height: 28),
 
                   ElevatedButton(
-                    onPressed: () => _generateQuiz(activeDoc),
+                    onPressed:
+                        _isGenerating ? null : () => _generateQuiz(activeDoc),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white,
@@ -383,8 +394,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10)),
                     ),
-                    child: const Text('Start Quiz',
-                        style: TextStyle(
+                    child: Text(_isGenerating ? 'Thinking...' : 'Start Quiz',
+                        style: const TextStyle(
                             fontFamily: 'Inter',
                             fontSize: 14,
                             fontWeight: FontWeight.w600)),

@@ -27,7 +27,7 @@ class KnowledgeEngine {
     final sourceSignature = relevant
         .map((r) => '${r['id']}:${r['updatedAt']}:${r['indexedAt']}')
         .join('|');
-    final dateSignature = _needsWeb(prompt, relevant, topicId)
+    final dateSignature = _needsWeb(prompt, relevant)
         ? DateTime.now().toIso8601String().substring(0, 10)
         : '';
     final cacheKey = _stableKey(
@@ -36,18 +36,13 @@ class KnowledgeEngine {
     final cached = await firestore.getGenerationCache(cacheKey);
     if (cached != null) return cached;
 
-    final webResults = _needsWeb(prompt, relevant, topicId)
+    final webResults = _needsWeb(prompt, relevant)
         ? await _ref
             .read(webSearchServiceProvider)
             .search(prompt)
             .catchError((_) => <Map<String, String>>[])
         : const <Map<String, String>>[];
 
-    final apiKey = _ref.read(aiApiKeyProvider);
-    if (apiKey == null || apiKey.trim().isEmpty) {
-      throw StateError(
-          'Add a Gemini API key in AI settings to generate study materials.');
-    }
     final sources = relevant;
     final context = sources
         .map((r) {
@@ -64,18 +59,11 @@ class KnowledgeEngine {
     final webContext = webResults
         .map((r) => '[web: ${r['title']} | ${r['url']}]\n${r['snippet']}')
         .join('\n\n');
-    final provider = GeminiProvider(AIConfig(
-      providerType: AIProviderType.gemini,
-      apiKey: apiKey.trim(),
-      model: 'gemini-3.8-flash',
-      temperature: 0.4,
-      maxTokens: 4096,
-    ));
-    final response = await provider.complete(AIRequest(messages: [
+    final request = AIRequest(messages: [
       AIMessage(
           role: AIRole.system,
           content:
-              'You are StudyMate Knowledge Engine. Reason from the provided knowledge sources. Never invent source facts. If sources do not contain enough information, say so. Return only valid JSON object, with no markdown fences.'),
+              'You are StudyMate, an expert study tutor. The model is responsible for every answer. Treat documents and notes only as reference context: synthesize an original answer, never reproduce paragraphs, OCR text, or source passages. Use web results when present for current facts. Do not mention internal tools, models, retries, source routing, or whether any source was used. If evidence is incomplete, explain the uncertainty naturally. Return one valid JSON object with no markdown fences.'),
       AIMessage(
           role: AIRole.user,
           content:
@@ -86,7 +74,8 @@ class KnowledgeEngine {
                   context,
                   webContext
                 ].where((s) => s.isNotEmpty).join('\n\n')}'),
-    ]));
+    ]);
+    final response = await _completeWithFailover(request, temperature: 0.4);
     final raw = response.content
         .trim()
         .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
@@ -122,7 +111,7 @@ class KnowledgeEngine {
     final structured = await _generateUncached(
       task: 'index_knowledge',
       prompt:
-          'Index this source as structured knowledge. Extract concepts, definitions, relationships, formulas, examples, important facts, and exam points. Do not create flashcards, quizzes, or summaries.',
+          'Index this source as structured knowledge. Extract concepts, definitions, relationships, formulas, examples, important facts, and exam points. Include sourceConfidence as a decimal from 0 to 1 based on source clarity and completeness. Do not create flashcards, quizzes, or summaries.',
       sourceText: content,
       metadata: {
         'title': title,
@@ -146,29 +135,22 @@ class KnowledgeEngine {
       required Map<String, dynamic> metadata,
       Uint8List? sourceBytes,
       String? mimeType}) async {
-    final apiKey = _ref.read(aiApiKeyProvider);
-    if (apiKey == null || apiKey.trim().isEmpty)
-      throw StateError('Configure a Gemini API key to index sources.');
-    final provider = GeminiProvider(AIConfig(
-        providerType: AIProviderType.gemini,
-        apiKey: apiKey.trim(),
-        model: 'gemini-3.8-flash',
-        temperature: 0.2,
-        maxTokens: 4096));
     final request = AIRequest(messages: [
       AIMessage(
           role: AIRole.system,
           content:
-              'You are StudyMate Knowledge Engine. Extract only grounded knowledge. Return one valid JSON object, no markdown.'),
+              'You are StudyMate. Extract grounded structured knowledge for future reasoning. Source material is context only. Never create user-facing answers, summaries, or study tools during indexing. Include a sourceConfidence decimal from 0 to 1. Return one valid JSON object, no markdown.'),
       AIMessage(
           role: AIRole.user,
           content:
               'Task: $task\nMetadata: ${jsonEncode(metadata)}\n$prompt\nSource:\n$sourceText'),
     ]);
-    final response = sourceBytes != null
-        ? await provider.completeWithInlineData(
-            request, sourceBytes, mimeType ?? 'application/octet-stream')
-        : await provider.complete(request);
+    final response = await _completeWithFailover(
+      request,
+      temperature: 0.2,
+      sourceBytes: sourceBytes,
+      mimeType: mimeType,
+    );
     final raw = response.content
         .trim()
         .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
@@ -199,13 +181,55 @@ class KnowledgeEngine {
     return ordered;
   }
 
-  bool _needsWeb(
-      String prompt, List<Map<String, dynamic>> sources, String? topicId) {
+  bool _needsWeb(String prompt, List<Map<String, dynamic>> sources) {
     final q = prompt.toLowerCase();
-    return topicId == null ||
-        sources.isEmpty ||
-        const ['latest', 'recent', 'current', 'today', 'news', 'updated']
-            .any(q.contains);
+    final needsFreshness = const [
+      'latest',
+      'recent',
+      'current',
+      'today',
+      'news',
+      'updated',
+      'this year',
+      'this month',
+      'as of now',
+      'newest',
+    ].any(q.contains);
+    final lowConfidence = sources.any((source) {
+      if (source['kind'] != 'document') return false;
+      final index = source['structuredKnowledge'];
+      if (index is! Map || index.isEmpty) return true;
+      final confidence = index['sourceConfidence'] ??
+          index['confidence'] ??
+          index['confidenceScore'];
+      return confidence is! num || confidence < 0.7;
+    });
+    return needsFreshness || lowConfidence;
+  }
+
+  Future<AIResponse> _completeWithFailover(
+    AIRequest request, {
+    required double temperature,
+    Uint8List? sourceBytes,
+    String? mimeType,
+  }) {
+    return _ref.read(apiKeyManagerProvider).run((apiKey, model) {
+      final provider = GeminiProvider(AIConfig(
+        providerType: AIProviderType.gemini,
+        apiKey: apiKey,
+        model: model,
+        temperature: temperature,
+        maxTokens: 4096,
+      ));
+      if (sourceBytes != null) {
+        return provider.completeWithInlineData(
+          request,
+          sourceBytes,
+          mimeType ?? 'application/octet-stream',
+        );
+      }
+      return provider.complete(request);
+    });
   }
 
   String _stableKey(String value) {

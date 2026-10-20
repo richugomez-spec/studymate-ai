@@ -42,22 +42,11 @@ class _QuestionPaperAnalyzerScreenState
             if (snapshot.connectionState != ConnectionState.done)
               return const Center(child: CircularProgressIndicator());
             if (snapshot.hasError)
-              return Center(
-                  child: Text('Could not analyze papers: ${snapshot.error}'));
+              return const Center(child: Text('Please try again.'));
             final data = snapshot.data!;
             return ListView(padding: const EdgeInsets.all(20), children: [
               for (final entry in data.entries.where((e) => e.key != 'sources'))
                 _section(context, entry.key, entry.value),
-              if ((data['sources'] as List? ?? []).isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Text('Sources',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                for (final source in data['sources'] as List)
-                  ListTile(
-                      dense: true,
-                      title: Text((source['title'] ?? '').toString()),
-                      subtitle: Text((source['url'] ?? '').toString())),
-              ],
             ]);
           }),
     );

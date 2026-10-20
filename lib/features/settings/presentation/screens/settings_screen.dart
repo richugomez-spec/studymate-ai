@@ -22,7 +22,7 @@ class SettingsScreen extends ConsumerWidget {
         backgroundColor: AppColors.darkSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
-          'Google Gemini API Key',
+          'AI Access Key',
           style: TextStyle(
               fontFamily: 'Inter',
               fontWeight: FontWeight.w700,
@@ -34,7 +34,7 @@ class SettingsScreen extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Enter your personal Google Gemini API key. Free keys can be created at aistudio.google.com/apikey.',
+              'Enter an access key for AI study features.',
               style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 13,
@@ -79,7 +79,7 @@ class SettingsScreen extends ConsumerWidget {
               Navigator.of(ctx).pop();
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
-                    content: Text('Gemini API key updated successfully!')),
+                    content: Text('AI access key updated successfully.')),
               );
             },
             style: ElevatedButton.styleFrom(
@@ -133,7 +133,7 @@ class SettingsScreen extends ConsumerWidget {
           _SettingsTile(
             icon: Icons.vpn_key_outlined,
             iconColor: AppColors.electricViolet,
-            title: 'Gemini API Key',
+            title: 'AI Access Key',
             subtitle: hasCustomKey
                 ? 'Active (Live Generative AI)'
                 : 'Configure personal API key',
@@ -169,7 +169,7 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.info_outline_rounded,
             iconColor: AppColors.teal,
             title: 'StudyMate AI',
-            subtitle: 'Version 1.0.0 • Gemini 3.8 Flash Engine',
+            subtitle: 'Version 1.0.0 • AI Study Workspace',
             trailing: null,
             onTap: () {},
           ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.1, end: 0),

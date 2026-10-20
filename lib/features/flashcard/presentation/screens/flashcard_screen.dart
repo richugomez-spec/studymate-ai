@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routing/app_routes.dart';
-import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../services/firestore_service.dart';
@@ -15,7 +14,6 @@ class _SRSFlashcard {
   final String front;
   final String back;
   final String difficulty; // 'Easy' | 'Medium' | 'Hard'
-  final int sourcePage;
   double intervalDays;
   double easeFactor;
   int repetitionCount;
@@ -25,7 +23,6 @@ class _SRSFlashcard {
     required this.front,
     required this.back,
     this.difficulty = 'Medium',
-    this.sourcePage = 1,
     this.intervalDays = 1.0,
     this.easeFactor = 2.5,
     this.repetitionCount = 0,
@@ -49,6 +46,9 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   bool _isFlipped = false;
   final List<_SRSFlashcard> _cards = [];
   bool _sessionComplete = false;
+  bool _isLoading = true;
+  bool _generationFailed = false;
+  bool _hasRequestedCards = false;
 
   int _againCount = 0;
   int _hardCount = 0;
@@ -67,11 +67,17 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   }
 
   Future<void> _loadCards() async {
-    final doc = ref.read(activeDocumentProvider);
-    if (doc != null) {
+    _hasRequestedCards = true;
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _generationFailed = false;
+      });
+    }
+    try {
       final result = await ref
           .read(knowledgeEngineProvider)
-          .generateFlashcards(topicId: widget.topicId ?? doc.id);
+          .generateFlashcards(topicId: widget.topicId);
       final generated = result['cards'];
       _cards.clear();
       if (generated is List)
@@ -81,10 +87,13 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
             id: '$i',
             front: (card['front'] ?? '').toString(),
             back: (card['back'] ?? '').toString(),
-            sourcePage: (i ~/ 2) + 1,
           ));
         }
-      if (mounted) setState(() {});
+    } catch (_) {
+      debugPrint('Flashcard generation did not complete after failover.');
+      _generationFailed = true;
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -158,14 +167,28 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final activeDoc = ref.watch(activeDocumentProvider);
-    if (_cards.isEmpty &&
-        activeDoc != null &&
-        activeDoc.flashcards.isNotEmpty) {
-      _loadCards();
+    if (!_hasRequestedCards) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_hasRequestedCards) _loadCards();
+      });
     }
 
-    if (activeDoc == null || _cards.isEmpty) {
+    if (_isLoading) {
+      return const Scaffold(body: Center(child: Text('Thinking...')));
+    }
+    if (_generationFailed) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('SRS Flashcards')),
+        body: Center(
+          child: TextButton(
+            onPressed: _loadCards,
+            child: const Text('Please try again.'),
+          ),
+        ),
+      );
+    }
+
+    if (_cards.isEmpty) {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
@@ -197,7 +220,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                         color: Colors.white)),
                 const SizedBox(height: 8),
                 Text(
-                  'Upload study materials to generate active-recall flashcards with SuperMemo SM-2 interval scheduling.',
+                  'Add notes or materials to generate active-recall flashcards.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontFamily: 'Inter',
@@ -212,7 +235,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white),
                   icon: const Icon(Icons.upload_file_rounded, size: 16),
-                  label: const Text('Upload Document'),
+                  label: const Text('Add study materials'),
                 ),
               ],
             ),
@@ -312,7 +335,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text('Flashcards: ${activeDoc.fileName}',
+        title: const Text('SRS Flashcards',
             style: const TextStyle(
                 fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 15),
             overflow: TextOverflow.ellipsis),
@@ -336,19 +359,6 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                         fontFamily: 'JetBrains Mono',
                         fontSize: 11,
                         color: AppColors.darkTextSecondary)),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.06),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text('Source: Page ${card.sourcePage}',
-                      style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 11,
-                          color: Colors.white.withOpacity(0.7))),
-                ),
               ],
             ),
           ),

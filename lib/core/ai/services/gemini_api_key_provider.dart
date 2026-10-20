@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../storage/secure_storage.dart';
+import 'api_key_manager.dart';
 
 class AIApiKeyNotifier extends StateNotifier<String?> {
   final Ref _ref;
@@ -39,3 +40,14 @@ class AIApiKeyNotifier extends StateNotifier<String?> {
 final aiApiKeyProvider = StateNotifierProvider<AIApiKeyNotifier, String?>(
   AIApiKeyNotifier.new,
 );
+
+final apiKeyManagerProvider = Provider<ApiKeyManager>((ref) {
+  return ApiKeyManager(() => [
+        const String.fromEnvironment('GEMINI_API_KEY_1'),
+        const String.fromEnvironment('GEMINI_API_KEY_2'),
+        const String.fromEnvironment('GEMINI_API_KEY_3'),
+        const String.fromEnvironment('GEMINI_API_KEY_4'),
+        const String.fromEnvironment('GEMINI_API_KEY'),
+        ref.read(aiApiKeyProvider) ?? '',
+      ]);
+});

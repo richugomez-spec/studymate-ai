@@ -62,7 +62,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (mounted) {
             setState(() {
               _messages.clear();
-              for (final m in initialMessages) {
+              for (final m in initialMessages
+                  .where((m) => !_isInternalFallback(m.content))) {
                 _messages.add(RealChatMessage(
                   id: m.id,
                   role: m.role,
@@ -92,29 +93,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  bool _isInternalFallback(String content) {
+    final text = content.toLowerCase();
+    return text.contains('local semantic engine') ||
+        text.contains('chunk retrieval') ||
+        text.contains('vector search') ||
+        text.contains('embedding retrieval') ||
+        text.contains('gemini api notice');
+  }
+
   void _initializeGreeting() {
-    final activeDoc = ref.read(activeDocumentProvider);
-    if (activeDoc != null) {
-      _messages.add(
-        RealChatMessage(
-          id: 'msg_init',
-          role: 'assistant',
-          content:
-              '👋 Hello! I have indexed your document **"${activeDoc.fileName}"** (${activeDoc.concepts.length} micro-concepts, ${activeDoc.quizzes.length} quizzes).\n\nWhat would you like to master first? You can ask any question, test your knowledge, or tap one of the Socratic chips below! 🎓',
-          timestamp: DateTime.now(),
-        ),
-      );
-    } else {
-      _messages.add(
-        RealChatMessage(
-          id: 'msg_init',
-          role: 'assistant',
-          content:
-              '👋 Hi! I am your **StudyMate AI Learning Coach**.\n\nUpload your lecture slides or notes (PDF, PPTX, TXT) via the paperclip icon above to ask questions directly grounded in your real materials, or configure your Gemini API key for live generative synthesis!',
-          timestamp: DateTime.now(),
-        ),
-      );
-    }
+    _messages.add(RealChatMessage(
+      id: 'msg_init',
+      role: 'assistant',
+      content: 'Hi! What would you like to learn today?',
+      timestamp: DateTime.now(),
+    ));
   }
 
   @override
@@ -191,7 +185,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final placeholderMsg = RealChatMessage(
       id: 'ai_${DateTime.now().millisecondsSinceEpoch}',
       role: 'assistant',
-      content: 'Synthesizing response...',
+      content: 'Thinking...',
       timestamp: DateTime.now(),
       isThinking: true,
     );
@@ -260,6 +254,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _scrollToBottom();
       }
     } catch (e) {
+      debugPrint('AI response did not complete after automatic failover.');
       if (mounted) {
         setState(() {
           _messages.removeWhere((m) => m.id == placeholderMsg.id);
@@ -267,7 +262,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             RealChatMessage(
               id: placeholderMsg.id,
               role: 'assistant',
-              content: 'Error communicating with AI: $e',
+              content: 'Please try again.',
               timestamp: DateTime.now(),
               isThinking: false,
             ),
@@ -293,7 +288,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             Icon(Icons.vpn_key_rounded,
                 color: AppColors.electricViolet, size: 22),
             SizedBox(width: 10),
-            Text('Connect Gemini API Key',
+            Text('Connect AI access key',
                 style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 16,
@@ -306,7 +301,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Enter your Google Gemini API key to enable live generative streaming responses with Gemini 3.8 Flash. Keys are free on Google AI Studio.',
+              'Add an access key to enable AI study assistance.',
               style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 12,
@@ -353,9 +348,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             onPressed: () {
               ref.read(aiApiKeyProvider.notifier).setApiKey(controller.text);
               Navigator.of(ctx).pop();
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content:
-                      Text('Gemini API Key saved! Ready for live streaming.')));
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('AI key saved.')));
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.electricViolet),
@@ -431,7 +425,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               color: hasKey ? AppColors.teal : AppColors.amber,
             ),
             label: Text(
-              hasKey ? 'Gemini Live' : 'Set Key',
+              hasKey ? 'AI Ready' : 'Set Key',
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 12,

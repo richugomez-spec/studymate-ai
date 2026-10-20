@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/ai/services/knowledge_engine.dart';
-import '../../../../core/services/document_processing_service.dart';
 
 class ExamGeneratorScreen extends ConsumerStatefulWidget {
   final String? topicId;
@@ -30,14 +29,12 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final doc = ref.watch(activeDocumentProvider);
     return Scaffold(
       appBar: AppBar(
           title: const Text('Exam Generator'),
           leading: BackButton(onPressed: () => Navigator.maybePop(context))),
       body: _result == null
           ? ListView(padding: const EdgeInsets.all(20), children: [
-              if (doc != null) Text('Workspace: ${doc.fileName}'),
               _choice('Total marks', _marks, const [25, 50, 100],
                   (value) => setState(() => _marks = value)),
               _choice('Duration (minutes)', _minutes, const [30, 60, 120],
@@ -57,7 +54,7 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
               FilledButton.icon(
                   onPressed: _generate,
                   icon: const Icon(Icons.auto_awesome),
-                  label: const Text('Generate with Gemini')),
+                  label: const Text('Generate exam')),
             ])
           : FutureBuilder<Map<String, dynamic>>(
               future: _result,
@@ -65,9 +62,7 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
                 if (snapshot.connectionState != ConnectionState.done)
                   return const Center(child: CircularProgressIndicator());
                 if (snapshot.hasError)
-                  return Center(
-                      child:
-                          Text('Could not generate exam: ${snapshot.error}'));
+                  return const Center(child: Text('Please try again.'));
                 final data = snapshot.data!;
                 final questions = (data['questions'] as List? ?? const [])
                     .whereType<Map>()

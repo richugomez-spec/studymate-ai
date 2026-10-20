@@ -1,7 +1,6 @@
-import 'dart:convert';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'api_key_manager.dart';
 import 'knowledge_engine.dart';
 
 class RealChatMessage {
@@ -49,9 +48,8 @@ class RealAIChatService {
         .read(knowledgeEngineProvider)
         .answer(prompt: prompt, history: history);
     final answer = result['answer'] ?? result['response'] ?? result['text'];
-    return answer is String
-        ? answer
-        : const JsonEncoder.withIndent('  ').convert(result);
+    if (answer is String && answer.trim().isNotEmpty) return answer.trim();
+    throw const AiGenerationUnavailable();
   }
 }
 
