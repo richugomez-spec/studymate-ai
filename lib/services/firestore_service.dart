@@ -1052,6 +1052,7 @@ class FirestoreService {
 
   /// Streams documents from each subject's documents subcollection.
   Stream<List<FirestoreDocumentModel>> streamUserDocuments(String ownerId) {
+    debugPrint('📡 [STREAM] Creating document stream for user: $ownerId');
     late final StreamController<List<FirestoreDocumentModel>> controller;
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subjectsListener;
     final documentListeners =
@@ -1062,19 +1063,29 @@ class FirestoreService {
       if (controller.isClosed) return;
       final documents = bySubject.values.expand((items) => items).toList()
         ..sort((a, b) => b.uploadedAt.compareTo(a.uploadedAt));
+
+      // Log document counts per subject
+      debugPrint('📡 [STREAM] Emitting ${documents.length} total documents');
+      for (final entry in bySubject.entries) {
+        debugPrint('📡 [STREAM]   Subject ${entry.key}: ${entry.value.length} docs');
+      }
+
       controller.add(documents);
     }
 
     controller = StreamController<List<FirestoreDocumentModel>>(
       onListen: () {
+        debugPrint('📡 [STREAM] Stream listener attached');
         subjectsListener = _subjectsCol
             .where('ownerId', isEqualTo: ownerId)
             .snapshots()
             .listen((subjects) {
+          debugPrint('📡 [STREAM] Subjects snapshot received: ${subjects.docs.length} subjects');
           final subjectIds = subjects.docs.map((subject) => subject.id).toSet();
           for (final removedId in documentListeners.keys
               .where((id) => !subjectIds.contains(id))
               .toList()) {
+            debugPrint('📡 [STREAM] Removing listener for deleted subject: $removedId');
             final listener = documentListeners.remove(removedId);
             bySubject.remove(removedId);
             if (listener != null) {
@@ -1083,12 +1094,20 @@ class FirestoreService {
           }
           for (final subjectId in subjectIds) {
             if (documentListeners.containsKey(subjectId)) continue;
+            debugPrint('📡 [STREAM] Creating document listener for subject: $subjectId');
             documentListeners[subjectId] =
                 _subjectDocumentsCol(subjectId).snapshots().listen((snapshot) {
-              bySubject[subjectId] = snapshot.docs
+              debugPrint('📡 [STREAM] Documents snapshot for subject $subjectId: ${snapshot.docs.length} docs in Firestore');
+
+              final filteredDocs = snapshot.docs
                   .where((doc) =>
                       doc.data()['ownerId'] == null ||
                       doc.data()['ownerId'] == ownerId)
+                  .toList();
+
+              debugPrint('📡 [STREAM] After owner filter: ${filteredDocs.length} docs');
+
+              bySubject[subjectId] = filteredDocs
                   .map((doc) => FirestoreDocumentModel.fromMap({
                         ...doc.data(),
                         'ownerId': doc.data()['ownerId'] ?? ownerId,
@@ -1096,12 +1115,19 @@ class FirestoreService {
                       }, doc.id))
                   .toList();
               emitDocuments();
-            }, onError: controller.addError);
+            }, onError: (error, stackTrace) {
+              debugPrint('📡 [STREAM] ❌ Error in document stream for subject $subjectId: $error');
+              controller.addError(error, stackTrace);
+            });
           }
           emitDocuments();
-        }, onError: controller.addError);
+        }, onError: (error, stackTrace) {
+          debugPrint('📡 [STREAM] ❌ Error in subjects stream: $error');
+          controller.addError(error, stackTrace);
+        });
       },
       onCancel: () async {
+        debugPrint('📡 [STREAM] Cancelling all listeners');
         await subjectsListener?.cancel();
         await Future.wait(
             documentListeners.values.map((listener) => listener.cancel()));

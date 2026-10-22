@@ -166,8 +166,15 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
     final isDesktop = MediaQuery.of(context).size.width >= 1100;
 
+    debugPrint('📋 [UI] Build: Total docs from Firestore stream: ${firestoreDocs.length}');
+    debugPrint('📋 [UI] Build: Active subject: $_activeSubjectId, Active folder: $_activeFolderId');
+    debugPrint('📋 [UI] Build: Deleting doc IDs: $_deletingDocIds');
+
     final filteredDocs = firestoreDocs.where((doc) {
-      if (_deletingDocIds.contains(doc.id)) return false;
+      if (_deletingDocIds.contains(doc.id)) {
+        debugPrint('📋 [UI] Filtering out deleting doc: ${doc.id}');
+        return false;
+      }
       if (_activeFolderId != null &&
           doc.folderId != _activeFolderId &&
           doc.subjectId != _activeFolderId) return false;
@@ -180,6 +187,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           doc.fileName.toLowerCase().contains(q) ||
           doc.subject.toLowerCase().contains(q);
     }).toList();
+
+    debugPrint('📋 [UI] Build: Filtered docs for display: ${filteredDocs.length}');
 
     return Scaffold(
       backgroundColor: AppColors.darkBackground,
@@ -319,30 +328,44 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       List<FirestoreDocumentModel> documents,
       List<Map<String, dynamic>> items) {
     final folders = _folderIdsForSubject(subjectId, items);
-    return documents
+    final filtered = documents
         .where((doc) =>
             doc.subjectId == subjectId ||
             folders.contains(doc.subjectId) ||
             folders.contains(doc.folderId))
         .toList();
+    debugPrint('📊 [UI] _documentsForSubject($subjectId): ${filtered.length} docs (from ${documents.length} total)');
+    return filtered;
   }
 
   Future<void> _openSubject(Map<String, dynamic> subject) async {
     final id = subject['id'] as String;
     final name = subject['name']?.toString() ?? 'Subject';
+    debugPrint('🔍 [UI] Opening subject: $name ($id)');
+
     final userId = ref.read(currentUserProvider)?.id ??
         ref.read(firestoreServiceProvider).currentUserId ??
         '';
+    debugPrint('🔍 [UI] User ID: $userId');
+
     final documents = userId.isEmpty
         ? const <FirestoreDocumentModel>[]
         : ref.read(userDocumentsStreamProvider(userId)).asData?.value ??
             const <FirestoreDocumentModel>[];
+    debugPrint('🔍 [UI] Total documents from stream: ${documents.length}');
+
     final items = userId.isEmpty
         ? const <Map<String, dynamic>>[]
         : ref.read(userKnowledgeStreamProvider(userId)).asData?.value ??
             const <Map<String, dynamic>>[];
-    final ids =
-        _documentsForSubject(id, documents, items).map((doc) => doc.id).toSet();
+
+    final subjectDocs = _documentsForSubject(id, documents, items);
+    debugPrint('🔍 [UI] Documents for this subject: ${subjectDocs.length}');
+    for (final doc in subjectDocs) {
+      debugPrint('🔍 [UI]   - ${doc.fileName} (id: ${doc.id})');
+    }
+
+    final ids = subjectDocs.map((doc) => doc.id).toSet();
     setState(() {
       _activeSubjectId = id;
       _activeSubjectName = name;
@@ -1193,6 +1216,7 @@ class _SubjectExplorer extends StatelessWidget {
       itemBuilder: (context, index) {
         final subject = subjects[index];
         final id = subject['id'].toString();
+        final name = subject['name']?.toString() ?? 'Subject';
         final folders = _folderIds(id);
         final files = documents
             .where((doc) =>
@@ -1202,6 +1226,9 @@ class _SubjectExplorer extends StatelessWidget {
             .length;
         final chats =
             chatSessions.where((session) => session.subjectId == id).length;
+
+        debugPrint('🎴 [UI] Subject card "$name" ($id): showing $files files (from ${documents.length} total docs in stream)');
+
         return Card(
           clipBehavior: Clip.antiAlias,
           child: InkWell(
