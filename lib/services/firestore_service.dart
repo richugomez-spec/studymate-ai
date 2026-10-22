@@ -96,6 +96,22 @@ class FirestoreService {
           String subjectId, String documentId) =>
       _subjectDocumentsCol(subjectId).doc(documentId);
 
+  CollectionReference<Map<String, dynamic>> _subjectTopicsCol(
+          String subjectId) =>
+      _subjectsCol.doc(subjectId).collection('topics');
+
+  DocumentReference<Map<String, dynamic>> _topicRef(
+          String subjectId, String topicId) =>
+      _subjectTopicsCol(subjectId).doc(topicId);
+
+  CollectionReference<Map<String, dynamic>> _topicSubtopicsCol(
+          String subjectId, String topicId) =>
+      _topicRef(subjectId, topicId).collection('subtopics');
+
+  DocumentReference<Map<String, dynamic>> _subtopicRef(
+          String subjectId, String topicId, String subtopicId) =>
+      _topicSubtopicsCol(subjectId, topicId).doc(subtopicId);
+
   /// Subjects are user-owned workspace roots.
   Stream<List<Map<String, dynamic>>> streamSubjects(String ownerId) =>
       _subjectsCol.where('ownerId', isEqualTo: ownerId).snapshots().map(
@@ -175,6 +191,8 @@ class FirestoreService {
     required String storagePath,
     required String subject,
     String folderId = '',
+    String topicId = '',
+    String subtopicId = '',
     String topic = '',
     String subtopic = '',
     String notes = '',
@@ -220,6 +238,8 @@ class FirestoreService {
       'subject': subjectName,
       'subjectId': subjectId,
       'folderId': folderId,
+      'topicId': topicId,
+      'subtopicId': subtopicId,
       'topic': topic,
       'subtopic': subtopic,
       'notes': notes,
@@ -388,6 +408,253 @@ class FirestoreService {
     batch.delete(subjectRef);
     await batch.commit();
   }
+
+  // ── Topic & Subtopic Management ─────────────────────────────────────────────
+
+  /// Stream all topics for a subject
+  Stream<List<Map<String, dynamic>>> streamSubjectTopics(String subjectId) {
+    return _subjectTopicsCol(subjectId)
+        .orderBy('order')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => {'id': doc.id, ...doc.data()})
+            .toList());
+  }
+
+  /// Get all topics with their subtopics
+  Future<List<Map<String, dynamic>>> getSubjectTopicsWithSubtopics(
+      String subjectId) async {
+    final uid = currentUserId;
+    if (uid == null) return const [];
+
+    final subject = await _subjectsCol.doc(subjectId).get();
+    if (subject.data()?['ownerId'] != uid) return const [];
+
+    final topicsSnapshot = await _subjectTopicsCol(subjectId)
+        .orderBy('order')
+        .get();
+
+    final topics = <Map<String, dynamic>>[];
+    for (final topicDoc in topicsSnapshot.docs) {
+      final subtopicsSnapshot = await _topicSubtopicsCol(subjectId, topicDoc.id)
+          .orderBy('order')
+          .get();
+
+      topics.add({
+        'id': topicDoc.id,
+        ...topicDoc.data(),
+        'subtopics': subtopicsSnapshot.docs
+            .map((doc) => {'id': doc.id, ...doc.data()})
+            .toList(),
+      });
+    }
+
+    return topics;
+  }
+
+  /// Create a new topic
+  Future<String> createTopic({
+    required String subjectId,
+    required String name,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to create a topic.');
+
+    final subject = await _subjectsCol.doc(subjectId).get();
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('Subject is not available.');
+    }
+
+    // Get current max order
+    final existing = await _subjectTopicsCol(subjectId)
+        .orderBy('order', descending: true)
+        .limit(1)
+        .get();
+
+    final order = existing.docs.isEmpty
+        ? 0
+        : (existing.docs.first.data()['order'] as int? ?? 0) + 1;
+
+    final ref = await _subjectTopicsCol(subjectId).add({
+      'name': name.trim(),
+      'order': order,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    return ref.id;
+  }
+
+  /// Create a new subtopic under a topic
+  Future<String> createSubtopic({
+    required String subjectId,
+    required String topicId,
+    required String name,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to create a subtopic.');
+
+    final subject = await _subjectsCol.doc(subjectId).get();
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('Subject is not available.');
+    }
+
+    final topic = await _topicRef(subjectId, topicId).get();
+    if (!topic.exists) {
+      throw StateError('Topic not found.');
+    }
+
+    // Get current max order
+    final existing = await _topicSubtopicsCol(subjectId, topicId)
+        .orderBy('order', descending: true)
+        .limit(1)
+        .get();
+
+    final order = existing.docs.isEmpty
+        ? 0
+        : (existing.docs.first.data()['order'] as int? ?? 0) + 1;
+
+    final ref = await _topicSubtopicsCol(subjectId, topicId).add({
+      'name': name.trim(),
+      'order': order,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    return ref.id;
+  }
+
+  /// Update topic name
+  Future<void> updateTopicName({
+    required String subjectId,
+    required String topicId,
+    required String name,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to update a topic.');
+
+    final subject = await _subjectsCol.doc(subjectId).get();
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('Subject is not available.');
+    }
+
+    await _topicRef(subjectId, topicId).update({
+      'name': name.trim(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Update subtopic name
+  Future<void> updateSubtopicName({
+    required String subjectId,
+    required String topicId,
+    required String subtopicId,
+    required String name,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to update a subtopic.');
+
+    final subject = await _subjectsCol.doc(subjectId).get();
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('Subject is not available.');
+    }
+
+    await _subtopicRef(subjectId, topicId, subtopicId).update({
+      'name': name.trim(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Delete a topic and all its subtopics
+  Future<void> deleteTopic({
+    required String subjectId,
+    required String topicId,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to delete a topic.');
+
+    final subject = await _subjectsCol.doc(subjectId).get();
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('Subject is not available.');
+    }
+
+    // Delete all subtopics
+    final subtopics = await _topicSubtopicsCol(subjectId, topicId).get();
+    final batch = _firestore.batch();
+    for (final doc in subtopics.docs) {
+      batch.delete(doc.reference);
+    }
+
+    // Delete the topic
+    batch.delete(_topicRef(subjectId, topicId));
+    await batch.commit();
+  }
+
+  /// Delete a subtopic
+  Future<void> deleteSubtopic({
+    required String subjectId,
+    required String topicId,
+    required String subtopicId,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to delete a subtopic.');
+
+    final subject = await _subjectsCol.doc(subjectId).get();
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('Subject is not available.');
+    }
+
+    await _subtopicRef(subjectId, topicId, subtopicId).delete();
+  }
+
+  /// Reorder topics
+  Future<void> reorderTopics({
+    required String subjectId,
+    required List<String> topicIds,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to reorder topics.');
+
+    final subject = await _subjectsCol.doc(subjectId).get();
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('Subject is not available.');
+    }
+
+    final batch = _firestore.batch();
+    for (var i = 0; i < topicIds.length; i++) {
+      batch.update(_topicRef(subjectId, topicIds[i]), {
+        'order': i,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
+  /// Reorder subtopics
+  Future<void> reorderSubtopics({
+    required String subjectId,
+    required String topicId,
+    required List<String> subtopicIds,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to reorder subtopics.');
+
+    final subject = await _subjectsCol.doc(subjectId).get();
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('Subject is not available.');
+    }
+
+    final batch = _firestore.batch();
+    for (var i = 0; i < subtopicIds.length; i++) {
+      batch.update(_subtopicRef(subjectId, topicId, subtopicIds[i]), {
+        'order': i,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
+  // ── 2. Subject Documents ───────────────────────────────────────────────────
 
   Future<List<FirestoreDocumentModel>> getSubjectDocuments(
       String subjectId) async {

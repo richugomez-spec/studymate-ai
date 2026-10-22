@@ -18,6 +18,7 @@ abstract final class AppColors {
   // ── Stitch Academic Precision Dark Theme Surfaces ─────────────────────────
   static const darkBackground = Color(0xFF090A0D); // Deep Obsidian Canvas
   static const darkSurface = Color(0xFF111217); // Level 1 Surface
+  static const darkCard = Color(0xFF16171E); // Card background
   static const darkSurfaceVariant = Color(0xFF16171E); // Level 2 Card Surface
   static const darkSurfaceContainer = Color(0xFF1D1E26); // Level 3 Raised
   static const darkSurfaceContainerHigh = Color(0xFF242630); // Level 4 Hover/Active

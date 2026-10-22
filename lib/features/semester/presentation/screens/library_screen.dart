@@ -14,6 +14,7 @@ import '../../../../services/firestore_models.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/auth_required_modal.dart';
+import '../widgets/topic_builder.dart';
 
 String _statusLabel(FirestoreDocumentModel doc) {
   if (doc.status == 'indexed' || doc.uploadStatus == 'completed') {
@@ -67,6 +68,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final Set<String> _selectedDocIds = {};
   final Set<String> _deletingDocIds = {};
   String _viewMode = 'grid'; // grid | list
+  bool _showTopicBuilder = false;
   @override
   void initState() {
     super.initState();
@@ -223,6 +225,64 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
                 const Divider(
                     height: 1, thickness: 1, color: AppColors.darkBorderSubtle),
+                // Subject Action Buttons (Upload Files & Add Topics)
+                if (_activeSubjectId != null && !_showTopicBuilder)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.darkCard,
+                      border: Border(
+                        bottom: BorderSide(
+                          color: AppColors.darkBorderSubtle,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: () => _openUploadModal(context),
+                            icon: const Icon(Icons.upload_file),
+                            label: const Text('Upload Files'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.electricVioletLight,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              setState(() => _showTopicBuilder = true);
+                            },
+                            icon: const Icon(Icons.topic_outlined),
+                            label: const Text('Add Topics'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.electricVioletLight,
+                              side: BorderSide(
+                                color: AppColors.electricVioletLight,
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                // Topic Builder
+                if (_activeSubjectId != null && _showTopicBuilder)
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: TopicBuilder(
+                      subjectId: _activeSubjectId!,
+                      subjectName: _activeSubjectName,
+                      onClose: () {
+                        setState(() => _showTopicBuilder = false);
+                      },
+                    ),
+                  ),
                 Expanded(
                   child: _activeSubjectId == null
                       ? _SubjectExplorer(
