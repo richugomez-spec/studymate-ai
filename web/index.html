@@ -47,9 +47,135 @@
       background-color: #0D0D12;
       overflow: hidden;
     }
+
+    /* Loading Screen */
+    #loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #0D0D12 0%, #1A1A24 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.5s ease-out;
+    }
+
+    #loading.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .logo-container {
+      margin-bottom: 40px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .logo {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #7B61FF 0%, #9C84FF 100%);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      font-weight: 700;
+      color: white;
+      box-shadow: 0 8px 32px rgba(123, 97, 255, 0.3);
+    }
+
+    .app-name {
+      font-family: 'Inter', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-top: 16px;
+      letter-spacing: -0.5px;
+    }
+
+    .tagline {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      color: #8B8B9A;
+      margin-top: 8px;
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 40px;
+      height: 40px;
+      margin-top: 32px;
+      border: 3px solid rgba(123, 97, 255, 0.2);
+      border-top-color: #7B61FF;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    /* Loading dots animation */
+    .loading-text {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      color: #8B8B9A;
+      margin-top: 24px;
+    }
+
+    .loading-text::after {
+      content: '';
+      animation: dots 1.5s steps(4, end) infinite;
+    }
+
+    @keyframes dots {
+      0%, 20% { content: ''; }
+      40% { content: '.'; }
+      60% { content: '..'; }
+      80%, 100% { content: '...'; }
+    }
   </style>
 </head>
 <body>
+  <!-- Loading Screen -->
+  <div id="loading">
+    <div class="logo-container">
+      <div class="logo">SM</div>
+    </div>
+    <div class="app-name">StudyMate AI</div>
+    <div class="tagline">Your AI-powered Learning OS</div>
+    <div class="spinner"></div>
+    <div class="loading-text">Loading</div>
+  </div>
+
+  <script>
+    // Hide loading screen when Flutter app is ready
+    window.addEventListener('flutter-first-frame', function() {
+      const loading = document.getElementById('loading');
+      loading.classList.add('fade-out');
+      setTimeout(() => loading.remove(), 500);
+    });
+
+    // Fallback: hide after 10 seconds if Flutter doesn't load
+    setTimeout(function() {
+      const loading = document.getElementById('loading');
+      if (loading) {
+        loading.classList.add('fade-out');
+        setTimeout(() => loading.remove(), 500);
+      }
+    }, 10000);
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
