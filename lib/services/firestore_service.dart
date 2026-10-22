@@ -955,18 +955,31 @@ class FirestoreService {
     required String subjectId,
     required String ownerId,
   }) async {
+    debugPrint('🗑️ [DELETE] Starting deletion for document: $documentId in subject: $subjectId');
     try {
       final documentRef = _subjectDocumentRef(subjectId, documentId);
+      debugPrint('🗑️ [DELETE] Document path: ${documentRef.path}');
+
       final subject = await _subjectsCol.doc(subjectId).get();
       if (subject.data()?['ownerId'] != ownerId) {
+        debugPrint('🗑️ [DELETE] ERROR: Subject owner mismatch');
         throw StateError('Subject is not available.');
       }
+      debugPrint('🗑️ [DELETE] Subject ownership verified');
+
       final existing = await documentRef.get();
-      if (!existing.exists ||
-          (existing.data()?['ownerId'] != null &&
-              existing.data()?['ownerId'] != ownerId)) {
+      if (!existing.exists) {
+        debugPrint('🗑️ [DELETE] ERROR: Document does not exist in Firestore');
         throw StateError('Document is not available.');
       }
+      if (existing.data()?['ownerId'] != null &&
+          existing.data()?['ownerId'] != ownerId) {
+        debugPrint('🗑️ [DELETE] ERROR: Document owner mismatch');
+        throw StateError('Document is not available.');
+      }
+      debugPrint('🗑️ [DELETE] Document ownership verified');
+
+      debugPrint('🗑️ [DELETE] Fetching related data (chat sessions, knowledge, cache)...');
       final related = await Future.wait<dynamic>([
         _chatSessionsCol
             .where('ownerId', isEqualTo: ownerId)
@@ -978,6 +991,11 @@ class FirestoreService {
             .get(),
         _usersCol.doc(ownerId).collection('generation_cache').get(),
       ]);
+      debugPrint('🗑️ [DELETE] Found ${related[0].docs.length} chat sessions');
+      debugPrint('🗑️ [DELETE] Found ${related[1].docs.length} knowledge items');
+      debugPrint('🗑️ [DELETE] Found ${related[2].docs.length} cache entries');
+
+      debugPrint('🗑️ [DELETE] Creating batch delete for main document...');
       final batch = _firestore.batch();
       batch.delete(documentRef);
       batch.set(
@@ -985,12 +1003,23 @@ class FirestoreService {
         {'documentsUploaded': FieldValue.increment(-1)},
         SetOptions(merge: true),
       );
+
+      debugPrint('🗑️ [DELETE] Committing batch delete...');
       await batch.commit();
+      debugPrint('🗑️ [DELETE] ✅ Main document deleted from Firestore');
+
+      debugPrint('🗑️ [DELETE] Deleting related chat sessions...');
       for (final session in related[0].docs) {
         await _deleteCollection(session.reference.collection('messages'));
         await session.reference.delete();
       }
+      debugPrint('🗑️ [DELETE] ✅ Chat sessions deleted');
+
+      debugPrint('🗑️ [DELETE] Deleting knowledge items...');
       await _deleteDocuments(related[1].docs.map((d) => d.reference).toList());
+      debugPrint('🗑️ [DELETE] ✅ Knowledge items deleted');
+
+      debugPrint('🗑️ [DELETE] Filtering stale cache entries...');
       final staleCache = related[2].docs.where((d) {
         final result = d.data()['result'];
         if (result is! Map || result['sources'] is! List) return false;
@@ -998,9 +1027,14 @@ class FirestoreService {
             (result['sources'] as List)
                 .any((s) => s is Map && s['id'] == documentId);
       });
+      debugPrint('🗑️ [DELETE] Found ${staleCache.length} stale cache entries');
       await _deleteDocuments(staleCache.map((d) => d.reference).toList());
-    } catch (e) {
-      debugPrint('FirestoreService.deleteDocument error: $e');
+      debugPrint('🗑️ [DELETE] ✅ Cache entries deleted');
+
+      debugPrint('🗑️ [DELETE] ✅✅✅ DOCUMENT DELETION COMPLETE: $documentId');
+    } catch (e, stackTrace) {
+      debugPrint('🗑️ [DELETE] ❌ ERROR during deletion: $e');
+      debugPrint('🗑️ [DELETE] Stack trace: $stackTrace');
       rethrow;
     }
   }

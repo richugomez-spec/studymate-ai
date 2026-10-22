@@ -452,18 +452,27 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ],
       ),
     );
-    if (confirm != true) return;
+    if (confirm != true) {
+      debugPrint('🖱️ [UI] Delete cancelled by user');
+      return;
+    }
+    debugPrint('🖱️ [UI] Delete confirmed for document: ${doc.id} (${doc.fileName})');
+    debugPrint('🖱️ [UI] Subject: ${doc.subjectId}');
     setState(() => _deletingDocIds.add(doc.id));
     try {
+      debugPrint('🖱️ [UI] Calling KnowledgeEngine.deleteDocument...');
       await ref.read(knowledgeEngineProvider).deleteDocument(
             subjectId: doc.subjectId,
             documentId: doc.id,
           );
+      debugPrint('🖱️ [UI] ✅ Delete operation completed successfully');
       _selectedDocIds.remove(doc.id);
       ref.read(selectedKnowledgeSourceIdsProvider.notifier).state =
           List.unmodifiable(_selectedDocIds);
-    } catch (error) {
-      debugPrint('Stored file cleanup did not complete: $error');
+      debugPrint('🖱️ [UI] Removed from selection state');
+    } catch (error, stackTrace) {
+      debugPrint('🖱️ [UI] ❌ Delete operation failed: $error');
+      debugPrint('🖱️ [UI] Stack trace: $stackTrace');
       if (mounted) {
         setState(() => _deletingDocIds.remove(doc.id));
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -475,7 +484,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     // Clear active doc if it was the deleted one
     final activeDoc = ref.read(activeDocumentProvider);
     if (activeDoc?.id == doc.id) {
+      debugPrint('🖱️ [UI] Clearing active document provider');
       ref.read(activeDocumentProvider.notifier).clearDocument();
+    }
+    debugPrint('🖱️ [UI] ✅✅✅ UI DELETE HANDLER COMPLETE');
+    if (mounted) {
+      setState(() => _deletingDocIds.remove(doc.id));
     }
   }
 

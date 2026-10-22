@@ -154,8 +154,19 @@ class FirebaseUploadService {
   }
 
   Future<void> deleteStoredDocument(String storagePath) async {
-    if (storagePath.isEmpty) return;
-    await _storage.ref(storagePath).delete();
+    if (storagePath.isEmpty) {
+      debugPrint('📦 [Firebase Storage] Empty storage path, skipping deletion');
+      return;
+    }
+    debugPrint('📦 [Firebase Storage] Deleting file at: $storagePath');
+    try {
+      await _storage.ref(storagePath).delete();
+      debugPrint('📦 [Firebase Storage] ✅ File deleted successfully: $storagePath');
+    } catch (error, stackTrace) {
+      debugPrint('📦 [Firebase Storage] ❌ Deletion error: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      rethrow;
+    }
   }
 
   String _mimeType(String ext) {

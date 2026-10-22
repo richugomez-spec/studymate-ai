@@ -535,20 +535,45 @@ class KnowledgeEngine {
     required String subjectId,
     required String documentId,
   }) async {
+    debugPrint('🔥 [KnowledgeEngine] Starting document deletion: $documentId');
     final firestore = _ref.read(firestoreServiceProvider);
     final upload = _ref.read(firebaseUploadServiceProvider);
     final ownerId = firestore.currentUserId;
-    if (ownerId == null) throw StateError('Sign in to delete this file.');
+
+    if (ownerId == null) {
+      debugPrint('🔥 [KnowledgeEngine] ERROR: User not signed in');
+      throw StateError('Sign in to delete this file.');
+    }
+    debugPrint('🔥 [KnowledgeEngine] User verified: $ownerId');
+
+    debugPrint('🔥 [KnowledgeEngine] Fetching document metadata...');
     final document = await firestore.getSubjectDocument(subjectId, documentId);
-    if (document == null) throw StateError('Document is not available.');
+    if (document == null) {
+      debugPrint('🔥 [KnowledgeEngine] ERROR: Document not found');
+      throw StateError('Document is not available.');
+    }
+    debugPrint('🔥 [KnowledgeEngine] Document found: ${document.fileName}, storagePath: ${document.storagePath}');
+
+    // Step 1: Delete from Firebase Storage
+    debugPrint('🔥 [KnowledgeEngine] Step 1: Deleting from Firebase Storage...');
     await _deleteStorageObjectIfPresent(upload, document.storagePath);
+    debugPrint('🔥 [KnowledgeEngine] ✅ Storage deletion complete');
+
+    // Step 2: Delete from Firestore
+    debugPrint('🔥 [KnowledgeEngine] Step 2: Deleting from Firestore...');
     await firestore.deleteDocument(
       documentId: documentId,
       subjectId: subjectId,
       ownerId: ownerId,
     );
+    debugPrint('🔥 [KnowledgeEngine] ✅ Firestore deletion complete');
+
+    // Step 3: Invalidate cache
+    debugPrint('🔥 [KnowledgeEngine] Step 3: Invalidating cache...');
     invalidateSubjectContext(subjectId, ownerId: ownerId);
-    debugPrint('DELETE COMPLETE: document=$documentId');
+    debugPrint('🔥 [KnowledgeEngine] ✅ Cache invalidated');
+
+    debugPrint('🔥 [KnowledgeEngine] ✅✅✅ DELETE COMPLETE: document=$documentId');
   }
 
   Future<void> deleteSubject(String subjectId) async {
@@ -566,14 +591,20 @@ class KnowledgeEngine {
 
   Future<void> _deleteStorageObjectIfPresent(
       FirebaseUploadService upload, String storagePath) async {
-    if (storagePath.isEmpty) return;
+    if (storagePath.isEmpty) {
+      debugPrint('🔥 [Storage] No storage path provided, skipping');
+      return;
+    }
+    debugPrint('🔥 [Storage] Attempting to delete: $storagePath');
     try {
       await upload.deleteStoredDocument(storagePath);
+      debugPrint('🔥 [Storage] ✅ File deleted successfully');
     } catch (error) {
       if (error.toString().contains('object-not-found')) {
-        debugPrint('Storage object already missing: $storagePath');
+        debugPrint('🔥 [Storage] ⚠️ Storage object already missing: $storagePath');
         return;
       }
+      debugPrint('🔥 [Storage] ❌ Storage deletion error: $error');
       rethrow;
     }
   }
