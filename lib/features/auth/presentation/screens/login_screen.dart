@@ -108,7 +108,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _showForgotPasswordDialog() {
-    final resetEmailController = TextEditingController(text: _emailController.text.trim());
+    final resetEmailController =
+        TextEditingController(text: _emailController.text.trim());
     final resetFormKey = GlobalKey<FormState>();
 
     showDialog(
@@ -153,11 +154,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   fillColor: Colors.white.withOpacity(0.05),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+                    borderSide:
+                        BorderSide(color: Colors.white.withOpacity(0.1)),
                   ),
                 ),
                 validator: (v) {
-                  if (v == null || !v.contains('@')) return 'Enter a valid email';
+                  if (v == null || !v.contains('@'))
+                    return 'Enter a valid email';
                   return null;
                 },
               ),
@@ -167,12 +170,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(),
-            child: Text('Cancel', style: TextStyle(color: Colors.white.withOpacity(0.5))),
+            child: Text('Cancel',
+                style: TextStyle(color: Colors.white.withOpacity(0.5))),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.electricViolet,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () async {
               if (!(resetFormKey.currentState?.validate() ?? false)) return;
@@ -192,7 +197,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 _showSuccess('Password reset link sent to $targetEmail');
               }
             },
-            child: const Text('Send Reset Link', style: TextStyle(color: Colors.white)),
+            child: const Text('Send Reset Link',
+                style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -203,7 +209,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600)),
+        content: Text(message,
+            style: const TextStyle(
+                fontFamily: 'Inter', fontWeight: FontWeight.w600)),
         backgroundColor: AppColors.error,
         behavior: SnackBarBehavior.floating,
       ),
@@ -214,7 +222,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600)),
+        content: Text(message,
+            style: const TextStyle(
+                fontFamily: 'Inter', fontWeight: FontWeight.w600)),
         backgroundColor: AppColors.success,
         behavior: SnackBarBehavior.floating,
       ),
@@ -225,7 +235,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(message, style: const TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w600)),
+        content: Text(message,
+            style: const TextStyle(
+                fontFamily: 'Inter', fontWeight: FontWeight.w600)),
         backgroundColor: const Color(0xFFF59E0B),
         behavior: SnackBarBehavior.floating,
       ),
@@ -281,10 +293,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                 child: Container(
                   constraints: BoxConstraints(maxWidth: isDesktop ? 1040 : 460),
-                  child: isDesktop ? _buildDesktopSplitLayout() : _buildMobileLayout(),
+                  child: isDesktop
+                      ? _buildDesktopSplitLayout()
+                      : _buildMobileLayout(),
                 ),
               ),
             ),
@@ -304,7 +319,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               },
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.04),
                   borderRadius: BorderRadius.circular(8),
@@ -313,7 +329,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.arrow_back_rounded, size: 16, color: Colors.white.withOpacity(0.7)),
+                    Icon(Icons.arrow_back_rounded,
+                        size: 16, color: Colors.white.withOpacity(0.7)),
                     const SizedBox(width: 6),
                     Text(
                       'Explore as Guest',
@@ -350,16 +367,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               children: [
                 // Brand pill
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppColors.electricViolet.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.electricViolet.withOpacity(0.25)),
+                    border: Border.all(
+                        color: AppColors.electricViolet.withOpacity(0.25)),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.auto_awesome, size: 13, color: AppColors.electricVioletLight),
+                      Icon(Icons.auto_awesome,
+                          size: 13, color: AppColors.electricVioletLight),
                       SizedBox(width: 6),
                       Text(
                         'STUDYMATE AI 2.0',
@@ -393,7 +413,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: 16),
 
                 Text(
-                  'Upload lecture slides, chapters, and syllabi. StudyMate synthesizes micro-concepts, active quizzes, and socratic coaching instantly.',
+                  'Organize subjects, topics, and notes. StudyMate helps you learn with AI chat, quizzes, flashcards, and progress tracking.',
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 15,
@@ -410,7 +430,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   icon: Icons.psychology_outlined,
                   iconColor: AppColors.electricVioletLight,
                   title: 'AI-Powered Study Synthesis',
-                  subtitle: 'Synthesizes deep conceptual answers grounded in your real materials.',
+                  subtitle:
+                      'Synthesizes deep conceptual answers grounded in your real materials.',
                 ).animate(delay: 200.ms).fadeIn().slideX(begin: -0.05, end: 0),
 
                 const SizedBox(height: 20),
@@ -419,7 +440,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   icon: Icons.flash_on_outlined,
                   iconColor: AppColors.teal,
                   title: 'Adaptive Flashcards & Quizzes',
-                  subtitle: 'Auto-generates spaced-repetition drills from your exact notes.',
+                  subtitle:
+                      'Auto-generates spaced-repetition drills from your exact notes.',
                 ).animate(delay: 250.ms).fadeIn().slideX(begin: -0.05, end: 0),
 
                 const SizedBox(height: 20),
@@ -428,7 +450,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   icon: Icons.sync_rounded,
                   iconColor: AppColors.skyBlue,
                   title: 'Cloud Knowledge Sync',
-                  subtitle: 'Your active folio, chat history, and exam readiness sync in real time.',
+                  subtitle:
+                      'Your active folio, chat history, and exam readiness sync in real time.',
                 ).animate(delay: 300.ms).fadeIn().slideX(begin: -0.05, end: 0),
               ],
             ),
@@ -438,7 +461,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         // Right Column: Auth Card
         Expanded(
           flex: 9,
-          child: _buildAuthCard().animate(delay: 150.ms).fadeIn().slideY(begin: 0.05, end: 0),
+          child: _buildAuthCard()
+              .animate(delay: 150.ms)
+              .fadeIn()
+              .slideY(begin: 0.05, end: 0),
         ),
       ],
     );
@@ -464,7 +490,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ],
           ),
-          child: const Icon(Icons.auto_stories_rounded, color: Colors.white, size: 26),
+          child: const Icon(Icons.auto_stories_rounded,
+              color: Colors.white, size: 26),
         ),
         const SizedBox(height: 16),
         const Text(
@@ -555,13 +582,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     foregroundColor: Colors.black,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
                   child: _isLoading
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.black),
                         )
                       : Row(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -595,7 +624,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 // Divider: "or continue with email"
                 Row(
                   children: [
-                    Expanded(child: Divider(color: Colors.white.withOpacity(0.1))),
+                    Expanded(
+                        child: Divider(color: Colors.white.withOpacity(0.1))),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: Text(
@@ -609,7 +639,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                     ),
-                    Expanded(child: Divider(color: Colors.white.withOpacity(0.1))),
+                    Expanded(
+                        child: Divider(color: Colors.white.withOpacity(0.1))),
                   ],
                 ),
 
@@ -620,7 +651,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   TextFormField(
                     controller: _nameController,
                     style: const TextStyle(color: Colors.white, fontSize: 13.5),
-                    decoration: _inputDecoration('Full Name', Icons.person_outline),
+                    decoration:
+                        _inputDecoration('Full Name', Icons.person_outline),
                   ),
                   const SizedBox(height: 14),
                 ],
@@ -630,9 +662,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   controller: _emailController,
                   style: const TextStyle(color: Colors.white, fontSize: 13.5),
                   keyboardType: TextInputType.emailAddress,
-                  decoration: _inputDecoration('Email address', Icons.mail_outline),
+                  decoration:
+                      _inputDecoration('Email address', Icons.mail_outline),
                   validator: (v) {
-                    if (v == null || !v.contains('@')) return 'Enter a valid email address';
+                    if (v == null || !v.contains('@'))
+                      return 'Enter a valid email address';
                     return null;
                   },
                 ),
@@ -644,18 +678,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   controller: _passwordController,
                   style: const TextStyle(color: Colors.white, fontSize: 13.5),
                   obscureText: !_isPasswordVisible,
-                  decoration: _inputDecoration('Password', Icons.lock_outline).copyWith(
+                  decoration:
+                      _inputDecoration('Password', Icons.lock_outline).copyWith(
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                        _isPasswordVisible
+                            ? Icons.visibility_off
+                            : Icons.visibility,
                         size: 16,
                         color: Colors.white38,
                       ),
-                      onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                      onPressed: () => setState(
+                          () => _isPasswordVisible = !_isPasswordVisible),
                     ),
                   ),
                   validator: (v) {
-                    if (v == null || v.length < 6) return 'Password must be at least 6 characters';
+                    if (v == null || v.length < 6)
+                      return 'Password must be at least 6 characters';
                     return null;
                   },
                 ),
@@ -693,13 +732,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     foregroundColor: Colors.white,
                     elevation: 0,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
                   child: _isLoading
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
                         )
                       : Text(
                           _isRegister ? 'Create Account' : 'Sign In with Email',
@@ -718,7 +759,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      _isRegister ? 'Already have an account?' : 'Don\'t have an account?',
+                      _isRegister
+                          ? 'Already have an account?'
+                          : 'Don\'t have an account?',
                       style: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 12.5,
@@ -726,8 +769,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
                     TextButton(
-                      onPressed: () => setState(() => _isRegister = !_isRegister),
-                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                      onPressed: () =>
+                          setState(() => _isRegister = !_isRegister),
+                      style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact),
                       child: Text(
                         _isRegister ? 'Sign in' : 'Create account',
                         style: const TextStyle(
@@ -770,7 +815,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: AppColors.electricViolet, width: 1.5),
+        borderSide:
+            const BorderSide(color: AppColors.electricViolet, width: 1.5),
       ),
     );
   }

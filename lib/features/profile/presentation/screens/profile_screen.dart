@@ -14,16 +14,22 @@ class ProfileScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final userId = user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
-    final profileAsync = userId.isNotEmpty
-        ? ref.watch(userProfileStreamProvider(userId))
-        : null;
+    final userId =
+        user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
+    final profileAsync =
+        userId.isNotEmpty ? ref.watch(userProfileStreamProvider(userId)) : null;
     final profile = profileAsync?.asData?.value;
 
     final progressAsync = userId.isNotEmpty
         ? ref.watch(userStudyProgressStreamProvider(userId))
         : null;
     final progress = progressAsync?.asData?.value;
+    final knowledgeItems = userId.isNotEmpty
+        ? ref.watch(userKnowledgeStreamProvider(userId)).asData?.value ??
+            const <Map<String, dynamic>>[]
+        : const <Map<String, dynamic>>[];
+    final noteCount =
+        knowledgeItems.where((item) => item['kind'] == 'note').length;
 
     final name = profile?.name.isNotEmpty == true
         ? profile!.name
@@ -37,7 +43,13 @@ class ProfileScreen extends ConsumerWidget {
         ? profile!.email
         : (user?.email ?? 'student@studymate.ai');
 
-    final initials = name.trim().split(' ').map((w) => w.isNotEmpty ? w[0] : '').take(2).join().toUpperCase();
+    final initials = name
+        .trim()
+        .split(' ')
+        .map((w) => w.isNotEmpty ? w[0] : '')
+        .take(2)
+        .join()
+        .toUpperCase();
 
     return Scaffold(
       backgroundColor: AppColors.darkBackground,
@@ -78,7 +90,8 @@ class ProfileScreen extends ConsumerWidget {
                     children: [
                       CircleAvatar(
                         radius: 32,
-                        backgroundColor: AppColors.electricViolet.withOpacity(0.2),
+                        backgroundColor:
+                            AppColors.electricViolet.withOpacity(0.2),
                         child: Text(
                           initials.isNotEmpty ? initials : 'SM',
                           style: const TextStyle(
@@ -114,7 +127,8 @@ class ProfileScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
                                 color: AppColors.emerald.withOpacity(0.12),
                                 borderRadius: BorderRadius.circular(4),
@@ -135,7 +149,10 @@ class ProfileScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.05, end: 0),
+                )
+                    .animate()
+                    .fadeIn(duration: 300.ms)
+                    .slideY(begin: 0.05, end: 0),
 
                 const SizedBox(height: 20),
 
@@ -157,14 +174,15 @@ class ProfileScreen extends ConsumerWidget {
                     final metrics = [
                       _ProfileMetricCard(
                         title: 'Focus Minutes',
-                        value: '${progress?.totalMinutes ?? profile?.totalStudyMinutes ?? 0}m',
+                        value:
+                            '${progress?.totalMinutes ?? profile?.totalStudyMinutes ?? 0}m',
                         icon: Icons.timer_outlined,
                         color: AppColors.electricViolet,
                       ),
                       _ProfileMetricCard(
-                        title: 'Materials Uploaded',
-                        value: '${profile?.documentsUploaded ?? 0}',
-                        icon: Icons.upload_file_rounded,
+                        title: 'Study Notes',
+                        value: '$noteCount',
+                        icon: Icons.note_alt_outlined,
                         color: AppColors.teal,
                       ),
                       _ProfileMetricCard(
@@ -175,7 +193,8 @@ class ProfileScreen extends ConsumerWidget {
                       ),
                       _ProfileMetricCard(
                         title: 'Study Streak',
-                        value: '${profile?.streak ?? progress?.currentStreak ?? 1}d',
+                        value:
+                            '${profile?.streak ?? progress?.currentStreak ?? 1}d',
                         icon: Icons.local_fire_department_rounded,
                         color: Colors.deepOrangeAccent,
                       ),
@@ -208,7 +227,8 @@ class ProfileScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 10),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                   decoration: BoxDecoration(
                     color: AppColors.darkSurfaceVariant,
                     borderRadius: BorderRadius.circular(8),
@@ -216,10 +236,16 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   child: Column(
                     children: [
-                      _DetailRow(label: 'Account UID', value: userId.isNotEmpty ? userId : 'guest_session'),
-                      const Divider(color: AppColors.darkBorderSubtle, height: 20),
-                      _DetailRow(label: 'Authentication Provider', value: 'Firebase Auth (Persistent)'),
-                      const Divider(color: AppColors.darkBorderSubtle, height: 20),
+                      _DetailRow(
+                          label: 'Account UID',
+                          value: userId.isNotEmpty ? userId : 'guest_session'),
+                      const Divider(
+                          color: AppColors.darkBorderSubtle, height: 20),
+                      _DetailRow(
+                          label: 'Authentication Provider',
+                          value: 'Firebase Auth (Persistent)'),
+                      const Divider(
+                          color: AppColors.darkBorderSubtle, height: 20),
                       _DetailRow(
                         label: 'Member Since',
                         value: profile?.createdAt != null
@@ -247,8 +273,10 @@ class ProfileScreen extends ConsumerWidget {
                     foregroundColor: Colors.redAccent,
                     elevation: 0,
                     side: BorderSide(color: Colors.redAccent.withOpacity(0.3)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 14),
                     minimumSize: const Size(double.infinity, 44),
                   ),
                 ),

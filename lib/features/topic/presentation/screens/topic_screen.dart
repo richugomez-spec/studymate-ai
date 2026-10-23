@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
-import '../../../../core/services/document_processing_service.dart';
 
 class TopicScreen extends ConsumerWidget {
   final String topicId;
@@ -13,8 +12,6 @@ class TopicScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activeDoc = ref.watch(activeDocumentProvider);
-
     return Scaffold(
       backgroundColor: AppColors.darkBackground,
       appBar: AppBar(
@@ -64,7 +61,7 @@ class TopicScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        activeDoc != null ? activeDoc.fileName : 'Topic Focus: $topicId',
+                        'Topic Focus: $topicId',
                         style: const TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 20,
@@ -74,9 +71,7 @@ class TopicScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        activeDoc != null
-                            ? 'Contains ${activeDoc.concepts.length} indexed concepts and ${activeDoc.quizzes.length} diagnostic questions.'
-                            : 'Upload course notes to index specific topics.',
+                        'Add manual notes and subtopics to organize this topic.',
                         style: TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 13,
@@ -86,47 +81,39 @@ class TopicScreen extends ConsumerWidget {
                     ],
                   ),
                 ).animate().fadeIn(duration: 300.ms),
-
                 const SizedBox(height: 20),
-
                 Row(
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          if (activeDoc != null) {
-                            context.push(AppRoutes.quiz.replaceFirst(':topicId', activeDoc.id));
-                          } else {
-                            context.push(AppRoutes.uploadCenter);
-                          }
-                        },
+                        onPressed: () => context.push(AppRoutes.quiz
+                            .replaceFirst(
+                                ':topicId', 'current')),
                         icon: const Icon(Icons.quiz_rounded, size: 16),
                         label: const Text('Topic Quiz'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.electricViolet,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () {
-                          if (activeDoc != null) {
-                            context.push(AppRoutes.flashcards.replaceFirst(':topicId', activeDoc.id));
-                          } else {
-                            context.push(AppRoutes.uploadCenter);
-                          }
-                        },
+                        onPressed: () => context.push(AppRoutes.flashcards
+                            .replaceFirst(
+                                ':topicId', 'current')),
                         icon: const Icon(Icons.flip_to_front_rounded, size: 16),
                         label: const Text('Topic Flashcards'),
                         style: OutlinedButton.styleFrom(
                           side: const BorderSide(color: AppColors.darkBorder),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
                     ),

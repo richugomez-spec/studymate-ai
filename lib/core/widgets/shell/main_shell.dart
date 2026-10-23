@@ -21,25 +21,70 @@ class MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<MainShell> {
   static const _sectionedNav = [
     _NavSection(label: 'WORKSPACE', destinations: [
-      _NavDestination(route: AppRoutes.home, icon: Icons.home_outlined, selectedIcon: Icons.home_rounded, label: 'Home'),
-      _NavDestination(route: AppRoutes.library, icon: Icons.menu_book_outlined, selectedIcon: Icons.menu_book_rounded, label: 'Library'),
-      _NavDestination(route: AppRoutes.aiChat, icon: Icons.auto_awesome_outlined, selectedIcon: Icons.auto_awesome_rounded, label: 'AI Chat'),
+      _NavDestination(
+          route: AppRoutes.home,
+          icon: Icons.home_outlined,
+          selectedIcon: Icons.home_rounded,
+          label: 'Home'),
+      _NavDestination(
+          route: AppRoutes.library,
+          icon: Icons.menu_book_outlined,
+          selectedIcon: Icons.menu_book_rounded,
+          label: 'Library'),
+      _NavDestination(
+          route: AppRoutes.aiChat,
+          icon: Icons.auto_awesome_outlined,
+          selectedIcon: Icons.auto_awesome_rounded,
+          label: 'AI Chat'),
     ]),
     _NavSection(label: 'STUDY TOOLS', destinations: [
-      _NavDestination(route: '/flashcards/current', icon: Icons.flip_to_front_outlined, selectedIcon: Icons.flip_to_front_rounded, label: 'Flashcards'),
-      _NavDestination(route: '/quiz/current', icon: Icons.quiz_outlined, selectedIcon: Icons.quiz_rounded, label: 'Quiz'),
-      _NavDestination(route: '/mind-map/current', icon: Icons.hub_outlined, selectedIcon: Icons.hub_rounded, label: 'Mind Map'),
-      _NavDestination(route: '/summary/current', icon: Icons.summarize_outlined, selectedIcon: Icons.summarize_rounded, label: 'Smart Summary'),
-      _NavDestination(route: '/analyzer/current', icon: Icons.analytics_outlined, selectedIcon: Icons.analytics_rounded, label: 'PYQ Analyzer'),
-      _NavDestination(route: '/exam/current', icon: Icons.assignment_outlined, selectedIcon: Icons.assignment_rounded, label: 'Exam Generator'),
+      _NavDestination(
+          route: '/flashcards/current',
+          icon: Icons.flip_to_front_outlined,
+          selectedIcon: Icons.flip_to_front_rounded,
+          label: 'Flashcards'),
+      _NavDestination(
+          route: '/quiz/current',
+          icon: Icons.quiz_outlined,
+          selectedIcon: Icons.quiz_rounded,
+          label: 'Quiz'),
+      _NavDestination(
+          route: '/mind-map/current',
+          icon: Icons.hub_outlined,
+          selectedIcon: Icons.hub_rounded,
+          label: 'Mind Map'),
+      _NavDestination(
+          route: '/summary/current',
+          icon: Icons.summarize_outlined,
+          selectedIcon: Icons.summarize_rounded,
+          label: 'Smart Summary'),
+      _NavDestination(
+          route: '/analyzer/current',
+          icon: Icons.analytics_outlined,
+          selectedIcon: Icons.analytics_rounded,
+          label: 'PYQ Analyzer'),
+      _NavDestination(
+          route: '/exam/current',
+          icon: Icons.assignment_outlined,
+          selectedIcon: Icons.assignment_rounded,
+          label: 'Exam Generator'),
     ]),
     _NavSection(label: 'ACCOUNT', destinations: [
-      _NavDestination(route: AppRoutes.progress, icon: Icons.bar_chart_outlined, selectedIcon: Icons.bar_chart_rounded, label: 'Progress'),
-      _NavDestination(route: AppRoutes.settings, icon: Icons.settings_outlined, selectedIcon: Icons.settings_rounded, label: 'Settings'),
+      _NavDestination(
+          route: AppRoutes.progress,
+          icon: Icons.bar_chart_outlined,
+          selectedIcon: Icons.bar_chart_rounded,
+          label: 'Progress'),
+      _NavDestination(
+          route: AppRoutes.settings,
+          icon: Icons.settings_outlined,
+          selectedIcon: Icons.settings_rounded,
+          label: 'Settings'),
     ]),
   ];
 
-  static final _allDestinations = _sectionedNav.expand((s) => s.destinations).toList();
+  static final _allDestinations =
+      _sectionedNav.expand((s) => s.destinations).toList();
 
   int _calculateSelectedIndex(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
@@ -49,7 +94,8 @@ class _MainShellState extends ConsumerState<MainShell> {
       if (route != '/' && location.startsWith(route)) return i;
       // Tool path prefix matching (e.g. /flashcards matches /flashcards/current)
       final basePrefix = route.split('/')[1];
-      if (basePrefix.isNotEmpty && location.startsWith('/$basePrefix')) return i;
+      if (basePrefix.isNotEmpty && location.startsWith('/$basePrefix'))
+        return i;
     }
     return 0;
   }
@@ -67,7 +113,8 @@ class _MainShellState extends ConsumerState<MainShell> {
 
     if (isDesktop) {
       return Scaffold(
-        backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
+        backgroundColor:
+            isDark ? AppColors.darkBackground : AppColors.lightBackground,
         body: Row(
           children: [
             _StudyMateSidebar(
@@ -79,7 +126,8 @@ class _MainShellState extends ConsumerState<MainShell> {
             VerticalDivider(
               width: 1,
               thickness: 1,
-              color: isDark ? AppColors.darkBorderSubtle : AppColors.lightBorder,
+              color:
+                  isDark ? AppColors.darkBorderSubtle : AppColors.lightBorder,
             ),
             Expanded(child: widget.child),
           ],
@@ -176,7 +224,9 @@ class _StudyMateSidebar extends StatelessWidget {
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.3,
-                        color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                        color: isDark
+                            ? AppColors.darkTextPrimary
+                            : AppColors.lightTextPrimary,
                       ),
                     ),
                     Text(
@@ -184,7 +234,9 @@ class _StudyMateSidebar extends StatelessWidget {
                       style: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 9.5,
-                        color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
+                        color: isDark
+                            ? AppColors.darkTextTertiary
+                            : AppColors.lightTextTertiary,
                       ),
                     ),
                   ],
@@ -220,7 +272,9 @@ class _StudyMateSidebar extends StatelessWidget {
                           fontFamily: 'JetBrains Mono',
                           fontSize: 9,
                           fontWeight: FontWeight.w700,
-                          color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
+                          color: isDark
+                              ? AppColors.darkTextTertiary
+                              : AppColors.lightTextTertiary,
                           letterSpacing: 0.9,
                         ),
                       ),
@@ -242,11 +296,13 @@ class _StudyMateSidebar extends StatelessWidget {
                   onTap: () => AuthRequiredModal.show(
                     context,
                     title: 'Sign in to StudyMate AI',
-                    message: 'Unlock your AI tutor, uploaded notes, and automated flashcards.',
+                    message:
+                        'Unlock your AI tutor, subject notes, and automated flashcards.',
                   ),
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -255,11 +311,13 @@ class _StudyMateSidebar extends StatelessWidget {
                         ],
                       ),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.electricViolet.withOpacity(0.3)),
+                      border: Border.all(
+                          color: AppColors.electricViolet.withOpacity(0.3)),
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.login_rounded, size: 15, color: AppColors.electricVioletLight),
+                        Icon(Icons.login_rounded,
+                            size: 15, color: AppColors.electricVioletLight),
                         SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -286,11 +344,17 @@ class _StudyMateSidebar extends StatelessWidget {
                 onTap: () => context.push(AppRoutes.profile),
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkSurfaceContainer : AppColors.lightSurfaceVariant,
+                    color: isDark
+                        ? AppColors.darkSurfaceContainer
+                        : AppColors.lightSurfaceVariant,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: isDark ? AppColors.darkBorder : AppColors.lightBorder),
+                    border: Border.all(
+                        color: isDark
+                            ? AppColors.darkBorder
+                            : AppColors.lightBorder),
                   ),
                   child: Row(
                     children: [
@@ -326,7 +390,9 @@ class _StudyMateSidebar extends StatelessWidget {
                                 fontFamily: 'Inter',
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                                color: isDark
+                                    ? AppColors.darkTextPrimary
+                                    : AppColors.lightTextPrimary,
                               ),
                             ),
                             Text(
@@ -334,7 +400,9 @@ class _StudyMateSidebar extends StatelessWidget {
                               style: TextStyle(
                                 fontFamily: 'Inter',
                                 fontSize: 10,
-                                color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
+                                color: isDark
+                                    ? AppColors.darkTextTertiary
+                                    : AppColors.lightTextTertiary,
                               ),
                             ),
                           ],
@@ -343,7 +411,9 @@ class _StudyMateSidebar extends StatelessWidget {
                       Icon(
                         Icons.chevron_right_rounded,
                         size: 14,
-                        color: isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary,
+                        color: isDark
+                            ? AppColors.darkTextTertiary
+                            : AppColors.lightTextTertiary,
                       ),
                     ],
                   ),
@@ -386,7 +456,9 @@ class _SidebarItemState extends State<_SidebarItem> {
 
     Color bgColor = Colors.transparent;
     if (isSelected) {
-      bgColor = isDark ? AppColors.darkSurfaceContainer : AppColors.lightSurfaceVariant;
+      bgColor = isDark
+          ? AppColors.darkSurfaceContainer
+          : AppColors.lightSurfaceVariant;
     } else if (_hovered) {
       bgColor = isDark
           ? AppColors.darkSurfaceVariant.withOpacity(0.7)
@@ -408,20 +480,29 @@ class _SidebarItemState extends State<_SidebarItem> {
               borderRadius: BorderRadius.circular(6),
               border: isSelected
                   ? Border.all(
-                      color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      color:
+                          isDark ? AppColors.darkBorder : AppColors.lightBorder,
                     )
                   : null,
             ),
             child: Row(
               children: [
                 Icon(
-                  isSelected ? widget.destination.selectedIcon : widget.destination.icon,
+                  isSelected
+                      ? widget.destination.selectedIcon
+                      : widget.destination.icon,
                   size: 15,
                   color: isSelected
-                      ? (isDark ? AppColors.electricVioletLight : AppColors.brandAccent)
+                      ? (isDark
+                          ? AppColors.electricVioletLight
+                          : AppColors.brandAccent)
                       : (_hovered
-                          ? (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)
-                          : (isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary)),
+                          ? (isDark
+                              ? AppColors.darkTextSecondary
+                              : AppColors.lightTextSecondary)
+                          : (isDark
+                              ? AppColors.darkTextTertiary
+                              : AppColors.lightTextTertiary)),
                 ),
                 const SizedBox(width: 9),
                 Expanded(
@@ -430,12 +511,19 @@ class _SidebarItemState extends State<_SidebarItem> {
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 12.5,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                      fontWeight:
+                          isSelected ? FontWeight.w600 : FontWeight.w400,
                       color: isSelected
-                          ? (isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary)
+                          ? (isDark
+                              ? AppColors.darkTextPrimary
+                              : AppColors.lightTextPrimary)
                           : (_hovered
-                              ? (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary)
-                              : (isDark ? AppColors.darkTextTertiary : AppColors.lightTextTertiary)),
+                              ? (isDark
+                                  ? AppColors.darkTextSecondary
+                                  : AppColors.lightTextSecondary)
+                              : (isDark
+                                  ? AppColors.darkTextTertiary
+                                  : AppColors.lightTextTertiary)),
                     ),
                   ),
                 ),
@@ -504,13 +592,15 @@ class _StudyMateBottomNav extends StatelessWidget {
                           width: 48,
                           height: 34,
                           decoration: BoxDecoration(
-                            gradient: isSelected ? AppColors.primaryGradient : null,
+                            gradient:
+                                isSelected ? AppColors.primaryGradient : null,
                             color: isSelected ? null : Colors.transparent,
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: isSelected
                                 ? [
                                     BoxShadow(
-                                      color: AppColors.electricViolet.withOpacity(0.35),
+                                      color: AppColors.electricViolet
+                                          .withOpacity(0.35),
                                       blurRadius: 12,
                                     ),
                                   ]
@@ -536,17 +626,18 @@ class _StudyMateBottomNav extends StatelessWidget {
                                   ? AppColors.darkTextTertiary
                                   : AppColors.lightTextTertiary,
                         ).animate(target: isSelected ? 1 : 0).scaleXY(
-                          end: 1.15,
-                          duration: 200.ms,
-                          curve: Curves.elasticOut,
-                        ),
+                              end: 1.15,
+                              duration: 200.ms,
+                              curve: Curves.elasticOut,
+                            ),
                       const SizedBox(height: 3),
                       AnimatedDefaultTextStyle(
                         duration: const Duration(milliseconds: 200),
                         style: TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 10,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w400,
                           color: isSelected
                               ? AppColors.electricViolet
                               : isDark

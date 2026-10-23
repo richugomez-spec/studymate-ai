@@ -28,7 +28,6 @@ abstract final class AppRoutes {
   static const examGenerator = '/exam/:topicId';
 
   // Tools
-  static const uploadCenter = '/upload';
   static const voiceTutor = '/voice-tutor';
   static const studyPlanner = '/planner';
   static const analytics = '/analytics';

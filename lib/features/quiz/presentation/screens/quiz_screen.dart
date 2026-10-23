@@ -68,14 +68,14 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     super.dispose();
   }
 
-  Future<void> _generateQuiz(UploadedDocument doc) async {
+  Future<void> _generateQuiz() async {
     if (_isGenerating) return;
     setState(() => _isGenerating = true);
     _questions.clear();
     _generationError = null;
     try {
       final result = await ref.read(knowledgeEngineProvider).generateQuiz(
-            topicId: widget.topicId ?? doc.id,
+            topicId: widget.topicId ?? 'current',
             subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
                 ref.read(activeKnowledgeWorkspaceIdProvider),
             sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
@@ -200,11 +200,11 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeDoc = ref.watch(activeDocumentProvider);
-    final subjectName =
-        ref.watch(activeKnowledgeSubjectNameProvider) ?? activeDoc?.subject;
+    final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
+    final activeSubjectId = ref.watch(activeKnowledgeSubjectIdProvider) ??
+        ref.watch(activeKnowledgeWorkspaceIdProvider);
 
-    if (activeDoc == null) {
+    if (activeSubjectId == null) {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
@@ -229,15 +229,14 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                 const Icon(Icons.quiz_rounded,
                     size: 40, color: AppColors.electricViolet),
                 const SizedBox(height: 12),
-                const Text('No Document Active',
+                const Text('No Active Study Set',
                     style: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: Colors.white)),
                 const SizedBox(height: 8),
-                Text(
-                    'Upload a document or select one in your Library to generate custom quizzes.',
+                Text('Add notes to a subject, then return here to practice.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontFamily: 'Inter',
@@ -249,8 +248,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                   style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white),
-                  icon: const Icon(Icons.upload_file_rounded, size: 16),
-                  label: const Text('Upload Document'),
+                  icon: const Icon(Icons.note_add_outlined, size: 16),
+                  label: const Text('Open Subjects'),
                 ),
               ],
             ),
@@ -421,7 +420,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
 
                   ElevatedButton(
                     onPressed:
-                        _isGenerating ? null : () => _generateQuiz(activeDoc),
+                        _isGenerating ? null : _generateQuiz,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white,

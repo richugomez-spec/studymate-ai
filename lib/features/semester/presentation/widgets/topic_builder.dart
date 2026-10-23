@@ -10,11 +10,18 @@ class TopicBuilder extends ConsumerStatefulWidget {
     required this.subjectId,
     required this.subjectName,
     required this.onClose,
+    required this.onAddNote,
   });
 
   final String subjectId;
   final String subjectName;
   final VoidCallback onClose;
+  final Future<void> Function({
+    String topicId,
+    String topic,
+    String subtopicId,
+    String subtopic,
+  }) onAddNote;
 
   @override
   ConsumerState<TopicBuilder> createState() => _TopicBuilderState();
@@ -155,7 +162,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Topic'),
         content: Text(
-          'Delete "$topicName" and all its subtopics?\n\nDocuments will not be deleted.',
+          'Delete "$topicName" and all its subtopics?',
         ),
         actions: [
           TextButton(
@@ -195,7 +202,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Subtopic'),
-        content: Text('Delete "$subtopicName"?\n\nDocuments will not be deleted.'),
+        content: Text('Delete "$subtopicName"?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -235,7 +242,8 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
       decoration: BoxDecoration(
         color: AppColors.darkCard,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.electricVioletLight.withOpacity(0.3)),
+        border:
+            Border.all(color: AppColors.electricVioletLight.withOpacity(0.3)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -269,7 +277,13 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                     ],
                   ),
                 ),
+                FilledButton.icon(
+                  onPressed: _isLoading ? null : _addTopic,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Topic'),
+                ),
                 IconButton(
+                  tooltip: 'Back to subjects',
                   icon: const Icon(Icons.close),
                   onPressed: widget.onClose,
                   color: AppColors.darkTextSecondary,
@@ -313,17 +327,6 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                     )
                   else
                     ..._topics.map((topic) => _buildTopicCard(topic)),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: _addTopic,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add Topic'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.electricVioletLight,
-                      side: BorderSide(
-                          color: AppColors.electricVioletLight.withOpacity(0.5)),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -441,7 +444,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                     )
                   else
                     ...subtopics.map((subtopic) =>
-                        _buildSubtopicItem(topicId, subtopic)),
+                        _buildSubtopicItem(topicId, topicName, subtopic)),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: () => _addSubtopic(topicId),
@@ -449,11 +452,19 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                     label: const Text('Add Subtopic'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.teal,
-                      side:
-                          BorderSide(color: AppColors.teal.withOpacity(0.5)),
+                      side: BorderSide(color: AppColors.teal.withOpacity(0.5)),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () => widget.onAddNote(
+                      topicId: topicId,
+                      topic: topicName,
+                    ),
+                    icon: const Icon(Icons.note_add_outlined, size: 18),
+                    label: const Text('Add Topic Note'),
                   ),
                 ],
               ),
@@ -464,7 +475,8 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
     );
   }
 
-  Widget _buildSubtopicItem(String topicId, Map<String, dynamic> subtopic) {
+  Widget _buildSubtopicItem(
+      String topicId, String topicName, Map<String, dynamic> subtopic) {
     final subtopicId = subtopic['id'] as String;
     final subtopicName = subtopic['name'] as String;
 
@@ -488,12 +500,28 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
             color: Colors.white,
           ),
         ),
-        trailing: IconButton(
-          icon: Icon(Icons.close, color: AppColors.darkTextSecondary, size: 18),
-          onPressed: () => _deleteSubtopic(topicId, subtopicId, subtopicName),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(),
-        ),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(
+            tooltip: 'Add note to subtopic',
+            icon: const Icon(Icons.note_add_outlined,
+                color: AppColors.teal, size: 18),
+            onPressed: () => widget.onAddNote(
+              topicId: topicId,
+              topic: topicName,
+              subtopicId: subtopicId,
+              subtopic: subtopicName,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32),
+          ),
+          IconButton(
+            icon:
+                Icon(Icons.close, color: AppColors.darkTextSecondary, size: 18),
+            onPressed: () => _deleteSubtopic(topicId, subtopicId, subtopicName),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32),
+          ),
+        ]),
       ),
     );
   }

@@ -15,7 +15,8 @@ class AuthRequiredModal extends ConsumerStatefulWidget {
   const AuthRequiredModal({
     super.key,
     this.title = 'Sign in to continue your learning journey',
-    this.message = 'Create an account or sign in to save your progress, upload notes, chat with AI, and generate quizzes.',
+    this.message =
+        'Create an account or sign in to save your subjects and notes, chat with AI, and track study progress.',
     this.onAuthenticated,
   });
 
@@ -23,7 +24,8 @@ class AuthRequiredModal extends ConsumerStatefulWidget {
   static Future<bool> show(
     BuildContext context, {
     String title = 'Sign in to continue your learning journey',
-    String message = 'Create an account or sign in to save your progress, upload notes, chat with AI, and generate quizzes.',
+    String message =
+        'Create an account or sign in to save your subjects and notes, chat with AI, and track study progress.',
     VoidCallback? onAuthenticated,
   }) async {
     final result = await showDialog<bool>(
@@ -75,7 +77,8 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
     setState(() => _isLoading = false);
 
     if (error != null) {
-      if (!error.toLowerCase().contains('cancel') && !error.toLowerCase().contains('popup-closed')) {
+      if (!error.toLowerCase().contains('cancel') &&
+          !error.toLowerCase().contains('popup-closed')) {
         setState(() => _errorMessage = error);
       }
     } else {
@@ -100,7 +103,9 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
       error = await notifier.registerWithEmailPassword(
         email: email,
         password: password,
-        displayName: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : null,
+        displayName: _nameController.text.trim().isNotEmpty
+            ? _nameController.text.trim()
+            : null,
       );
     } else {
       error = await notifier.signInWithEmailPassword(
@@ -160,16 +165,19 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: AppColors.electricViolet.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: AppColors.electricViolet.withOpacity(0.3)),
+                          border: Border.all(
+                              color: AppColors.electricViolet.withOpacity(0.3)),
                         ),
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.auto_awesome, size: 12, color: AppColors.electricVioletLight),
+                            Icon(Icons.auto_awesome,
+                                size: 12, color: AppColors.electricVioletLight),
                             SizedBox(width: 5),
                             Text(
                               'STUDYMATE AI',
@@ -186,7 +194,8 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
                       ),
                       IconButton(
                         visualDensity: VisualDensity.compact,
-                        icon: Icon(Icons.close_rounded, size: 20, color: Colors.white.withOpacity(0.5)),
+                        icon: Icon(Icons.close_rounded,
+                            size: 20, color: Colors.white.withOpacity(0.5)),
                         onPressed: () => Navigator.of(context).pop(false),
                       ),
                     ],
@@ -221,15 +230,18 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
                   if (_errorMessage != null) ...[
                     const SizedBox(height: 14),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: AppColors.error.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                        border:
+                            Border.all(color: AppColors.error.withOpacity(0.3)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.error_outline_rounded, size: 16, color: AppColors.error),
+                          const Icon(Icons.error_outline_rounded,
+                              size: 16, color: AppColors.error),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -258,13 +270,15 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
                         foregroundColor: Colors.black,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
                       ),
                       child: _isLoading
                           ? const SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.black),
                             )
                           : Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -306,12 +320,14 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
                         foregroundColor: Colors.white,
                         side: BorderSide(color: Colors.white.withOpacity(0.18)),
                         padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
                       ),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.mail_outline_rounded, size: 18, color: Colors.white),
+                          Icon(Icons.mail_outline_rounded,
+                              size: 18, color: Colors.white),
                           SizedBox(width: 10),
                           Text(
                             'Continue with Email',
@@ -355,34 +371,48 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
                           if (_isRegister) ...[
                             TextFormField(
                               controller: _nameController,
-                              style: const TextStyle(color: Colors.white, fontSize: 13.5),
-                              decoration: _inputDecoration('Full Name', Icons.person_outline),
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 13.5),
+                              decoration: _inputDecoration(
+                                  'Full Name', Icons.person_outline),
                             ),
                             const SizedBox(height: 12),
                           ],
                           TextFormField(
                             controller: _emailController,
-                            style: const TextStyle(color: Colors.white, fontSize: 13.5),
-                            decoration: _inputDecoration('Email address', Icons.mail_outline),
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 13.5),
+                            decoration: _inputDecoration(
+                                'Email address', Icons.mail_outline),
                             keyboardType: TextInputType.emailAddress,
-                            validator: (v) => (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
+                            validator: (v) => (v == null || !v.contains('@'))
+                                ? 'Enter a valid email'
+                                : null,
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: _passwordController,
-                            style: const TextStyle(color: Colors.white, fontSize: 13.5),
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 13.5),
                             obscureText: !_isPasswordVisible,
-                            decoration: _inputDecoration('Password', Icons.lock_outline).copyWith(
+                            decoration:
+                                _inputDecoration('Password', Icons.lock_outline)
+                                    .copyWith(
                               suffixIcon: IconButton(
                                 icon: Icon(
-                                  _isPasswordVisible ? Icons.visibility_off : Icons.visibility,
+                                  _isPasswordVisible
+                                      ? Icons.visibility_off
+                                      : Icons.visibility,
                                   size: 16,
                                   color: Colors.white38,
                                 ),
-                                onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                                onPressed: () => setState(() =>
+                                    _isPasswordVisible = !_isPasswordVisible),
                               ),
                             ),
-                            validator: (v) => (v == null || v.length < 6) ? 'At least 6 characters' : null,
+                            validator: (v) => (v == null || v.length < 6)
+                                ? 'At least 6 characters'
+                                : null,
                           ),
                           const SizedBox(height: 18),
                           ElevatedButton(
@@ -392,13 +422,15 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
                               foregroundColor: Colors.white,
                               elevation: 0,
                               padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
                             ),
                             child: _isLoading
                                 ? const SizedBox(
                                     width: 18,
                                     height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white),
                                   )
                                 : Text(
                                     _isRegister ? 'Create Account' : 'Sign In',
@@ -414,8 +446,10 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               TextButton(
-                                onPressed: () => setState(() => _isEmailMode = false),
-                                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                                onPressed: () =>
+                                    setState(() => _isEmailMode = false),
+                                style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact),
                                 child: Text(
                                   '← Other options',
                                   style: TextStyle(
@@ -426,10 +460,14 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
                                 ),
                               ),
                               TextButton(
-                                onPressed: () => setState(() => _isRegister = !_isRegister),
-                                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                                onPressed: () =>
+                                    setState(() => _isRegister = !_isRegister),
+                                style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact),
                                 child: Text(
-                                  _isRegister ? 'Already have account?' : 'Create Account',
+                                  _isRegister
+                                      ? 'Already have account?'
+                                      : 'Create Account',
                                   style: const TextStyle(
                                     fontFamily: 'Inter',
                                     fontSize: 12,
@@ -475,7 +513,8 @@ class _AuthRequiredModalState extends ConsumerState<AuthRequiredModal> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: AppColors.electricViolet, width: 1.5),
+        borderSide:
+            const BorderSide(color: AppColors.electricViolet, width: 1.5),
       ),
     );
   }

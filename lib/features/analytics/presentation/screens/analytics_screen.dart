@@ -14,22 +14,20 @@ class AnalyticsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activeDoc = ref.watch(activeDocumentProvider);
     final user = ref.watch(currentUserProvider);
     final isGuest = user == null;
-    final userId = user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
+    final userId =
+        user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
     final progressAsync = userId.isNotEmpty
         ? ref.watch(userStudyProgressStreamProvider(userId))
         : null;
     final progress = progressAsync?.asData?.value;
 
-    final studyHours = isGuest ? '0.0' : ((progress?.totalMinutes ?? 0) / 60.0).toStringAsFixed(1);
-    final quizCount = isGuest ? 0 : ((progress?.quizzesCompleted ?? 0) > 0
-        ? progress!.quizzesCompleted
-        : (activeDoc?.quizzes.length ?? 0));
-    final cardCount = isGuest ? 0 : ((progress?.flashcardsReviewed ?? 0) > 0
-        ? progress!.flashcardsReviewed
-        : (activeDoc?.flashcards.length ?? 0));
+    final studyHours = isGuest
+        ? '0.0'
+        : ((progress?.totalMinutes ?? 0) / 60.0).toStringAsFixed(1);
+    final quizCount = isGuest ? 0 : (progress?.quizzesCompleted ?? 0);
+    final cardCount = isGuest ? 0 : (progress?.flashcardsReviewed ?? 0);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -39,7 +37,8 @@ class AnalyticsScreen extends ConsumerWidget {
             floating: true,
             title: const Text(
               'Progress & Analytics',
-              style: TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700),
+              style:
+                  TextStyle(fontFamily: 'Inter', fontWeight: FontWeight.w700),
             ),
           ),
           SliverPadding(
@@ -53,11 +52,13 @@ class AnalyticsScreen extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: AppColors.electricViolet.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.electricViolet.withOpacity(0.3)),
+                      border: Border.all(
+                          color: AppColors.electricViolet.withOpacity(0.3)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.lock_outline_rounded, color: AppColors.electricVioletLight, size: 22),
+                        const Icon(Icons.lock_outline_rounded,
+                            color: AppColors.electricVioletLight, size: 22),
                         const SizedBox(width: 14),
                         const Expanded(
                           child: Column(
@@ -89,15 +90,20 @@ class AnalyticsScreen extends ConsumerWidget {
                           onPressed: () => AuthRequiredModal.show(
                             context,
                             title: 'Sign in to view your progress',
-                            message: 'Sync your learning records, retain mastery analytics, and unlock custom study targets.',
+                            message:
+                                'Sync your learning records, retain mastery analytics, and unlock custom study targets.',
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.electricViolet,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
                           ),
-                          child: const Text('Sign In', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                          child: const Text('Sign In',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w600, fontSize: 12)),
                         ),
                       ],
                     ),
@@ -109,13 +115,29 @@ class AnalyticsScreen extends ConsumerWidget {
                   builder: (context, constraints) {
                     final isMobile = constraints.maxWidth < 500;
                     final cards = [
-                      _StatCard(label: 'Study Hours', value: studyHours, icon: '⏱️', color: AppColors.electricViolet),
-                      _StatCard(label: 'Quizzes Done', value: '$quizCount', icon: '✅', color: AppColors.teal),
-                      _StatCard(label: 'Cards Mastered', value: '$cardCount', icon: '🃏', color: AppColors.skyBlue),
+                      _StatCard(
+                          label: 'Study Hours',
+                          value: studyHours,
+                          icon: '⏱️',
+                          color: AppColors.electricViolet),
+                      _StatCard(
+                          label: 'Quizzes Done',
+                          value: '$quizCount',
+                          icon: '✅',
+                          color: AppColors.teal),
+                      _StatCard(
+                          label: 'Cards Mastered',
+                          value: '$cardCount',
+                          icon: '🃏',
+                          color: AppColors.skyBlue),
                     ];
                     if (isMobile) {
                       return Column(
-                        children: cards.map((c) => Padding(padding: const EdgeInsets.only(bottom: 10), child: c)).toList(),
+                        children: cards
+                            .map((c) => Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: c))
+                            .toList(),
                       );
                     }
                     return Row(
@@ -135,21 +157,24 @@ class AnalyticsScreen extends ConsumerWidget {
                 // ── Study Time Chart ───────────────────────────────────────
                 const _SectionTitle(title: 'Daily Study Time'),
                 const SizedBox(height: 12),
-                _StudyTimeChart(totalMinutes: progress?.totalMinutes ?? 0).animate(delay: 100.ms).fadeIn().slideY(begin: 0.1, end: 0),
+                _StudyTimeChart(totalMinutes: progress?.totalMinutes ?? 0)
+                    .animate(delay: 100.ms)
+                    .fadeIn()
+                    .slideY(begin: 0.1, end: 0),
 
                 const SizedBox(height: 24),
 
                 // ── Subject Mastery ────────────────────────────────────────
                 const _SectionTitle(title: 'Subject Mastery'),
                 const SizedBox(height: 12),
-                _SubjectMasteryList(activeDoc: activeDoc).animate(delay: 200.ms).fadeIn(),
+                const _SubjectMasteryList().animate(delay: 200.ms).fadeIn(),
 
                 const SizedBox(height: 24),
 
                 // ── Weak Topics ────────────────────────────────────────────
                 const _SectionTitle(title: 'Needs Attention'),
                 const SizedBox(height: 12),
-                _WeakTopicsList(activeDoc: activeDoc).animate(delay: 300.ms).fadeIn(),
+                const _WeakTopicsList().animate(delay: 300.ms).fadeIn(),
 
                 const SizedBox(height: 24),
 
@@ -271,8 +296,12 @@ class _StudyTimeChart extends StatelessWidget {
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 10,
-                    fontWeight: value.toInt() == todayWeekday ? FontWeight.w700 : FontWeight.w400,
-                    color: value.toInt() == todayWeekday ? AppColors.electricViolet : Colors.white.withOpacity(0.4),
+                    fontWeight: value.toInt() == todayWeekday
+                        ? FontWeight.w700
+                        : FontWeight.w400,
+                    color: value.toInt() == todayWeekday
+                        ? AppColors.electricViolet
+                        : Colors.white.withOpacity(0.4),
                   ),
                 ),
               ),
@@ -300,7 +329,8 @@ class _StudyTimeChart extends StatelessWidget {
                 BarChartRodData(
                   toY: barVal,
                   width: 22,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(6)),
                   color: isToday
                       ? AppColors.electricViolet
                       : AppColors.electricViolet.withOpacity(0.15),
@@ -316,17 +346,17 @@ class _StudyTimeChart extends StatelessWidget {
 
 // Subject Mastery — derived from real flashcard known/total ratios
 class _SubjectMasteryList extends StatelessWidget {
-  final dynamic activeDoc;
-  const _SubjectMasteryList({this.activeDoc});
+  const _SubjectMasteryList();
 
   @override
   Widget build(BuildContext context) {
-    final flashcards = activeDoc?.flashcards ?? [];
+    const flashcards = <dynamic>[];
 
     if (flashcards.isEmpty) {
       return _emptyCard(
         icon: Icons.bar_chart_rounded,
-        message: 'No subject mastery data yet.\nUpload documents and review flashcards to track progress.',
+        message:
+            'No subject mastery data yet.\nAdd notes and review flashcards to track progress.',
       );
     }
 
@@ -397,7 +427,10 @@ class _SubjectMasteryList extends StatelessWidget {
                 ),
               ],
             ),
-          ).animate(delay: Duration(milliseconds: 200 + idx * 50)).fadeIn().slideX(begin: 0.05, end: 0),
+          )
+              .animate(delay: Duration(milliseconds: 200 + idx * 50))
+              .fadeIn()
+              .slideX(begin: 0.05, end: 0),
         );
       }).toList(),
     );
@@ -406,17 +439,17 @@ class _SubjectMasteryList extends StatelessWidget {
 
 // Weak Topics — derived from real quiz incorrect-attempt counts
 class _WeakTopicsList extends StatelessWidget {
-  final dynamic activeDoc;
-  const _WeakTopicsList({this.activeDoc});
+  const _WeakTopicsList();
 
   @override
   Widget build(BuildContext context) {
-    final quizzes = activeDoc?.quizzes ?? [];
+    const quizzes = <dynamic>[];
 
     if (quizzes.isEmpty) {
       return _emptyCard(
         icon: Icons.warning_amber_rounded,
-        message: 'No weak topics identified yet.\nComplete quizzes to find areas that need attention.',
+        message:
+            'No weak topics identified yet.\nComplete quizzes to find areas that need attention.',
       );
     }
 
@@ -424,7 +457,11 @@ class _WeakTopicsList extends StatelessWidget {
     for (final quiz in quizzes) {
       for (final q in (quiz.questions ?? [])) {
         if ((q.incorrectAttempts ?? 0) > 0) {
-          weak.add({'question': q.text ?? '', 'topic': q.topic ?? 'General', 'attempts': q.incorrectAttempts ?? 1});
+          weak.add({
+            'question': q.text ?? '',
+            'topic': q.topic ?? 'General',
+            'attempts': q.incorrectAttempts ?? 1
+          });
         }
       }
     }
@@ -432,7 +469,8 @@ class _WeakTopicsList extends StatelessWidget {
     if (weak.isEmpty) {
       return _emptyCard(
         icon: Icons.check_circle_outline_rounded,
-        message: 'Great work! No weak topics detected.\nKeep taking quizzes to track your performance.',
+        message:
+            'Great work! No weak topics detected.\nKeep taking quizzes to track your performance.',
       );
     }
 
@@ -452,7 +490,8 @@ class _WeakTopicsList extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const Icon(Icons.warning_amber_rounded, size: 18, color: AppColors.error),
+              const Icon(Icons.warning_amber_rounded,
+                  size: 18, color: AppColors.error),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -462,21 +501,32 @@ class _WeakTopicsList extends StatelessWidget {
                       t['question'] as String,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontFamily: 'Inter', fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white),
+                      style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white),
                     ),
                     Text(
                       t['topic'] as String,
-                      style: TextStyle(fontFamily: 'Inter', fontSize: 11, color: Colors.white.withOpacity(0.4)),
+                      style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 11,
+                          color: Colors.white.withOpacity(0.4)),
                     ),
                   ],
                 ),
               ),
               Row(
-                children: List.generate(5, (i) => Icon(
-                  Icons.circle,
-                  size: 7,
-                  color: i < attempts ? AppColors.error : Colors.white.withOpacity(0.1),
-                )),
+                children: List.generate(
+                    5,
+                    (i) => Icon(
+                          Icons.circle,
+                          size: 7,
+                          color: i < attempts
+                              ? AppColors.error
+                              : Colors.white.withOpacity(0.1),
+                        )),
               ),
             ],
           ),
@@ -494,7 +544,8 @@ class _AchievementsEmpty extends StatelessWidget {
   Widget build(BuildContext context) {
     return _emptyCard(
       icon: Icons.emoji_events_outlined,
-      message: 'Achievements will appear here as you\nstudy, complete quizzes, and hit streaks.',
+      message:
+          'Achievements will appear here as you\nstudy, complete quizzes, and hit streaks.',
     );
   }
 }

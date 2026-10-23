@@ -188,10 +188,6 @@ GoRouter appRouter(AppRouterRef ref) {
 
       // ── Tool Routes ───────────────────────────────────────────────────────
       GoRoute(
-        path: AppRoutes.uploadCenter,
-        redirect: (_, __) => AppRoutes.library,
-      ),
-      GoRoute(
         path: AppRoutes.studyPlanner,
         builder: (_, __) => const PlannerScreen(),
       ),

@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
-import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class PlannerScreen extends ConsumerWidget {
@@ -14,13 +13,9 @@ class PlannerScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activeDoc = ref.watch(activeDocumentProvider);
     final user = ref.watch(currentUserProvider);
-    final userId = user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
-    final firestoreDocsAsync = userId.isNotEmpty
-        ? ref.watch(userDocumentsStreamProvider(userId))
-        : null;
-    final docs = firestoreDocsAsync?.asData?.value ?? [];
+    final activeSubjectId = ref.watch(activeKnowledgeSubjectIdProvider) ??
+        ref.watch(activeKnowledgeWorkspaceIdProvider);
 
     final now = DateTime.now();
     final days = List.generate(7, (i) => now.add(Duration(days: i)));
@@ -43,13 +38,6 @@ class PlannerScreen extends ConsumerWidget {
             color: Colors.white,
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_rounded, color: AppColors.electricViolet),
-            tooltip: 'Add Study Material',
-            onPressed: () => context.push(AppRoutes.uploadCenter),
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -80,17 +68,29 @@ class PlannerScreen extends ConsumerWidget {
                     itemBuilder: (context, i) {
                       final day = days[i];
                       final isToday = i == 0;
-                      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                      const dayNames = [
+                        'Mon',
+                        'Tue',
+                        'Wed',
+                        'Thu',
+                        'Fri',
+                        'Sat',
+                        'Sun'
+                      ];
                       final dayLabel = dayNames[day.weekday - 1];
 
                       return Container(
                         width: 60,
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         decoration: BoxDecoration(
-                          color: isToday ? AppColors.electricViolet.withOpacity(0.15) : AppColors.darkSurfaceVariant,
+                          color: isToday
+                              ? AppColors.electricViolet.withOpacity(0.15)
+                              : AppColors.darkSurfaceVariant,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: isToday ? AppColors.electricViolet : AppColors.darkBorderSubtle,
+                            color: isToday
+                                ? AppColors.electricViolet
+                                : AppColors.darkBorderSubtle,
                             width: isToday ? 1.5 : 1,
                           ),
                         ),
@@ -102,8 +102,11 @@ class PlannerScreen extends ConsumerWidget {
                               style: TextStyle(
                                 fontFamily: 'JetBrains Mono',
                                 fontSize: 10,
-                                fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
-                                color: isToday ? AppColors.electricViolet : AppColors.darkTextTertiary,
+                                fontWeight:
+                                    isToday ? FontWeight.w700 : FontWeight.w500,
+                                color: isToday
+                                    ? AppColors.electricViolet
+                                    : AppColors.darkTextTertiary,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -113,7 +116,9 @@ class PlannerScreen extends ConsumerWidget {
                                 fontFamily: 'Inter',
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
-                                color: isToday ? Colors.white : AppColors.darkTextSecondary,
+                                color: isToday
+                                    ? Colors.white
+                                    : AppColors.darkTextSecondary,
                               ),
                             ),
                           ],
@@ -138,27 +143,16 @@ class PlannerScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 10),
 
-                if (docs.isNotEmpty) ...[
-                  ...docs.map((doc) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _PlannerTargetCard(
-                          title: doc.title.isNotEmpty ? doc.title : doc.fileName,
-                          subtitle: '${doc.conceptCount} concepts • ${doc.quizCount} quizzes',
-                          badge: 'Due Today',
-                          badgeColor: AppColors.emerald,
-                          onAction: () {
-                            context.push(AppRoutes.quiz.replaceFirst(':topicId', doc.id));
-                          },
-                        ),
-                      )),
-                ] else if (activeDoc != null) ...[
+                if (activeSubjectId != null && activeSubjectId.isNotEmpty) ...[
                   _PlannerTargetCard(
-                    title: activeDoc.fileName,
-                    subtitle: '${activeDoc.concepts.length} concepts indexed • ${activeDoc.quizzes.length} quizzes ready',
-                    badge: 'Active Target',
+                    title: ref.watch(activeKnowledgeSubjectNameProvider) ??
+                        'Current Subject',
+                    subtitle: 'Practice questions generated from your manual notes',
+                    badge: 'Ready to Study',
                     badgeColor: AppColors.emerald,
                     onAction: () {
-                      context.push(AppRoutes.quiz.replaceFirst(':topicId', activeDoc.id));
+                      context.push(AppRoutes.quiz
+                          .replaceFirst(':topicId', 'current'));
                     },
                   ),
                 ] else ...[
@@ -172,7 +166,8 @@ class PlannerScreen extends ConsumerWidget {
                     child: Center(
                       child: Column(
                         children: [
-                          const Icon(Icons.event_note_rounded, size: 36, color: AppColors.electricViolet),
+                          const Icon(Icons.event_note_rounded,
+                              size: 36, color: AppColors.electricViolet),
                           const SizedBox(height: 12),
                           const Text(
                             'No Study Targets Scheduled Yet',
@@ -185,7 +180,7 @@ class PlannerScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Upload study notes or slides to automatically populate your spaced repetition plan.',
+                            'Select a subject and add manual notes to organize your study plan.',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontFamily: 'Inter',
@@ -195,14 +190,15 @@ class PlannerScreen extends ConsumerWidget {
                           ),
                           const SizedBox(height: 16),
                           ElevatedButton.icon(
-                            onPressed: () => context.push(AppRoutes.uploadCenter),
+                            onPressed: () => context.push(AppRoutes.library),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.electricViolet,
                               foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(6)),
                             ),
-                            icon: const Icon(Icons.upload_file_rounded, size: 16),
-                            label: const Text('Upload Material'),
+                            icon: const Icon(Icons.topic_outlined, size: 16),
+                            label: const Text('Open Subjects'),
                           ),
                         ],
                       ),
@@ -239,7 +235,8 @@ class PlannerScreen extends ConsumerWidget {
                           color: AppColors.electricViolet.withOpacity(0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.timer_rounded, size: 22, color: AppColors.electricViolet),
+                        child: const Icon(Icons.timer_rounded,
+                            size: 22, color: AppColors.electricViolet),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -367,13 +364,16 @@ class _PlannerTargetCard extends StatelessWidget {
               foregroundColor: Colors.white,
               elevation: 0,
               side: const BorderSide(color: AppColors.darkBorder),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6)),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Practice', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                Text('Practice',
+                    style:
+                        TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                 SizedBox(width: 4),
                 Icon(Icons.arrow_forward_rounded, size: 13),
               ],

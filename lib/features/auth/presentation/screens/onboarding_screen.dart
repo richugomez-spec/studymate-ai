@@ -26,7 +26,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
     _OnboardingPage(
       emoji: '📚',
-      title: 'Upload Anything,\nLearn Everything',
+      title: 'Organize Topics,\nLearn Everything',
       subtitle:
           'PDFs, slides, handwritten notes, audio lectures, YouTube videos — your AI processes it all.',
       gradientColors: [Color(0xFF61C9FF), Color(0xFF4ECDC4)],
@@ -211,9 +211,9 @@ class _OnboardingPageView extends StatelessWidget {
               ),
             ),
           )
-          .animate()
-          .scale(duration: 500.ms, curve: Curves.elasticOut)
-          .fadeIn(),
+              .animate()
+              .scale(duration: 500.ms, curve: Curves.elasticOut)
+              .fadeIn(),
 
           const SizedBox(height: 48),
 
@@ -229,9 +229,9 @@ class _OnboardingPageView extends StatelessWidget {
               letterSpacing: -0.5,
             ),
           )
-          .animate(delay: 100.ms)
-          .fadeIn(duration: 400.ms)
-          .slideY(begin: 0.2, end: 0),
+              .animate(delay: 100.ms)
+              .fadeIn(duration: 400.ms)
+              .slideY(begin: 0.2, end: 0),
 
           const SizedBox(height: 16),
 
@@ -246,9 +246,9 @@ class _OnboardingPageView extends StatelessWidget {
               height: 1.6,
             ),
           )
-          .animate(delay: 200.ms)
-          .fadeIn(duration: 400.ms)
-          .slideY(begin: 0.2, end: 0),
+              .animate(delay: 200.ms)
+              .fadeIn(duration: 400.ms)
+              .slideY(begin: 0.2, end: 0),
         ],
       ),
     );

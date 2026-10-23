@@ -14,7 +14,8 @@ class StudyToolsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activeDoc = ref.watch(activeDocumentProvider);
+    final activeSubjectId = ref.watch(activeKnowledgeSubjectIdProvider) ??
+        ref.watch(activeKnowledgeWorkspaceIdProvider);
     final user = ref.watch(currentUserProvider);
 
     void navigateOrPrompt(String routeTemplate, {String? query}) {
@@ -28,11 +29,11 @@ class StudyToolsScreen extends ConsumerWidget {
         return;
       }
 
-      if (activeDoc == null) {
+      if (activeSubjectId == null || activeSubjectId.isEmpty) {
         context.go(AppRoutes.library);
       } else {
         context.push(
-            '${routeTemplate.replaceFirst(':topicId', activeDoc.id)}${query ?? ''}');
+            '${routeTemplate.replaceFirst(':topicId', 'current')}${query ?? ''}');
       }
     }
 
@@ -124,12 +125,6 @@ class StudyToolsScreen extends ConsumerWidget {
               color: Colors.white),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.cloud_upload_outlined,
-                size: 20, color: AppColors.electricVioletLight),
-            tooltip: 'Upload Study Material',
-            onPressed: () => context.go(AppRoutes.library),
-          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -164,9 +159,8 @@ class StudyToolsScreen extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              activeDoc != null
-                                  ? 'Active Folio: ${activeDoc.fileName}'
-                                  : 'Active Learning Suite',
+                              ref.watch(activeKnowledgeSubjectNameProvider) ??
+                                  'Active Learning Suite',
                               style: const TextStyle(
                                   fontFamily: 'Inter',
                                   fontSize: 15,

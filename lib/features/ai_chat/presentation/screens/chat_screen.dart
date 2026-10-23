@@ -240,7 +240,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await for (final part in chatService.streamAI(
         prompt:
             'Current subject: ${ref.read(activeKnowledgeSubjectNameProvider) ?? 'Study Workspace'}. '
-            '${ref.read(selectedKnowledgeSourceIdsProvider).isEmpty ? 'Use all indexed files and notes in this subject.' : 'Use only the selected files.'} '
+            '${ref.read(selectedKnowledgeSourceIdsProvider).isEmpty ? 'Use all manual notes in this subject.' : 'Use only the selected notes.'} '
             'Do not ask which document or material to use.\nQuestion: $clean',
         conversationHistory: _messages.where((m) => !m.isThinking).toList(),
         subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
@@ -308,9 +308,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeDoc = ref.watch(activeDocumentProvider);
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider) ??
-        activeDoc?.subject ??
         'All Subjects';
 
     return Scaffold(
@@ -459,9 +457,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     onSubmitted: _sendMessage,
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                     decoration: InputDecoration(
-                      hintText: activeDoc != null
-                          ? 'Ask about $subjectName...'
-                          : 'Ask AI coach or upload document...',
+                      hintText: 'Ask AI coach about $subjectName...',
                       hintStyle: TextStyle(
                           color: Colors.white.withOpacity(0.3), fontSize: 13),
                       filled: true,

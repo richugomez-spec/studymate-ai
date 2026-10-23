@@ -250,8 +250,8 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                   style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white),
-                  icon: const Icon(Icons.upload_file_rounded, size: 16),
-                  label: const Text('Add study materials'),
+                  icon: const Icon(Icons.note_add_outlined, size: 16),
+                  label: const Text('Add subject notes'),
                 ),
               ],
             ),

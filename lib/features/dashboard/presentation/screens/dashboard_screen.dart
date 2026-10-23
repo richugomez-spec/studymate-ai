@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
-import '../../../../core/services/document_processing_service.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/auth_required_modal.dart';
@@ -25,7 +24,6 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final activeDoc = ref.watch(activeDocumentProvider);
 
     return Scaffold(
       backgroundColor: AppColors.darkBackground,
@@ -50,19 +48,22 @@ class DashboardScreen extends ConsumerWidget {
             actions: [
               if (user == null) ...[
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
                   child: ElevatedButton(
                     onPressed: () => AuthRequiredModal.show(
                       context,
                       title: 'Sign in to StudyMate AI',
-                      message: 'Sign in to access your course notes, AI tutor, and custom study materials.',
+                      message:
+                          'Sign in to access your course notes, AI tutor, and custom study materials.',
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       padding: const EdgeInsets.symmetric(horizontal: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
                     ),
                     child: const Text(
                       'Sign In',
@@ -76,19 +77,10 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               ],
               IconButton(
-                onPressed: () {
-                  if (user == null) {
-                    AuthRequiredModal.show(
-                      context,
-                      title: 'Sign in to upload documents',
-                      message: 'Create a free account or sign in to index your notes, extract concepts, and generate live study materials.',
-                    );
-                  } else {
-                    context.push(AppRoutes.uploadCenter);
-                  }
-                },
-                tooltip: 'Upload Study Material',
-                icon: const Icon(Icons.cloud_upload_outlined, size: 20, color: AppColors.electricVioletLight),
+                onPressed: () => context.push(AppRoutes.library),
+                tooltip: 'Open Subjects',
+                icon: const Icon(Icons.menu_book_outlined,
+                    size: 20, color: AppColors.electricVioletLight),
               ),
               if (user != null)
                 IconButton(
@@ -98,7 +90,9 @@ class DashboardScreen extends ConsumerWidget {
                     radius: 14,
                     backgroundColor: AppColors.darkSurfaceContainerHigh,
                     child: Text(
-                      user.displayName?.isNotEmpty == true ? user.displayName![0].toUpperCase() : 'U',
+                      user.displayName?.isNotEmpty == true
+                          ? user.displayName![0].toUpperCase()
+                          : 'U',
                       style: const TextStyle(
                         fontFamily: 'JetBrains Mono',
                         fontSize: 11,
@@ -117,25 +111,34 @@ class DashboardScreen extends ConsumerWidget {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 // ── 1. Greeting & Academic Status ────────────────────────────
-                _GreetingAndStatusHeader().animate().fadeIn(duration: 400.ms).slideY(begin: 0.05, end: 0),
+                _GreetingAndStatusHeader()
+                    .animate()
+                    .fadeIn(duration: 400.ms)
+                    .slideY(begin: 0.05, end: 0),
 
                 const SizedBox(height: 24),
 
                 // ── 2. Today's Learning Mission (Hero Card) ──────────────────
                 const _EmptyLearningMissionCard()
-                    .animate(delay: 100.ms).fadeIn().slideY(begin: 0.05, end: 0),
+                    .animate(delay: 100.ms)
+                    .fadeIn()
+                    .slideY(begin: 0.05, end: 0),
 
                 const SizedBox(height: 24),
 
                 // ── 3. Quick Resume & Recent Active Material ───────────────────────
-                _SuggestedActionsAndDeadlinesRow(activeDoc: activeDoc)
-                    .animate(delay: 180.ms).fadeIn().slideY(begin: 0.05, end: 0),
+                const _SuggestedActionsAndDeadlinesRow()
+                    .animate(delay: 180.ms)
+                    .fadeIn()
+                    .slideY(begin: 0.05, end: 0),
 
                 const SizedBox(height: 24),
 
                 // ── 4. Today's Progress & Study Streak ──────────────────────
                 const _CognitiveRadarVitalsRow(readinessScore: 0.0)
-                    .animate(delay: 240.ms).fadeIn().slideY(begin: 0.05, end: 0),
+                    .animate(delay: 240.ms)
+                    .fadeIn()
+                    .slideY(begin: 0.05, end: 0),
 
                 const SizedBox(height: 36),
               ]),
@@ -153,14 +156,13 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final activeDoc = ref.watch(activeDocumentProvider);
 
-    final firestoreUserAsync = user != null
-        ? ref.watch(userProfileStreamProvider(user.id))
-        : null;
+    final firestoreUserAsync =
+        user != null ? ref.watch(userProfileStreamProvider(user.id)) : null;
     final firestoreUser = firestoreUserAsync?.asData?.value;
 
     final isGuest = user == null;
+    final course = user?.course;
     final displayName = firestoreUser?.name.isNotEmpty == true
         ? firestoreUser!.name
         : (user?.displayName != null && user!.displayName!.isNotEmpty)
@@ -169,12 +171,11 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
                 ? user.email.split('@').first
                 : 'Guest Student';
 
-    final greetingTitle = isGuest ? 'Welcome to StudyMate AI' : 'Ready to continue, $displayName';
+    final greetingTitle =
+        isGuest ? 'Welcome to StudyMate AI' : 'Ready to continue, $displayName';
     final courseSubtitle = isGuest
         ? 'Browse preview workspace • Sign in anytime to unlock full AI coaching'
-        : (user?.course != null && user!.course!.isNotEmpty
-            ? user!.course!
-            : (activeDoc != null ? 'Active Folio: ${activeDoc.fileName}' : 'Academic Course Workspace'));
+        : (course?.isNotEmpty == true ? course! : 'Academic Course Workspace');
 
     return Padding(
       padding: const EdgeInsets.only(top: 12, bottom: 6),
@@ -236,7 +237,8 @@ class _StatusPill extends StatelessWidget {
   final String label;
   final Color color;
 
-  const _StatusPill({required this.icon, required this.label, required this.color});
+  const _StatusPill(
+      {required this.icon, required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -269,24 +271,11 @@ class _StatusPill extends StatelessWidget {
 
 // ── 2. Today's Learning Mission Hero Card ────────────────────────────────────
 
-class _EmptyLearningMissionCard extends ConsumerWidget {
+class _EmptyLearningMissionCard extends StatelessWidget {
   const _EmptyLearningMissionCard();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final activeDoc = ref.watch(activeDocumentProvider);
-
-    final title = activeDoc != null
-        ? 'Continue mastering ${activeDoc.fileName.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '')}'
-        : 'Welcome to StudyMate AI — Ready for your next study session';
-
-    final description = activeDoc != null
-        ? '${activeDoc.concepts.length} concepts extracted. Complete an active recall drill to reinforce your memory retention.'
-        : 'Upload lecture slides, syllabus, or notes (PDF, DOCX, TXT) to generate personalized adaptive quizzes, flashcards, and concept maps.';
-
-    final tagText = activeDoc != null ? 'ACTIVE FOLIO / ${activeDoc.fileType}' : 'ACADEMIC OS / STANDBY';
-    final lemmaText = activeDoc != null ? '${activeDoc.concepts.length} CONCEPTS' : 'NO MATERIAL';
-
+  Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
@@ -298,48 +287,20 @@ class _EmptyLearningMissionCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Text(
-                activeDoc != null ? 'IN PROGRESS' : 'GET STARTED',
-                style: TextStyle(
-                  fontFamily: 'JetBrains Mono',
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: activeDoc != null ? AppColors.emerald : AppColors.electricViolet,
-                  letterSpacing: 0.8,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text('•', style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10)),
-              const SizedBox(width: 8),
-              Text(
-                tagText,
-                style: const TextStyle(
-                  fontFamily: 'JetBrains Mono',
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.darkTextTertiary,
-                  letterSpacing: 0.6,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text('•', style: TextStyle(color: AppColors.darkTextTertiary, fontSize: 10)),
-              const SizedBox(width: 8),
-              Text(
-                lemmaText,
-                style: const TextStyle(
-                  fontFamily: 'JetBrains Mono',
-                  fontSize: 10,
-                  color: AppColors.darkTextTertiary,
-                ),
-              ),
-            ],
+          const Text(
+            'YOUR LEARNING WORKSPACE',
+            style: TextStyle(
+              fontFamily: 'JetBrains Mono',
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: AppColors.electricViolet,
+              letterSpacing: 0.8,
+            ),
           ),
           const SizedBox(height: 14),
-          Text(
-            title,
-            style: const TextStyle(
+          const Text(
+            'Build your knowledge one topic at a time',
+            style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 20,
               fontWeight: FontWeight.w700,
@@ -349,9 +310,9 @@ class _EmptyLearningMissionCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            description,
-            style: const TextStyle(
+          const Text(
+            'Organize subjects into topics and subtopics, add your own notes, and use your study tools to review.',
+            style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 13,
               height: 1.45,
@@ -365,35 +326,21 @@ class _EmptyLearningMissionCard extends ConsumerWidget {
             spacing: 16,
             runSpacing: 14,
             children: [
-              Wrap(
+              const Wrap(
                 spacing: 20,
                 runSpacing: 8,
                 children: [
                   _StitchMetric(
-                    label: 'DOCUMENTS',
-                    value: activeDoc != null ? '1 Active' : '0 Indexed',
-                  ),
+                      label: 'ORGANIZE', value: 'Subjects and topics'),
                   _StitchMetric(
-                    label: 'CONCEPTS',
-                    value: '${activeDoc?.concepts.length ?? 0} Extracted',
-                  ),
-                  _StitchMetric(
-                    label: 'STATUS',
-                    value: activeDoc != null ? 'Ready for drill' : 'Awaiting upload',
-                  ),
+                      label: 'REVIEW', value: 'Flashcards and quizzes'),
                 ],
               ),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ElevatedButton(
-                    onPressed: () {
-                      if (activeDoc != null) {
-                        context.push(AppRoutes.quiz.replaceFirst(':topicId', activeDoc.id));
-                      } else {
-                        context.push(AppRoutes.uploadCenter);
-                      }
-                    },
+                  ElevatedButton.icon(
+                    onPressed: () => context.push(AppRoutes.library),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.darkSurfaceContainerHigh,
                       foregroundColor: AppColors.darkTextPrimary,
@@ -402,43 +349,17 @@ class _EmptyLearningMissionCard extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(6),
                         side: const BorderSide(color: AppColors.darkBorder),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          activeDoc != null ? 'Start Quiz Drill' : 'Upload Notes',
-                          style: const TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.arrow_forward_rounded, size: 14),
-                      ],
-                    ),
+                    icon: const Icon(Icons.menu_book_outlined, size: 16),
+                    label: const Text('Open Subjects'),
                   ),
                   const SizedBox(width: 10),
                   TextButton.icon(
-                    onPressed: () => context.push(activeDoc != null ? AppRoutes.library : AppRoutes.uploadCenter),
-                    icon: Icon(
-                      activeDoc != null ? Icons.menu_book_outlined : Icons.upload_file_rounded,
-                      size: 14,
-                      color: AppColors.darkTextSecondary,
-                    ),
-                    label: Text(
-                      activeDoc != null ? 'View in Library' : 'Upload Folio',
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 12,
-                        color: AppColors.darkTextSecondary,
-                      ),
-                    ),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    ),
+                    onPressed: () => context.go(AppRoutes.aiChat),
+                    icon: const Icon(Icons.auto_awesome, size: 14),
+                    label: const Text('AI Chat'),
                   ),
                 ],
               ),
@@ -491,7 +412,8 @@ class _MissionMetaTag extends StatelessWidget {
   final String text;
   final Color color;
 
-  const _MissionMetaTag({required this.icon, required this.text, required this.color});
+  const _MissionMetaTag(
+      {required this.icon, required this.text, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -522,267 +444,70 @@ class _MissionMetaTag extends StatelessWidget {
 }
 
 class _SuggestedActionsAndDeadlinesRow extends StatelessWidget {
-  final UploadedDocument? activeDoc;
-
-  const _SuggestedActionsAndDeadlinesRow({this.activeDoc});
+  const _SuggestedActionsAndDeadlinesRow();
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 650;
-
-        final leftAction = Column(
+        final actions = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'SUGGESTED NEXT ACTIONS',
-                  style: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.darkTextTertiary,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-                Text(
-                  activeDoc != null ? 'Prioritized by active material' : 'Awaiting material',
-                  style: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 10,
-                    color: AppColors.darkTextTertiary,
-                  ),
-                ),
-              ],
+            const Text(
+              'SUGGESTED NEXT ACTIONS',
+              style: TextStyle(
+                fontFamily: 'JetBrains Mono',
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: AppColors.darkTextTertiary,
+                letterSpacing: 0.8,
+              ),
             ),
             const SizedBox(height: 10),
+            _DashboardActionCard(
+              icon: Icons.topic_outlined,
+              title: 'Organize a subject',
+              subtitle: 'Add topics, subtopics, and manual notes',
+              onTap: () => context.push(AppRoutes.library),
+            ),
+          ],
+        );
+        final planner = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             InkWell(
-              onTap: () {
-                if (activeDoc != null) {
-                  context.push(AppRoutes.flashcards.replaceFirst(':topicId', activeDoc!.id));
-                } else {
-                  context.push(AppRoutes.uploadCenter);
-                }
-              },
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: AppColors.darkSurfaceVariant,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.darkBorderSubtle),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: AppColors.darkSurfaceContainer,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(Icons.psychology_outlined, size: 16, color: AppColors.darkTextPrimary),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            activeDoc != null
-                                ? 'Spaced Repetition: ${activeDoc!.concepts.length} Concept Cards'
-                                : 'Spaced Repetition: Start First Active Drill',
-                            style: const TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.darkTextPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            activeDoc != null
-                                ? 'Active recall window open • ${activeDoc!.fileName}'
-                                : 'Upload material to generate flashcard review queue',
-                            style: TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 11.5,
-                              color: AppColors.darkTextSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.darkTextTertiary),
-                  ],
+              onTap: () => context.push(AppRoutes.studyPlanner),
+              child: const Text(
+                'STUDY PLANNER  →',
+                style: TextStyle(
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.electricViolet,
+                  letterSpacing: 0.8,
                 ),
               ),
-            ),
-          ],
-        );
-
-        final rightDeadlines = Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'UPCOMING DEADLINES',
-                  style: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.darkTextTertiary,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-                InkWell(
-                  onTap: () => context.push(AppRoutes.studyPlanner),
-                  child: Text(
-                    'Study Planner →',
-                    style: TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 10,
-                      color: AppColors.electricViolet,
-                    ),
-                  ),
-                ),
-              ],
             ),
             const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.darkSurfaceVariant,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.darkBorderSubtle),
-              ),
-              child: activeDoc != null
-                  ? Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'ACTIVE STUDY TARGET',
-                                    style: TextStyle(
-                                      fontFamily: 'JetBrains Mono',
-                                      fontSize: 10,
-                                      color: AppColors.darkTextTertiary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    activeDoc!.fileName,
-                                    style: const TextStyle(
-                                      fontFamily: 'Inter',
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                      color: AppColors.darkTextPrimary,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(
-                                  '${activeDoc!.concepts.length} concepts',
-                                  style: TextStyle(
-                                    fontFamily: 'JetBrains Mono',
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.emerald,
-                                  ),
-                                ),
-                                Text(
-                                  'Ready',
-                                  style: TextStyle(
-                                    fontFamily: 'JetBrains Mono',
-                                    fontSize: 9.5,
-                                    color: AppColors.darkTextTertiary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const Divider(color: AppColors.darkBorderSubtle, height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Quiz status: ${activeDoc!.quizzes.length} generated',
-                              style: TextStyle(
-                                fontFamily: 'JetBrains Mono',
-                                fontSize: 10,
-                                color: AppColors.darkTextTertiary,
-                              ),
-                            ),
-                            Text(
-                              '${activeDoc!.flashcards.length} cards',
-                              style: TextStyle(
-                                fontFamily: 'JetBrains Mono',
-                                fontSize: 10,
-                                color: AppColors.darkTextTertiary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    )
-                  : InkWell(
-                      onTap: () => context.push(AppRoutes.uploadCenter),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today_outlined, size: 16, color: AppColors.darkTextTertiary),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'No study targets set. Upload material to begin.',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                fontSize: 12,
-                                color: AppColors.darkTextSecondary,
-                              ),
-                            ),
-                          ),
-                          const Icon(Icons.arrow_forward_rounded, size: 14, color: AppColors.darkTextTertiary),
-                        ],
-                      ),
-                    ),
+            _DashboardActionCard(
+              icon: Icons.calendar_today_outlined,
+              title: 'Plan your study time',
+              subtitle: 'Track study progress and upcoming deadlines',
+              onTap: () => context.push(AppRoutes.studyPlanner),
             ),
           ],
         );
-
         if (isMobile) {
           return Column(
-            children: [
-              leftAction,
-              const SizedBox(height: 16),
-              rightDeadlines,
-            ],
-          );
+              children: [actions, const SizedBox(height: 16), planner]);
         }
-
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(flex: 11, child: leftAction),
+            Expanded(child: actions),
             const SizedBox(width: 20),
-            Expanded(flex: 9, child: rightDeadlines),
+            Expanded(child: planner),
           ],
         );
       },
@@ -790,7 +515,58 @@ class _SuggestedActionsAndDeadlinesRow extends StatelessWidget {
   }
 }
 
-// ── 4. Cognitive Radar & Vitals Row ──────────────────────────────────────────
+class _DashboardActionCard extends StatelessWidget {
+  const _DashboardActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppColors.darkSurfaceVariant,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.darkBorderSubtle),
+          ),
+          child: Row(children: [
+            Icon(icon, size: 18, color: AppColors.electricVioletLight),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.darkTextPrimary)),
+                  const SizedBox(height: 3),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 11.5,
+                          color: AppColors.darkTextSecondary)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                size: 18, color: AppColors.darkTextTertiary),
+          ]),
+        ),
+      );
+}
 
 class _CognitiveRadarVitalsRow extends ConsumerWidget {
   final double readinessScore;
@@ -800,7 +576,8 @@ class _CognitiveRadarVitalsRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final userId = user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
+    final userId =
+        user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
     final progressAsync = userId.isNotEmpty
         ? ref.watch(userStudyProgressStreamProvider(userId))
         : null;
@@ -836,7 +613,8 @@ class _CognitiveRadarVitalsRow extends ConsumerWidget {
           _VitalCard(
             title: 'Memory Stability',
             value: computedStability > 0 ? '$computedStability%' : '0%',
-            trend: computedStability > 0 ? 'Active Decay Model' : 'No review data',
+            trend:
+                computedStability > 0 ? 'Active Decay Model' : 'No review data',
             color: const Color(0xFF61C9FF),
             icon: Icons.shield_rounded,
             progress: computedStability / 100.0,
@@ -965,674 +743,3 @@ class _VitalCard extends StatelessWidget {
 }
 
 // ── 4. High-Yield Gap Radar Card ─────────────────────────────────────────────
-
-class _HighYieldGapRadarCard extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final activeDoc = ref.watch(activeDocumentProvider);
-    final concepts = activeDoc?.concepts ?? [];
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.darkBorderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'HIGH-YIELD GAP RADAR',
-                style: TextStyle(
-                  fontFamily: 'JetBrains Mono',
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.8,
-                  color: AppColors.darkTextTertiary,
-                ),
-              ),
-              if (concepts.isNotEmpty)
-                Text(
-                  'View all concepts',
-                  style: TextStyle(
-                    fontFamily: 'JetBrains Mono',
-                    fontSize: 10,
-                    color: AppColors.darkTextTertiary,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          if (concepts.isEmpty) ...[
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.03),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withOpacity(0.06)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.electricViolet.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.analytics_outlined, color: AppColors.electricViolet, size: 22),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Radar Inactive — No Data Yet',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          'Upload lecture notes or take an active recall drill to detect vulnerable concepts.',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            fontSize: 11,
-                            color: Colors.white.withOpacity(0.55),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ] else ...[
-            _GapRow(
-              label: 'Weakest Concept',
-              concept: concepts.first.title,
-              masteryPct: '${(concepts.first.initialMastery * 100).toInt()}% Mastery',
-              status: 'Critical Gap',
-              color: const Color(0xFFFF6B6B),
-              onAction: () {
-                context.push(AppRoutes.quiz.replaceFirst(':topicId', activeDoc!.id));
-              },
-            ),
-            if (concepts.length > 1) ...[
-              const Divider(color: AppColors.darkBorder, height: 20),
-              _GapRow(
-                label: 'Imminent Forgetting',
-                concept: concepts[1].title,
-                masteryPct: '${(concepts[1].initialMastery * 100).toInt()}% Mastery',
-                status: 'Review Priority',
-                color: const Color(0xFFFF9F43),
-                onAction: () {
-                  context.push(AppRoutes.flashcards.replaceFirst(':topicId', activeDoc!.id));
-                },
-              ),
-            ],
-            if (concepts.length > 2) ...[
-              const Divider(color: AppColors.darkBorder, height: 20),
-              _GapRow(
-                label: 'Strongest Mastery',
-                concept: concepts.last.title,
-                masteryPct: '${(concepts.last.initialMastery * 100).toInt()}% Mastery',
-                status: 'Solidified',
-                color: const Color(0xFF43D197),
-                onAction: null,
-              ),
-            ],
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _GapRow extends StatelessWidget {
-  final String label;
-  final String concept;
-  final String masteryPct;
-  final String status;
-  final Color color;
-  final VoidCallback? onAction;
-
-  const _GapRow({
-    required this.label,
-    required this.concept,
-    required this.masteryPct,
-    required this.status,
-    required this.color,
-    required this.onAction,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white.withOpacity(0.5),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '• $status',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: color,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 3),
-              Text(
-                concept,
-                style: const TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Text(
-          masteryPct,
-          style: TextStyle(
-            fontFamily: 'Inter',
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: color,
-          ),
-        ),
-        if (onAction != null) ...[
-          const SizedBox(width: 8),
-          IconButton(
-            onPressed: onAction,
-            icon: const Icon(Icons.arrow_forward_ios_rounded, size: 13, color: Colors.white54),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-// ── 5. Proactive AI Coach Feed ───────────────────────────────────────────────
-
-class _ProactiveAICoachFeed extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final activeDoc = ref.watch(activeDocumentProvider);
-    final hasConcepts = activeDoc != null && activeDoc.concepts.isNotEmpty;
-
-    final tipText = hasConcepts
-        ? '💡 "Keep your momentum going on ${activeDoc.concepts.first.title}! Take a quick active recall drill to reinforce retention."'
-        : '💡 "Welcome to StudyMate AI! Start by uploading your course materials, slides, or syllabus to automatically extract concepts and quizzes."';
-
-    final tipSub = hasConcepts
-        ? 'Study DNA: Your retention doubles when reviewing within 24h.'
-        : 'Adaptive OS: Socratic tutoring tailored to your learning pace.';
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF191333), Color(0xFF1E1742)],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.electricViolet.withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(7),
-                decoration: BoxDecoration(
-                  color: AppColors.electricViolet.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.support_agent_rounded, size: 18, color: AppColors.electricViolet),
-              ),
-              const SizedBox(width: 10),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'AI Learning Coach',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    'Proactive Cognitive Push',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 10,
-                      color: AppColors.electricViolet,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.25),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withOpacity(0.06)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        tipText,
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 12,
-                          height: 1.4,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        tipSub,
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 10,
-                          color: Colors.white.withOpacity(0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                ElevatedButton(
-                  onPressed: () {
-                    if (hasConcepts) {
-                      context.push(AppRoutes.quiz.replaceFirst(':topicId', activeDoc.id));
-                    } else {
-                      context.push(AppRoutes.uploadCenter);
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.electricViolet,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: Text(
-                    hasConcepts ? 'Start Drill' : 'Upload',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── 6. Quick Cognitive Learning Tools Grid ───────────────────────────────────
-
-class _QuickCognitiveActionsGrid extends ConsumerWidget {
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final activeDoc = ref.watch(activeDocumentProvider);
-
-    void navigateOrPrompt(String routeTemplate) {
-      if (activeDoc != null) {
-        context.push(routeTemplate.replaceFirst(':topicId', activeDoc.id));
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please upload study material first to generate cognitive tools!'),
-            backgroundColor: AppColors.electricViolet,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        context.push(AppRoutes.uploadCenter);
-      }
-    }
-
-    final actions = [
-      _ActionItem(
-        icon: Icons.quiz_rounded,
-        title: 'Active Quiz',
-        subtitle: 'Micro-Drills',
-        color: const Color(0xFF7B61FF),
-        onTap: () => navigateOrPrompt(AppRoutes.quiz),
-      ),
-      _ActionItem(
-        icon: Icons.flip_to_front_rounded,
-        title: '3D Flashcards',
-        subtitle: 'SM-2 Repetition',
-        color: const Color(0xFF4ECDC4),
-        onTap: () => navigateOrPrompt(AppRoutes.flashcards),
-      ),
-      _ActionItem(
-        icon: Icons.hub_rounded,
-        title: 'Mind Map',
-        subtitle: 'Semantic DAG',
-        color: const Color(0xFFFF9F43),
-        onTap: () => navigateOrPrompt(AppRoutes.mindMap),
-      ),
-      _ActionItem(
-        icon: Icons.auto_stories_rounded,
-        title: 'Smart Summary',
-        subtitle: 'Key Formulas',
-        color: const Color(0xFF5F85DB),
-        onTap: () => navigateOrPrompt(AppRoutes.summary),
-      ),
-      _ActionItem(
-        icon: Icons.analytics_outlined,
-        title: 'PYQ Analyzer',
-        subtitle: 'Exam Weightage',
-        color: const Color(0xFF10B981),
-        onTap: () => navigateOrPrompt(AppRoutes.questionPaperAnalyzer),
-      ),
-      _ActionItem(
-        icon: Icons.assignment_outlined,
-        title: 'Mock Exam',
-        subtitle: 'Full Papers & Key',
-        color: const Color(0xFFEC4899),
-        onTap: () => navigateOrPrompt(AppRoutes.examGenerator),
-      ),
-    ];
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: actions.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 2.6,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-      ),
-      itemBuilder: (_, index) {
-        final a = actions[index];
-        return InkWell(
-          onTap: a.onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: AppColors.darkSurfaceVariant,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.darkBorderSubtle),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: a.color.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Icon(a.icon, color: a.color, size: 16),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        a.title,
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
-                          height: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        a.subtitle,
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 10,
-                          color: AppColors.darkTextTertiary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _ActionItem {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ActionItem({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-
-  const _SectionHeader({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontFamily: 'Inter',
-        fontSize: 16,
-        fontWeight: FontWeight.w700,
-        color: Colors.white,
-      ),
-    );
-  }
-}
-
-class _ActiveMaterialBanner extends StatelessWidget {
-  final UploadedDocument doc;
-  const _ActiveMaterialBanner({required this.doc});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => context.push(AppRoutes.uploadCenter),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              AppColors.teal.withOpacity(0.18),
-              AppColors.electricViolet.withOpacity(0.10),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.teal.withOpacity(0.4)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.teal.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.description_rounded, color: AppColors.teal, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Active Study Material',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.teal,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    doc.fileName,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    '${doc.concepts.length} concepts • ${doc.quizzes.length} quizzes • ${doc.flashcards.length} cards',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 11,
-                      color: Colors.white.withOpacity(0.55),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: AppColors.teal, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _UploadPromptBanner extends StatelessWidget {
-  const _UploadPromptBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => context.push(AppRoutes.uploadCenter),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.darkSurface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: AppColors.electricViolet.withOpacity(0.4),
-            style: BorderStyle.solid,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.upload_file_rounded, color: Colors.white, size: 18),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Upload Your Study Material',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    'PDF, PPTX, DOCX, TXT → AI extracts concepts, quizzes & flashcards',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 11,
-                      color: Colors.white.withOpacity(0.55),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'Upload',
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
