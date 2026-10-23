@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
-import '../../../../core/settings/developer_mode_preferences.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
@@ -17,33 +16,6 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  int _avatarTapCount = 0;
-
-  Future<void> _onAvatarTap() async {
-    final taps = _avatarTapCount + 1;
-    print("Developer tap: $taps");
-    final unlocked = taps >= 7;
-    setState(() => _avatarTapCount = unlocked ? 0 : taps);
-
-    String? feedback;
-    if (taps == 5) feedback = '2 more taps to unlock Developer Options';
-    if (taps == 6) feedback = '1 more tap to unlock Developer Options';
-    if (unlocked) {
-      print("Developer Options Unlocked");
-      await DeveloperModePreferences.enable();
-      feedback = 'Developer Options Enabled';
-    }
-    if (feedback != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(feedback)),
-      );
-    }
-    if (unlocked && mounted) {
-      print("Opening Developer Options");
-      await context.push(AppRoutes.settings);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
@@ -121,21 +93,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   child: Row(
                     children: [
-                      InkWell(
-                        onTap: _onAvatarTap,
-                        customBorder: const CircleBorder(),
-                        child: CircleAvatar(
-                          radius: 32,
-                          backgroundColor:
-                              AppColors.electricViolet.withOpacity(0.2),
-                          child: Text(
-                            initials.isNotEmpty ? initials : 'SM',
-                            style: const TextStyle(
-                              fontFamily: 'JetBrains Mono',
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.electricViolet,
-                            ),
+                      CircleAvatar(
+                        radius: 32,
+                        backgroundColor:
+                            AppColors.electricViolet.withOpacity(0.2),
+                        child: Text(
+                          initials.isNotEmpty ? initials : 'SM',
+                          style: const TextStyle(
+                            fontFamily: 'JetBrains Mono',
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.electricViolet,
                           ),
                         ),
                       ),

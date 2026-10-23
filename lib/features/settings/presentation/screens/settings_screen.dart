@@ -5,8 +5,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
+import '../../../../core/ai/ai_config.dart';
+import '../../../../core/ai/ai_message.dart';
 import '../../../../core/ai/services/gemini_api_key_provider.dart';
-import '../../../../core/settings/developer_mode_preferences.dart';
+import '../../../../core/ai/services/api_key_manager.dart';
+import '../../../../core/ai/providers/gemini_provider.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 
@@ -18,22 +21,86 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  bool _developerModeEnabled = false;
+  int _developerTapCount = 0;
+  bool _developerUnlocked = false;
+  bool _testingConnection = false;
+  String _currentModel = ApiKeyManager.modelFallbacks.first;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadDeveloperMode();
+  void _onAboutTileTap() {
+    if (_developerUnlocked) return;
+    _developerTapCount++;
+    if (_developerTapCount >= 7) {
+      setState(() => _developerUnlocked = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Developer Options unlocked')),
+      );
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            '${7 - _developerTapCount} more taps to unlock Developer Options'),
+        duration: const Duration(milliseconds: 700),
+      ),
+    );
   }
 
-  Future<void> _loadDeveloperMode() async {
-    final enabled = await DeveloperModePreferences.isEnabled();
-    if (mounted) setState(() => _developerModeEnabled = enabled);
+  Future<void> _resetApiKey() async {
+    final shouldReset = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset API Key'),
+        content: const Text(
+            'Remove the saved personal key and return to the predefined keys?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (shouldReset != true) return;
+    await ref.read(aiApiKeyProvider.notifier).setApiKey('');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saved API key reset.')),
+      );
+    }
   }
 
-  Future<void> _disableDeveloperMode() async {
-    await DeveloperModePreferences.disable();
-    if (mounted) setState(() => _developerModeEnabled = false);
+  Future<void> _testConnection() async {
+    if (_testingConnection) return;
+    setState(() => _testingConnection = true);
+    try {
+      final response = await ref.read(apiKeyManagerProvider).run(
+            (apiKey, model) => GeminiProvider(AIConfig(
+              providerType: AIProviderType.gemini,
+              apiKey: apiKey,
+              model: model,
+              maxTokens: 8,
+            )).complete(const AIRequest(messages: [
+              AIMessage(role: AIRole.user, content: 'Reply with OK.'),
+            ])),
+          );
+      if (!mounted) return;
+      setState(() => _currentModel = response.model);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Connection successful (${response.model}).')),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Connection test failed.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _testingConnection = false);
+    }
   }
 
   void _showApiKeyDialog(BuildContext context, WidgetRef ref) {
@@ -145,10 +212,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         children: [
           // Profile card
           InkWell(
-            onTap: () async {
-              await context.push(AppRoutes.profile);
-              await _loadDeveloperMode();
-            },
+            onTap: () => context.push(AppRoutes.profile),
             borderRadius: BorderRadius.circular(8),
             child: const _ProfileCard(),
           ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.1, end: 0),
@@ -182,8 +246,69 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: 'StudyMate AI',
             subtitle: 'Version 1.0.0 • AI Study Workspace',
             trailing: null,
-            onTap: () {},
+            onTap: _onAboutTileTap,
           ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.1, end: 0),
+
+          if (_developerUnlocked) ...[
+            const SizedBox(height: 16),
+            const _SectionLabel(label: 'DEVELOPER OPTIONS'),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.vpn_key_outlined,
+              iconColor: AppColors.electricViolet,
+              title: 'AI Access Key',
+              subtitle: hasCustomKey
+                  ? 'Personal key configured'
+                  : 'Using predefined API keys',
+              trailing: null,
+              onTap: () => _showApiKeyDialog(context, ref),
+            ),
+            _SettingsTile(
+              icon: Icons.cloud_outlined,
+              iconColor: AppColors.teal,
+              title: 'Current Provider',
+              subtitle: 'Google Gemini',
+              trailing: null,
+              onTap: () {},
+            ),
+            _SettingsTile(
+              icon: Icons.memory_outlined,
+              iconColor: AppColors.amber,
+              title: 'Current Model',
+              subtitle: _currentModel,
+              trailing: null,
+              onTap: () {},
+            ),
+            _SettingsTile(
+              icon: Icons.edit_outlined,
+              iconColor: AppColors.electricViolet,
+              title: 'Edit API Key',
+              subtitle: 'Update the saved personal key',
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _showApiKeyDialog(context, ref),
+            ),
+            _SettingsTile(
+              icon: Icons.restart_alt_rounded,
+              iconColor: AppColors.error,
+              title: 'Reset API Key',
+              subtitle: 'Remove saved key and use predefined keys',
+              trailing: null,
+              onTap: _resetApiKey,
+            ),
+            _SettingsTile(
+              icon: Icons.wifi_tethering_rounded,
+              iconColor: AppColors.teal,
+              title: 'Test Connection',
+              subtitle: 'Check the Gemini API connection',
+              trailing: _testingConnection
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.chevron_right_rounded),
+              onTap: _testConnection,
+            ),
+          ],
 
           const SizedBox(height: 32),
 
@@ -252,31 +377,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               minimumSize: const Size(double.infinity, 52),
             ),
           ).animate(delay: 200.ms).fadeIn(),
-
-          if (_developerModeEnabled) ...[
-            const SizedBox(height: 24),
-            const _SectionLabel(label: 'DEVELOPER OPTIONS'),
-            const SizedBox(height: 8),
-            _SettingsTile(
-              icon: Icons.vpn_key_outlined,
-              iconColor: AppColors.electricViolet,
-              title: 'AI Access Key',
-              subtitle: hasCustomKey
-                  ? 'Active (Live Generative AI)'
-                  : 'Configure personal API key',
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => _showApiKeyDialog(context, ref),
-            ),
-            const SizedBox(height: 8),
-            _SettingsTile(
-              icon: Icons.developer_mode_outlined,
-              iconColor: AppColors.error,
-              title: 'Disable Developer Mode',
-              subtitle: 'Hide Developer Options from Settings',
-              trailing: null,
-              onTap: _disableDeveloperMode,
-            ),
-          ],
 
           const SizedBox(height: 40),
         ],
