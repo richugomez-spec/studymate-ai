@@ -88,6 +88,65 @@ class FirestoreService {
   CollectionReference<Map<String, dynamic>> get _subjectsCol =>
       _firestore.collection('subjects');
 
+  CollectionReference<Map<String, dynamic>> _deleteQueueCol(String ownerId) =>
+      _usersCol.doc(ownerId).collection('firestore_delete_queue');
+
+  CollectionReference<Map<String, dynamic>> _storageDeleteQueueCol(
+          String ownerId) =>
+      _usersCol.doc(ownerId).collection('storage_delete_queue');
+
+  Future<List<Map<String, dynamic>>> getPendingStorageDeletes(
+      {int limit = 50}) async {
+    final uid = currentUserId;
+    if (uid == null) return const [];
+    final snapshot = await _storageDeleteQueueCol(uid)
+        .orderBy('createdAt')
+        .limit(limit)
+        .get();
+    return snapshot.docs
+        .map((doc) => {'id': doc.id, ...doc.data()})
+        .toList();
+  }
+
+  Future<String> enqueueStorageDelete({
+    required String storagePath,
+    required String operationId,
+    String? subjectId,
+    String? documentId,
+    String reason = 'compensation',
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to queue storage cleanup.');
+    final task = _storageDeleteQueueCol(uid).doc();
+    await task.set({
+      'storagePath': storagePath,
+      'operationId': operationId,
+      if (subjectId != null) 'subjectId': subjectId,
+      if (documentId != null) 'documentId': documentId,
+      'reason': reason,
+      'attempts': 0,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return task.id;
+  }
+
+  Future<void> completeStorageDelete(String taskId) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to complete storage cleanup.');
+    await _storageDeleteQueueCol(uid).doc(taskId).delete();
+  }
+
+  Future<void> recordStorageDeleteFailure(
+      String taskId, Object error) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to update storage cleanup.');
+    await _storageDeleteQueueCol(uid).doc(taskId).set({
+      'attempts': FieldValue.increment(1),
+      'lastError': error.toString(),
+      'lastAttemptAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
   CollectionReference<Map<String, dynamic>> _subjectDocumentsCol(
           String subjectId) =>
       _subjectsCol.doc(subjectId).collection('documents');
@@ -190,6 +249,7 @@ class FirestoreService {
     required int byteSize,
     required String storagePath,
     required String subject,
+    String? operationId,
     String folderId = '',
     String topicId = '',
     String subtopicId = '',
@@ -204,14 +264,33 @@ class FirestoreService {
       throw ArgumentError('Choose a subject before uploading.');
     }
     debugPrint('UPLOAD FIRESTORE SUBJECT READ START: subject=$subjectId');
-    final subjectSnapshot = await _subjectsCol.doc(subjectId).get();
+    final subjectSnapshot = await _subjectsCol
+        .doc(subjectId)
+        .get(const GetOptions(source: Source.server));
     debugPrint('UPLOAD FIRESTORE SUBJECT READ COMPLETE: subject=$subjectId');
     if (subjectSnapshot.data()?['ownerId'] != uid) {
       throw StateError('The selected subject is not available.');
     }
+    if (subtopicId.isNotEmpty && topicId.isEmpty) {
+      throw ArgumentError('A subtopic must belong to a selected topic.');
+    }
+    if (topicId.isNotEmpty) {
+      final topic = await _topicRef(subjectId, topicId)
+          .get(const GetOptions(source: Source.server));
+      if (!topic.exists) throw StateError('The selected topic is not available.');
+      if (subtopicId.isNotEmpty) {
+        final subtopic = await _subtopicRef(subjectId, topicId, subtopicId)
+            .get(const GetOptions(source: Source.server));
+        if (!subtopic.exists) {
+          throw StateError('The selected subtopic is not available.');
+        }
+      }
+    }
     if (folderId.isNotEmpty) {
       debugPrint('UPLOAD FIRESTORE FOLDER READ START: folder=$folderId');
-      final folder = await _knowledgeCol.doc(folderId).get();
+      final folder = await _knowledgeCol
+          .doc(folderId)
+          .get(const GetOptions(source: Source.server));
       debugPrint('UPLOAD FIRESTORE FOLDER READ COMPLETE: folder=$folderId');
       final folderData = folder.data();
       if (folderData?['ownerId'] != uid ||
@@ -237,6 +316,7 @@ class FirestoreService {
       'uploadStatus': 'queued',
       'subject': subjectName,
       'subjectId': subjectId,
+      if (operationId != null) 'operationId': operationId,
       'folderId': folderId,
       'topicId': topicId,
       'subtopicId': subtopicId,
@@ -284,14 +364,19 @@ class FirestoreService {
     required String subjectId,
     required String documentId,
     required String status,
+    String? operationId,
     String? uploadStatus,
     String? downloadUrl,
     String? error,
   }) async {
     debugPrint(
         'UPLOAD FIRESTORE STATE UPDATE START: subject=$subjectId document=$documentId status=$status');
-    await _subjectDocumentRef(subjectId, documentId).update({
+    await _transitionDocumentState(
+      _subjectDocumentRef(subjectId, documentId),
+      status,
+      {
       'status': status,
+      if (operationId != null) 'operationId': operationId,
       if (uploadStatus != null) 'uploadStatus': uploadStatus,
       if (downloadUrl != null) ...{
         'downloadUrl': downloadUrl,
@@ -299,9 +384,70 @@ class FirestoreService {
       },
       if (error != null) ...{'error': error, 'indexError': error},
       'updatedAt': FieldValue.serverTimestamp(),
-    });
+      },
+    );
     debugPrint(
         'UPLOAD FIRESTORE STATE UPDATE COMPLETE: subject=$subjectId document=$documentId status=$status');
+  }
+
+  String _normalizedDocumentState(Object? value) {
+    switch (value?.toString()) {
+      case 'queued':
+      case 'pending':
+        return 'pending';
+      case 'uploading':
+        return 'uploading';
+      case 'uploaded':
+      case 'extracting':
+      case 'indexing':
+      case 'processing':
+        return 'processing';
+      case 'indexed':
+        return 'indexed';
+      case 'failed':
+      case 'upload_error':
+      case 'index_error':
+      case 'cancelled':
+        return 'failed';
+      case 'deleting':
+        return 'deleting';
+      case 'deleted':
+        return 'deleted';
+      default:
+        return 'pending';
+    }
+  }
+
+  bool _isAllowedDocumentTransition(String from, String to) {
+    if (from == to) return true;
+    if (to == 'failed') return from != 'deleted';
+    if (to == 'deleting') return from != 'deleted';
+    return switch (from) {
+      'pending' => to == 'uploading',
+      'uploading' => to == 'processing',
+      'processing' => to == 'indexed',
+      'failed' => to == 'uploading' || to == 'processing',
+      'indexed' => to == 'processing' || to == 'uploading',
+      'deleting' => to == 'deleted',
+      _ => false,
+    };
+  }
+
+  Future<void> _transitionDocumentState(
+    DocumentReference<Map<String, dynamic>> reference,
+    String nextStatus,
+    Map<String, dynamic> updates,
+  ) async {
+    final next = _normalizedDocumentState(nextStatus);
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(reference);
+      if (!snapshot.exists) throw StateError('Document is not available.');
+      final current = _normalizedDocumentState(snapshot.data()?['status']);
+      if (!_isAllowedDocumentTransition(current, next)) {
+        throw StateError('Invalid document state transition: $current -> $next.');
+      }
+      transaction.update(reference, updates);
+    });
   }
 
   Future<void> renameSubject(String subjectId, String name) async {
@@ -310,7 +456,7 @@ class FirestoreService {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to rename a subject.');
     final subjectRef = _subjectsCol.doc(subjectId);
-    final subject = await subjectRef.get();
+    final subject = await subjectRef.get(const GetOptions(source: Source.server));
     if (subject.data()?['ownerId'] != uid) {
       throw StateError('Subject is not available.');
     }
@@ -330,22 +476,41 @@ class FirestoreService {
     ]);
   }
 
-  Future<void> deleteSubject(String subjectId) async {
+  Future<void> deleteSubject(String subjectId, {String? operationId}) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to delete a subject.');
     final subjectRef = _subjectsCol.doc(subjectId);
-    final subject = await subjectRef.get();
+    final subject = await subjectRef.get(const GetOptions(source: Source.server));
     if (subject.data()?['ownerId'] != uid) {
       throw StateError('Subject is not available.');
     }
     final snapshots = await Future.wait([
-      _subjectDocumentsCol(subjectId).get(),
-      _knowledgeCol.where('ownerId', isEqualTo: uid).get(),
-      _chatSessionsCol.where('ownerId', isEqualTo: uid).get(),
-      _usersCol.doc(uid).collection('generation_cache').get(),
+      _subjectDocumentsCol(subjectId)
+          .get(const GetOptions(source: Source.server)),
+      _knowledgeCol
+          .where('ownerId', isEqualTo: uid)
+          .get(const GetOptions(source: Source.server)),
+      _chatSessionsCol
+          .where('ownerId', isEqualTo: uid)
+          .get(const GetOptions(source: Source.server)),
+      _usersCol
+          .doc(uid)
+          .collection('generation_cache')
+          .get(const GetOptions(source: Source.server)),
+      _subjectTopicsCol(subjectId)
+          .get(const GetOptions(source: Source.server)),
     ]);
     final docs = snapshots[0].docs;
     final knowledge = snapshots[1].docs;
+    final topics = snapshots[4].docs;
+    final subtopicSnapshots = await Future.wait(topics.map((topic) =>
+        _topicSubtopicsCol(subjectId, topic.id)
+            .get(const GetOptions(source: Source.server))));
+    final hierarchyRefs = <DocumentReference<Map<String, dynamic>>>[
+      for (final subtopics in subtopicSnapshots)
+        ...subtopics.docs.map((subtopic) => subtopic.reference),
+      ...topics.map((topic) => topic.reference),
+    ];
     final folderIds = <String>{
       for (final item in knowledge)
         if (item.data()['kind'] == 'folder' &&
@@ -390,10 +555,16 @@ class FirestoreService {
               sources.any((source) =>
                   source is Map && documentIds.contains(source['id'])));
     });
+    await _deleteSubjectDocumentsWithStorageQueue(
+      subjectDocs: subjectDocs,
+      ownerId: uid,
+      subjectId: subjectId,
+      operationId: operationId,
+    );
     await _deleteDocuments([
-      ...subjectDocs.map((doc) => doc.reference),
       ...subjectItems.map((item) => item.reference),
       ...staleCache.map((cache) => cache.reference),
+      ...hierarchyRefs,
     ]);
     final user = await _usersCol.doc(uid).get();
     final batch = _firestore.batch();
@@ -421,13 +592,26 @@ class FirestoreService {
             .toList());
   }
 
+  /// Stream all subtopics for a topic in display order.
+  Stream<List<Map<String, dynamic>>> streamSubtopics(
+      String subjectId, String topicId) {
+    return _topicSubtopicsCol(subjectId, topicId)
+        .orderBy('order')
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => {'id': doc.id, ...doc.data()})
+            .toList());
+  }
+
   /// Get all topics with their subtopics
   Future<List<Map<String, dynamic>>> getSubjectTopicsWithSubtopics(
       String subjectId) async {
     final uid = currentUserId;
     if (uid == null) return const [];
 
-    final subject = await _subjectsCol.doc(subjectId).get();
+    final subject = await _subjectsCol
+        .doc(subjectId)
+        .get(const GetOptions(source: Source.server));
     if (subject.data()?['ownerId'] != uid) return const [];
 
     final topicsSnapshot = await _subjectTopicsCol(subjectId)
@@ -459,6 +643,11 @@ class FirestoreService {
   }) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to create a topic.');
+    final cleanName = name.trim();
+    if (subjectId.trim().isEmpty) {
+      throw ArgumentError('Subject ID is required.');
+    }
+    if (cleanName.isEmpty) throw ArgumentError('Topic name is required.');
 
     final subject = await _subjectsCol.doc(subjectId).get();
     if (subject.data()?['ownerId'] != uid) {
@@ -473,10 +662,10 @@ class FirestoreService {
 
     final order = existing.docs.isEmpty
         ? 0
-        : (existing.docs.first.data()['order'] as int? ?? 0) + 1;
+        : ((existing.docs.first.data()['order'] as num?)?.toInt() ?? 0) + 1;
 
     final ref = await _subjectTopicsCol(subjectId).add({
-      'name': name.trim(),
+      'name': cleanName,
       'order': order,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -493,13 +682,19 @@ class FirestoreService {
   }) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to create a subtopic.');
+    final cleanName = name.trim();
+    if (subjectId.trim().isEmpty || topicId.trim().isEmpty) {
+      throw ArgumentError('Subject and topic IDs are required.');
+    }
+    if (cleanName.isEmpty) throw ArgumentError('Subtopic name is required.');
 
     final subject = await _subjectsCol.doc(subjectId).get();
     if (subject.data()?['ownerId'] != uid) {
       throw StateError('Subject is not available.');
     }
 
-    final topic = await _topicRef(subjectId, topicId).get();
+    final topic = await _topicRef(subjectId, topicId)
+        .get(const GetOptions(source: Source.server));
     if (!topic.exists) {
       throw StateError('Topic not found.');
     }
@@ -512,10 +707,10 @@ class FirestoreService {
 
     final order = existing.docs.isEmpty
         ? 0
-        : (existing.docs.first.data()['order'] as int? ?? 0) + 1;
+        : ((existing.docs.first.data()['order'] as num?)?.toInt() ?? 0) + 1;
 
     final ref = await _topicSubtopicsCol(subjectId, topicId).add({
-      'name': name.trim(),
+      'name': cleanName,
       'order': order,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
@@ -532,6 +727,8 @@ class FirestoreService {
   }) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to update a topic.');
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) throw ArgumentError('Topic name is required.');
 
     final subject = await _subjectsCol.doc(subjectId).get();
     if (subject.data()?['ownerId'] != uid) {
@@ -539,7 +736,7 @@ class FirestoreService {
     }
 
     await _topicRef(subjectId, topicId).update({
-      'name': name.trim(),
+      'name': cleanName,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -553,6 +750,8 @@ class FirestoreService {
   }) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to update a subtopic.');
+    final cleanName = name.trim();
+    if (cleanName.isEmpty) throw ArgumentError('Subtopic name is required.');
 
     final subject = await _subjectsCol.doc(subjectId).get();
     if (subject.data()?['ownerId'] != uid) {
@@ -560,7 +759,7 @@ class FirestoreService {
     }
 
     await _subtopicRef(subjectId, topicId, subtopicId).update({
-      'name': name.trim(),
+      'name': cleanName,
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -578,16 +777,42 @@ class FirestoreService {
       throw StateError('Subject is not available.');
     }
 
-    // Delete all subtopics
-    final subtopics = await _topicSubtopicsCol(subjectId, topicId).get();
-    final batch = _firestore.batch();
-    for (final doc in subtopics.docs) {
-      batch.delete(doc.reference);
-    }
+    final topic = await _topicRef(subjectId, topicId).get();
+    if (!topic.exists) throw StateError('Topic not found.');
 
-    // Delete the topic
-    batch.delete(_topicRef(subjectId, topicId));
-    await batch.commit();
+    // Remove the hierarchy references while preserving each document record.
+    final subtopics = await _topicSubtopicsCol(subjectId, topicId)
+        .get(const GetOptions(source: Source.server));
+    final documentSnapshots = await _subjectDocumentsCol(subjectId)
+        .get(const GetOptions(source: Source.server));
+    final subtopicIds = subtopics.docs.map((doc) => doc.id).toSet();
+    final affectedDocuments = documentSnapshots.docs.where((doc) {
+      final data = doc.data();
+      return data['topicId'] == topicId ||
+          ((data['topicId'] == null || data['topicId'] == '') &&
+              subtopicIds.contains(data['subtopicId']));
+    }).toList();
+    final subtopicRefs = subtopics.docs.map((doc) => doc.reference).toList();
+    if (affectedDocuments.length + subtopicRefs.length + 1 <= 500) {
+      final batch = _firestore.batch();
+      for (final doc in affectedDocuments) {
+        batch.update(doc.reference, {'topicId': '', 'subtopicId': ''});
+      }
+      for (final ref in subtopicRefs) {
+        batch.delete(ref);
+      }
+      batch.delete(_topicRef(subjectId, topicId));
+      await batch.commit();
+      return;
+    }
+    for (var i = 0; i < affectedDocuments.length; i += 450) {
+      final batch = _firestore.batch();
+      for (final doc in affectedDocuments.skip(i).take(450)) {
+        batch.update(doc.reference, {'topicId': '', 'subtopicId': ''});
+      }
+      await batch.commit();
+    }
+    await _deleteDocuments([...subtopicRefs, _topicRef(subjectId, topicId)]);
   }
 
   /// Delete a subtopic
@@ -599,11 +824,43 @@ class FirestoreService {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to delete a subtopic.');
 
-    final subject = await _subjectsCol.doc(subjectId).get();
+    final subject = await _subjectsCol
+        .doc(subjectId)
+        .get(const GetOptions(source: Source.server));
     if (subject.data()?['ownerId'] != uid) {
       throw StateError('Subject is not available.');
     }
-
+    final topic = await _topicRef(subjectId, topicId)
+        .get(const GetOptions(source: Source.server));
+    if (!topic.exists) throw StateError('Topic not found.');
+    final subtopic = await _subtopicRef(subjectId, topicId, subtopicId)
+        .get(const GetOptions(source: Source.server));
+    if (!subtopic.exists) throw StateError('Subtopic not found.');
+    final documents = await _subjectDocumentsCol(subjectId)
+        .get(const GetOptions(source: Source.server));
+    final affected = documents.docs.where((doc) {
+      final data = doc.data();
+      return data['subtopicId'] == subtopicId &&
+          (data['topicId'] == topicId ||
+              data['topicId'] == null ||
+              data['topicId'] == '');
+    }).toList();
+    if (affected.length < 500) {
+      final batch = _firestore.batch();
+      for (final doc in affected) {
+        batch.update(doc.reference, {'subtopicId': ''});
+      }
+      batch.delete(_subtopicRef(subjectId, topicId, subtopicId));
+      await batch.commit();
+      return;
+    }
+    for (var i = 0; i < affected.length; i += 450) {
+      final batch = _firestore.batch();
+      for (final doc in affected.skip(i).take(450)) {
+        batch.update(doc.reference, {'subtopicId': ''});
+      }
+      await batch.commit();
+    }
     await _subtopicRef(subjectId, topicId, subtopicId).delete();
   }
 
@@ -614,20 +871,32 @@ class FirestoreService {
   }) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to reorder topics.');
+    if (topicIds.toSet().length != topicIds.length ||
+        topicIds.any((id) => id.trim().isEmpty)) {
+      throw ArgumentError('Topic order must contain unique, non-empty IDs.');
+    }
 
     final subject = await _subjectsCol.doc(subjectId).get();
     if (subject.data()?['ownerId'] != uid) {
       throw StateError('Subject is not available.');
     }
 
-    final batch = _firestore.batch();
-    for (var i = 0; i < topicIds.length; i++) {
-      batch.update(_topicRef(subjectId, topicIds[i]), {
-        'order': i,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+    final topics = await _subjectTopicsCol(subjectId).get();
+    final existingIds = topics.docs.map((doc) => doc.id).toSet();
+    if (!existingIds.containsAll(topicIds)) {
+      throw StateError('A topic was not found.');
     }
-    await batch.commit();
+    for (var start = 0; start < topicIds.length; start += 450) {
+      final batch = _firestore.batch();
+      final end = start + 450 < topicIds.length ? start + 450 : topicIds.length;
+      for (var i = start; i < end; i++) {
+        batch.update(_topicRef(subjectId, topicIds[i]), {
+          'order': i,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
   }
 
   /// Reorder subtopics
@@ -638,20 +907,35 @@ class FirestoreService {
   }) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to reorder subtopics.');
+    if (subtopicIds.toSet().length != subtopicIds.length ||
+        subtopicIds.any((id) => id.trim().isEmpty)) {
+      throw ArgumentError('Subtopic order must contain unique, non-empty IDs.');
+    }
 
     final subject = await _subjectsCol.doc(subjectId).get();
     if (subject.data()?['ownerId'] != uid) {
       throw StateError('Subject is not available.');
     }
 
-    final batch = _firestore.batch();
-    for (var i = 0; i < subtopicIds.length; i++) {
-      batch.update(_subtopicRef(subjectId, topicId, subtopicIds[i]), {
-        'order': i,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+    final topic = await _topicRef(subjectId, topicId).get();
+    if (!topic.exists) throw StateError('Topic not found.');
+    final subtopics = await _topicSubtopicsCol(subjectId, topicId).get();
+    final existingIds = subtopics.docs.map((doc) => doc.id).toSet();
+    if (!existingIds.containsAll(subtopicIds)) {
+      throw StateError('A subtopic was not found.');
     }
-    await batch.commit();
+    for (var start = 0; start < subtopicIds.length; start += 450) {
+      final batch = _firestore.batch();
+      final end =
+          start + 450 < subtopicIds.length ? start + 450 : subtopicIds.length;
+      for (var i = start; i < end; i++) {
+        batch.update(_subtopicRef(subjectId, topicId, subtopicIds[i]), {
+          'order': i,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+    }
   }
 
   // ── 2. Subject Documents ───────────────────────────────────────────────────
@@ -1023,19 +1307,21 @@ class FirestoreService {
       {required String sourceText,
       required String subjectId,
       String sourceKind = 'document',
-      String? downloadUrl}) async {
+      String? downloadUrl,
+      String? operationId}) async {
     final target = sourceKind == 'note'
         ? _knowledgeCol.doc(documentId)
         : _subjectDocumentRef(subjectId, documentId);
     debugPrint(
         'UPLOAD FIRESTORE FINAL UPDATE START: subject=$subjectId document=$documentId');
-    await target.update({
+    final updates = <String, dynamic>{
       'structuredKnowledge': index,
       'extractedText': sourceText.length > 100000
           ? sourceText.substring(0, 100000)
           : sourceText,
       'indexedAt': FieldValue.serverTimestamp(),
       'status': 'indexed',
+      if (operationId != null) 'operationId': operationId,
       if (sourceKind == 'document') 'uploadStatus': 'completed',
       if (sourceKind == 'document') ...{
         'error': FieldValue.delete(),
@@ -1054,7 +1340,12 @@ class FirestoreService {
         if (index['quizzes'] is List)
           'quizCount': (index['quizzes'] as List).length,
       },
-    });
+    };
+    if (sourceKind == 'document') {
+      await _transitionDocumentState(target, 'indexed', updates);
+    } else {
+      await target.update(updates);
+    }
     debugPrint(
         'UPLOAD FIRESTORE FINAL UPDATE COMPLETE: subject=$subjectId document=$documentId status=indexed uploadStatus=completed');
   }
@@ -1088,16 +1379,23 @@ class FirestoreService {
     required String subjectId,
     required String documentId,
     required String error,
+    bool clearStorageReference = false,
   }) async {
     debugPrint(
         'UPLOAD FIRESTORE FAILURE UPDATE START: subject=$subjectId document=$documentId');
-    await _subjectDocumentRef(subjectId, documentId).update({
-      'status': 'failed',
-      'uploadStatus': 'failed',
-      'error': error,
-      'indexError': error,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    await _transitionDocumentState(
+      _subjectDocumentRef(subjectId, documentId),
+      'failed',
+      {
+        'status': 'failed',
+        'uploadStatus': 'failed',
+        'error': error,
+        'indexError': error,
+        if (clearStorageReference) 'downloadUrl': '',
+        if (clearStorageReference) 'fileUrl': '',
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+    );
     debugPrint(
         'UPLOAD FIRESTORE FAILURE UPDATE COMPLETE: subject=$subjectId document=$documentId');
   }
@@ -1217,10 +1515,11 @@ class FirestoreService {
   // ── 2. Subject Documents ───────────────────────────────────────────────────
 
   /// Permanently delete a document from Firestore and decrement user's count
-  Future<void> deleteDocument({
+  Future<String?> deleteDocument({
     required String documentId,
     required String subjectId,
     required String ownerId,
+    String? operationId,
   }) async {
     debugPrint('🗑️ [DELETE] Starting deletion for document: $documentId in subject: $subjectId');
     try {
@@ -1244,6 +1543,10 @@ class FirestoreService {
         debugPrint('🗑️ [DELETE] ERROR: Document owner mismatch');
         throw StateError('Document is not available.');
       }
+      final storagePath = existing.data()?['storagePath']?.toString() ?? '';
+      final storageTask = storagePath.isEmpty
+          ? null
+          : _storageDeleteQueueCol(ownerId).doc();
       debugPrint('🗑️ [DELETE] Document ownership verified');
 
       debugPrint('🗑️ [DELETE] Fetching related data (chat sessions, knowledge, cache)...');
@@ -1265,6 +1568,17 @@ class FirestoreService {
       debugPrint('🗑️ [DELETE] Creating batch delete for main document...');
       final batch = _firestore.batch();
       batch.delete(documentRef);
+      if (storageTask != null) {
+        batch.set(storageTask, {
+          'storagePath': storagePath,
+          'operationId': operationId ?? 'delete_${documentId}_${DateTime.now().microsecondsSinceEpoch}',
+          'subjectId': subjectId,
+          'documentId': documentId,
+          'reason': 'document_delete',
+          'attempts': 0,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
       batch.set(
         _usersCol.doc(ownerId),
         {'documentsUploaded': FieldValue.increment(-1)},
@@ -1299,6 +1613,7 @@ class FirestoreService {
       debugPrint('🗑️ [DELETE] ✅ Cache entries deleted');
 
       debugPrint('🗑️ [DELETE] ✅✅✅ DOCUMENT DELETION COMPLETE: $documentId');
+      return storageTask?.id;
     } catch (e, stackTrace) {
       debugPrint('🗑️ [DELETE] ❌ ERROR during deletion: $e');
       debugPrint('🗑️ [DELETE] Stack trace: $stackTrace');
@@ -1324,7 +1639,9 @@ class FirestoreService {
     StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? subjectsListener;
     final documentListeners =
         <String, StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>{};
+    final documentListenerTokens = <String, Object>{};
     final bySubject = <String, List<FirestoreDocumentModel>>{};
+    var subjectEvents = Future<void>.value();
 
     void emitDocuments() {
       if (controller.isClosed) return;
@@ -1347,6 +1664,8 @@ class FirestoreService {
             .where('ownerId', isEqualTo: ownerId)
             .snapshots()
             .listen((subjects) {
+          subjectEvents = subjectEvents.then((_) async {
+          if (!controller.hasListener) return;
           debugPrint('📡 [STREAM] Subjects snapshot received: ${subjects.docs.length} subjects');
           final subjectIds = subjects.docs.map((subject) => subject.id).toSet();
           for (final removedId in documentListeners.keys
@@ -1354,16 +1673,24 @@ class FirestoreService {
               .toList()) {
             debugPrint('📡 [STREAM] Removing listener for deleted subject: $removedId');
             final listener = documentListeners.remove(removedId);
+            documentListenerTokens.remove(removedId);
             bySubject.remove(removedId);
             if (listener != null) {
-              unawaited(listener.cancel());
+              await listener.cancel();
             }
           }
+          if (!controller.hasListener) return;
           for (final subjectId in subjectIds) {
             if (documentListeners.containsKey(subjectId)) continue;
             debugPrint('📡 [STREAM] Creating document listener for subject: $subjectId');
+            final listenerToken = Object();
+            documentListenerTokens[subjectId] = listenerToken;
             documentListeners[subjectId] =
                 _subjectDocumentsCol(subjectId).snapshots().listen((snapshot) {
+              if (controller.isClosed ||
+                  !identical(documentListenerTokens[subjectId], listenerToken)) {
+                return;
+              }
               debugPrint('📡 [STREAM] Documents snapshot for subject $subjectId: ${snapshot.docs.length} docs in Firestore');
 
               final filteredDocs = snapshot.docs
@@ -1383,11 +1710,18 @@ class FirestoreService {
                   .toList();
               emitDocuments();
             }, onError: (error, stackTrace) {
+              if (controller.isClosed ||
+                  !identical(documentListenerTokens[subjectId], listenerToken)) {
+                return;
+              }
               debugPrint('📡 [STREAM] ❌ Error in document stream for subject $subjectId: $error');
               controller.addError(error, stackTrace);
             });
           }
           emitDocuments();
+          }).catchError((Object error, StackTrace stackTrace) {
+            if (!controller.isClosed) controller.addError(error, stackTrace);
+          });
         }, onError: (error, stackTrace) {
           debugPrint('📡 [STREAM] ❌ Error in subjects stream: $error');
           controller.addError(error, stackTrace);
@@ -1395,7 +1729,9 @@ class FirestoreService {
       },
       onCancel: () async {
         debugPrint('📡 [STREAM] Cancelling all listeners');
+        documentListenerTokens.clear();
         await subjectsListener?.cancel();
+        await subjectEvents;
         await Future.wait(
             documentListeners.values.map((listener) => listener.cancel()));
         documentListeners.clear();
@@ -1411,10 +1747,31 @@ class FirestoreService {
   }) async {
     final uid = currentUserId;
     if (uid == null) return;
+    try {
+      await processPendingDeletes();
+    } catch (error) {
+      debugPrint('BACKEND_DELETE status=queued_retry_incomplete error=$error');
+    }
     final cutoff = DateTime.now().subtract(staleAfter);
-    final subjects = await _subjectsCol.where('ownerId', isEqualTo: uid).get();
+    final subjects = await _subjectsCol
+        .where('ownerId', isEqualTo: uid)
+        .get(const GetOptions(source: Source.server));
     final snapshots = await Future.wait(
-        subjects.docs.map((subject) => _subjectDocumentsCol(subject.id).get()));
+        subjects.docs.map((subject) => _subjectDocumentsCol(subject.id)
+            .get(const GetOptions(source: Source.server))));
+    final sourceIds = <String>{};
+    final subjectIds = subjects.docs.map((subject) => subject.id).toSet();
+    for (var index = 0; index < subjects.docs.length; index++) {
+      final subjectId = subjects.docs[index].id;
+      sourceIds.addAll(snapshots[index].docs.map((document) => document.id));
+      await _repairHierarchyReferences(
+        subjectId,
+        snapshots[index].docs,
+      );
+    }
+    final knowledge = await _knowledgeCol.where('ownerId', isEqualTo: uid).get();
+    sourceIds.addAll(knowledge.docs.map((item) => item.id));
+    await _removeOrphanGenerationCaches(uid, subjectIds, sourceIds);
     final completedRepairs =
         <(String, QueryDocumentSnapshot<Map<String, dynamic>>)>[];
     final stale = <(String, QueryDocumentSnapshot<Map<String, dynamic>>)>[];
@@ -1461,6 +1818,75 @@ class FirestoreService {
       await Future.wait(
           repairs.skip(offset).take(200).map((repair) => repair()));
     }
+  }
+
+  Future<void> _repairHierarchyReferences(
+    String subjectId,
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> documents,
+  ) async {
+    final topics = await _subjectTopicsCol(subjectId)
+        .get(const GetOptions(source: Source.server));
+    final topicIds = topics.docs.map((topic) => topic.id).toSet();
+    final subtopicSnapshots = await Future.wait(topics.docs.map(
+        (topic) => _topicSubtopicsCol(subjectId, topic.id)
+            .get(const GetOptions(source: Source.server))));
+    final subtopicIdsByTopic = <String, Set<String>>{
+      for (var i = 0; i < topics.docs.length; i++)
+        topics.docs[i].id: subtopicSnapshots[i].docs.map((doc) => doc.id).toSet(),
+    };
+    final repairs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+    for (final document in documents) {
+      final data = document.data();
+      final topicId = data['topicId']?.toString() ?? '';
+      final subtopicId = data['subtopicId']?.toString() ?? '';
+      if (topicId.isEmpty) {
+        if (subtopicId.isNotEmpty) repairs.add(document);
+        continue;
+      }
+      if (!topicIds.contains(topicId) ||
+          (subtopicId.isNotEmpty &&
+              !subtopicIdsByTopic[topicId]!.contains(subtopicId))) {
+        repairs.add(document);
+      }
+    }
+    for (var offset = 0; offset < repairs.length; offset += 450) {
+      final batch = _firestore.batch();
+      for (final document in repairs.skip(offset).take(450)) {
+        final data = document.data();
+        final topicId = data['topicId']?.toString() ?? '';
+        final validTopic = topicIds.contains(topicId);
+        batch.update(document.reference, {
+          if (!validTopic) 'topicId': '',
+          'subtopicId': '',
+        });
+      }
+      await batch.commit();
+    }
+  }
+
+  Future<void> _removeOrphanGenerationCaches(
+    String uid,
+    Set<String> subjectIds,
+    Set<String> sourceIds,
+  ) async {
+    final cache = await _usersCol
+        .doc(uid)
+        .collection('generation_cache')
+        .get(const GetOptions(source: Source.server));
+    final orphaned = cache.docs.where((document) {
+      final data = document.data();
+      final scopeId = data['scopeId']?.toString() ?? '';
+      if (scopeId.isNotEmpty && !subjectIds.contains(scopeId)) return true;
+      final result = data['result'];
+      final sources = result is Map ? result['sources'] : null;
+      if (sources is! List) return false;
+      return sources.any((source) {
+        if (source is! Map) return false;
+        final sourceId = source['id']?.toString() ?? '';
+        return sourceId.isNotEmpty && !sourceIds.contains(sourceId);
+      });
+    });
+    await _deleteDocuments(orphaned.map((document) => document.reference).toList());
   }
 
   // ── 3. Chat Sessions & Messages ────────────────────────────────────────────
@@ -1514,14 +1940,185 @@ class FirestoreService {
     await _deleteDocuments(snapshot.docs.map((d) => d.reference).toList());
   }
 
-  Future<void> _deleteDocuments(
-      List<DocumentReference<Map<String, dynamic>>> refs) async {
-    for (var i = 0; i < refs.length; i += 450) {
-      final batch = _firestore.batch();
-      for (final ref in refs.skip(i).take(450)) {
-        batch.delete(ref);
+  Future<void> _deleteSubjectDocumentsWithStorageQueue({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> subjectDocs,
+    required String ownerId,
+    required String subjectId,
+    String? operationId,
+  }) async {
+    for (var offset = 0; offset < subjectDocs.length; offset += 200) {
+      final chunk = subjectDocs.skip(offset).take(200).toList();
+      Object? lastError;
+      for (var attempt = 1; attempt <= 3; attempt++) {
+        try {
+          final batch = _firestore.batch();
+          for (final document in chunk) {
+            final data = document.data();
+            final storagePath = data['storagePath']?.toString() ?? '';
+            batch.delete(document.reference);
+            if (storagePath.isNotEmpty) {
+              final task =
+                  _storageDeleteQueueCol(ownerId).doc('${subjectId}_${document.id}');
+              batch.set(task, {
+                'storagePath': storagePath,
+                'operationId': operationId ?? 'subject_delete_${subjectId}_${document.id}',
+                'subjectId': subjectId,
+                'documentId': document.id,
+                'reason': 'subject_delete',
+                'attempts': 0,
+                'createdAt': FieldValue.serverTimestamp(),
+              });
+            }
+          }
+          await batch.commit();
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          debugPrint('BACKEND_DELETE operationId=subject_delete_$subjectId chunk=${offset ~/ 200 + 1} attempt=$attempt status=retry error=$error');
+          if (attempt < 3) {
+            await Future<void>.delayed(Duration(milliseconds: 300 * attempt));
+          }
+        }
       }
-      await batch.commit();
+      if (lastError != null) {
+        Error.throwWithStackTrace(lastError, StackTrace.current);
+      }
+    }
+  }
+
+  Future<void> _deleteDocuments(
+    List<DocumentReference<Map<String, dynamic>>> refs, {
+    String operationId = '',
+    String subjectId = '',
+    String documentId = '',
+    void Function(int completed, int total)? onProgress,
+  }) async {
+    if (refs.isEmpty) return;
+    final uid = currentUserId;
+    final chunks = <List<DocumentReference<Map<String, dynamic>>>>[];
+    for (var i = 0; i < refs.length; i += 450) {
+      chunks.add(refs.skip(i).take(450).toList());
+    }
+    var completed = 0;
+    Object? firstFailure;
+    final deleteOperationId = operationId.isEmpty
+        ? 'delete_${DateTime.now().microsecondsSinceEpoch}'
+        : operationId;
+    for (var index = 0; index < chunks.length; index++) {
+      final chunk = chunks[index];
+      var chunkCompleted = false;
+      if (uid == null) {
+        try {
+          await _commitDeleteChunk(chunk, null, deleteOperationId, index + 1);
+          chunkCompleted = true;
+        } catch (error) {
+          firstFailure ??= error;
+        }
+      } else {
+        final taskRef = _deleteQueueCol(uid).doc();
+        try {
+          await taskRef.set({
+            'operationId': deleteOperationId,
+            'subjectId': subjectId,
+            'documentId': documentId,
+            'paths': chunk.map((ref) => ref.path).toList(),
+            'chunk': index + 1,
+            'chunkCount': chunks.length,
+            'createdAt': FieldValue.serverTimestamp(),
+            'attempts': 0,
+          });
+          await _commitDeleteChunk(chunk, taskRef, deleteOperationId, index + 1);
+          chunkCompleted = true;
+        } catch (error) {
+          firstFailure ??= error;
+        }
+      }
+      if (chunkCompleted) completed += chunk.length;
+      onProgress?.call(completed, refs.length);
+      debugPrint('BACKEND_DELETE operationId=$deleteOperationId subjectId=$subjectId documentId=$documentId status=${firstFailure == null ? 'progress' : 'retry_pending'} progress=$completed/${refs.length} error=${firstFailure ?? ''}');
+    }
+    if (firstFailure != null) {
+      Error.throwWithStackTrace(firstFailure, StackTrace.current);
+    }
+  }
+
+  Future<void> _commitDeleteChunk(
+    List<DocumentReference<Map<String, dynamic>>> refs,
+    DocumentReference<Map<String, dynamic>>? taskRef,
+    String operationId,
+    int chunkNumber,
+  ) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      try {
+        final batch = _firestore.batch();
+        for (final ref in refs) {
+          batch.delete(ref);
+        }
+        if (taskRef != null) batch.delete(taskRef);
+        await batch.commit();
+        return;
+      } catch (error) {
+        lastError = error;
+        debugPrint('BACKEND_DELETE operationId=$operationId chunk=$chunkNumber attempt=$attempt status=retry error=$error');
+        if (attempt < 3) {
+          await Future<void>.delayed(Duration(milliseconds: 300 * attempt));
+        }
+      }
+    }
+    if (taskRef != null) {
+      try {
+        await taskRef.set({
+          'attempts': 3,
+          'lastError': lastError.toString(),
+          'lastAttemptAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (queueError) {
+        debugPrint('BACKEND_DELETE operationId=$operationId status=queue_update_failed error=$queueError');
+      }
+    }
+    Error.throwWithStackTrace(lastError!, StackTrace.current);
+  }
+
+  /// Retries persisted deletion chunks after a transient failure or restart.
+  Future<void> processPendingDeletes({int limit = 50}) async {
+    final uid = currentUserId;
+    if (uid == null) return;
+    Object? firstFailure;
+    QueryDocumentSnapshot<Map<String, dynamic>>? cursor;
+    while (true) {
+      var query = _deleteQueueCol(uid).orderBy('createdAt');
+      if (cursor != null) query = query.startAfterDocument(cursor);
+      final tasks = await query.limit(limit).get();
+      if (tasks.docs.isEmpty) break;
+      for (final task in tasks.docs) {
+        final data = task.data();
+        final paths = data['paths'];
+        if (paths is! List ||
+            paths.length > 450 ||
+            paths.any((path) => path is! String)) {
+          firstFailure ??=
+              StateError('Invalid persisted deletion task ${task.id}.');
+          continue;
+        }
+        final refs = paths.cast<String>().map(_firestore.doc).toList();
+        try {
+          await _commitDeleteChunk(
+            refs,
+            task.reference,
+            data['operationId']?.toString() ?? task.id,
+            (data['chunk'] as num?)?.toInt() ?? 0,
+          );
+        } catch (error) {
+          firstFailure ??= error;
+        }
+      }
+      cursor = tasks.docs.last;
+      if (tasks.docs.length < limit) break;
+    }
+    if (firstFailure != null) {
+      Error.throwWithStackTrace(firstFailure, StackTrace.current);
     }
   }
 

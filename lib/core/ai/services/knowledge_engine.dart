@@ -23,6 +23,52 @@ class KnowledgeEngine {
   static final Map<String, Future<List<Map<String, dynamic>>>> _contextCache =
       {};
 
+  String _newOperationId(String kind) =>
+      '${kind}_${DateTime.now().microsecondsSinceEpoch}_${math.Random().nextInt(1 << 32)}';
+
+  void _logBackendOperation({
+    required String operationId,
+    required String operation,
+    required String status,
+    required Stopwatch stopwatch,
+    String? subjectId,
+    String? documentId,
+    Object? error,
+  }) {
+    debugPrint('BACKEND_OPERATION ${jsonEncode({
+      'operationId': operationId,
+      'operation': operation,
+      'subjectId': subjectId,
+      'documentId': documentId,
+      'status': status,
+      'durationMs': stopwatch.elapsedMilliseconds,
+      'error': error?.toString(),
+    })}');
+  }
+
+  Future<void> _drainStorageDeletionQueue({
+    required FirestoreService firestore,
+    required FirebaseUploadService upload,
+  }) async {
+    final tasks = await firestore.getPendingStorageDeletes();
+    for (final task in tasks) {
+      final taskId = task['id']?.toString();
+      final storagePath = task['storagePath']?.toString() ?? '';
+      if (taskId == null || storagePath.isEmpty) continue;
+      try {
+        await _deleteStorageObjectIfPresent(upload, storagePath);
+        await firestore.completeStorageDelete(taskId);
+      } catch (error) {
+        try {
+          await firestore.recordStorageDeleteFailure(taskId, error);
+        } catch (queueError) {
+          debugPrint('BACKEND_STORAGE_DELETE operationId=${task['operationId']} status=queue_update_failed error=$queueError');
+        }
+        debugPrint('BACKEND_STORAGE_DELETE operationId=${task['operationId']} subjectId=${task['subjectId']} documentId=${task['documentId']} status=retry_pending error=$error');
+      }
+    }
+  }
+
   static void invalidateSubjectContext(String? subjectId, {String? ownerId}) {
     if (subjectId == null || subjectId.isEmpty) {
       if (ownerId == null) {
@@ -224,8 +270,20 @@ class KnowledgeEngine {
     Uint8List? sourceBytes,
     String? mimeType,
     String? downloadUrl,
+    String? operationId,
     void Function()? onGenerated,
   }) async {
+    final currentOperationId = operationId ?? _newOperationId('index');
+    final stopwatch = Stopwatch()..start();
+    _logBackendOperation(
+      operationId: currentOperationId,
+      operation: 'index',
+      status: 'started',
+      stopwatch: stopwatch,
+      subjectId: subjectId,
+      documentId: sourceId,
+    );
+    try {
     debugPrint('🔍 [INDEX] ========== AI INDEX GENERATION START ==========');
     debugPrint('🔍 [INDEX] Source ID: $sourceId');
     debugPrint('🔍 [INDEX] Title: $title');
@@ -272,6 +330,7 @@ class KnowledgeEngine {
         sourceKind: sourceKind,
         subjectId: subjectId,
         downloadUrl: downloadUrl,
+        operationId: currentOperationId,
       ),
     );
     debugPrint('🔍 [INDEX] ✅ Index saved to Firestore');
@@ -281,14 +340,34 @@ class KnowledgeEngine {
     debugPrint('🔍 [INDEX] Subject context invalidated');
 
     debugPrint('🔍 [INDEX] ========== AI INDEX GENERATION COMPLETE ==========');
+    _logBackendOperation(
+      operationId: currentOperationId,
+      operation: 'index',
+      status: 'indexed',
+      stopwatch: stopwatch,
+      subjectId: subjectId,
+      documentId: sourceId,
+    );
     return structured;
+    } catch (error) {
+      _logBackendOperation(
+        operationId: currentOperationId,
+        operation: 'index',
+        status: 'failed',
+        stopwatch: stopwatch,
+        subjectId: subjectId,
+        documentId: sourceId,
+        error: error,
+      );
+      rethrow;
+    }
   }
 
   Future<T> _uploadStage<T>(
       String stage, Future<T> Function() operation) async {
     debugPrint('UPLOAD $stage START');
     try {
-      final result = await operation();
+      final result = await operation().timeout(const Duration(minutes: 6));
       debugPrint('UPLOAD $stage COMPLETE');
       return result;
     } catch (error, stackTrace) {
@@ -304,6 +383,7 @@ class KnowledgeEngine {
     required String documentId,
     required Object error,
     required String label,
+    bool clearStorageReference = false,
   }) async {
     Object? lastError;
     StackTrace? lastStackTrace;
@@ -315,6 +395,7 @@ class KnowledgeEngine {
             subjectId: subjectId,
             documentId: documentId,
             error: error.toString(),
+            clearStorageReference: clearStorageReference,
           ),
         );
         return;
@@ -357,6 +438,12 @@ class KnowledgeEngine {
       throw ArgumentError('Upload requires an existing subject.');
     }
 
+    try {
+      await _drainStorageDeletionQueue(firestore: firestore, upload: upload);
+    } catch (error) {
+      debugPrint('BACKEND_STORAGE_DELETE status=drain_deferred error=$error');
+    }
+
     debugPrint('📤 [UPLOAD] Owner ID: $ownerId');
 
     upload.validateFile(file);
@@ -367,6 +454,18 @@ class KnowledgeEngine {
     final extension = (file.extension ?? 'bin').toLowerCase();
     final storagePath =
         'uploads/$ownerId/$subjectId/${documentId}_${file.name}';
+    final operationId = _newOperationId('upload');
+    final stopwatch = Stopwatch()..start();
+    var storageAttempted = false;
+    var firestoreRecordCreated = false;
+    _logBackendOperation(
+      operationId: operationId,
+      operation: 'upload_index',
+      status: 'started',
+      stopwatch: stopwatch,
+      subjectId: subjectId,
+      documentId: documentId,
+    );
 
     debugPrint('📤 [UPLOAD] Generated document ID: $documentId');
     debugPrint('📤 [UPLOAD] Storage path: $storagePath');
@@ -380,6 +479,7 @@ class KnowledgeEngine {
         () => firestore.createDocumentRecord(
           documentId: documentId,
           subjectId: subjectId,
+          operationId: operationId,
           title: file.name,
           fileType: extension.toUpperCase(),
           byteSize: file.size,
@@ -394,6 +494,7 @@ class KnowledgeEngine {
           tags: tags,
         ),
       );
+      firestoreRecordCreated = true;
       debugPrint('📤 [UPLOAD] ✅ Firestore document created');
 
       // Step 2: Set uploading state
@@ -406,13 +507,15 @@ class KnowledgeEngine {
           documentId: documentId,
           status: 'uploading',
           uploadStatus: 'uploading',
+          operationId: operationId,
         ),
       );
       debugPrint('📤 [UPLOAD] ✅ Status set to uploading');
 
       // Step 3: Upload to Firebase Storage
       debugPrint('📤 [UPLOAD] ===== STEP 3: UPLOAD TO FIREBASE STORAGE =====');
-      final downloadUrl = await _uploadStage(
+      storageAttempted = true;
+      final completedDownloadUrl = await _uploadStage(
         'STORAGE UPLOAD AND DOWNLOAD URL',
         () => upload.uploadToStorage(
           file,
@@ -421,10 +524,9 @@ class KnowledgeEngine {
           onProgress: onUploadProgress,
         ),
       );
-      if (downloadUrl.trim().isEmpty) {
+      if (completedDownloadUrl.trim().isEmpty) {
         throw StateError('Storage returned an empty download URL.');
       }
-      debugPrint('📤 [UPLOAD] ✅ Storage upload complete, URL: ${downloadUrl.substring(0, 50)}...');
 
       // Step 4: Save download URL and set extracting state
       failedAt = 'extract_error';
@@ -436,7 +538,8 @@ class KnowledgeEngine {
           documentId: documentId,
           status: 'extracting',
           uploadStatus: 'uploading',
-          downloadUrl: downloadUrl,
+          downloadUrl: completedDownloadUrl,
+          operationId: operationId,
         ),
       );
       debugPrint('📤 [UPLOAD] ✅ Download URL saved, status set to extracting');
@@ -455,7 +558,8 @@ class KnowledgeEngine {
           subjectId: subjectId,
           topic: topic,
           subtopic: subtopic,
-          downloadUrl: downloadUrl,
+          downloadUrl: completedDownloadUrl,
+          operationId: operationId,
           onStage: (stage) => failedAt = stage,
         ),
       );
@@ -465,15 +569,50 @@ class KnowledgeEngine {
       debugPrint('📤 [UPLOAD] Document ID: $documentId');
       debugPrint('📤 [UPLOAD] All async operations completed, returning result');
 
+      _logBackendOperation(
+        operationId: operationId,
+        operation: 'upload_index',
+        status: 'indexed',
+        stopwatch: stopwatch,
+        subjectId: subjectId,
+        documentId: documentId,
+      );
       return UploadResult(
-        downloadUrl: downloadUrl,
+        downloadUrl: completedDownloadUrl,
         storagePath: storagePath,
         firestoreDocId: documentId,
       );
     } catch (error, stackTrace) {
       debugPrint('📤 [UPLOAD] ❌❌❌ UPLOAD FAILED at $failedAt: $error');
       debugPrintStack(stackTrace: stackTrace);
-      try {
+      _logBackendOperation(
+        operationId: operationId,
+        operation: 'upload_index',
+        status: 'failed',
+        stopwatch: stopwatch,
+        subjectId: subjectId,
+        documentId: documentId,
+        error: error,
+      );
+      if (storageAttempted && failedAt != 'index_error') {
+        try {
+          await _deleteStorageObjectIfPresent(upload, storagePath);
+        } catch (compensationError) {
+          try {
+            await firestore.enqueueStorageDelete(
+              storagePath: storagePath,
+              operationId: operationId,
+              subjectId: subjectId,
+              documentId: documentId,
+              reason: 'upload_compensation',
+            );
+          } catch (queueError) {
+            debugPrint('BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$documentId status=queue_failed error=$queueError');
+          }
+          debugPrint('BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$documentId status=storage_retry_pending error=$compensationError');
+        }
+      }
+      if (firestoreRecordCreated) try {
         debugPrint('📤 [UPLOAD] Persisting failure state to Firestore...');
         await _persistUploadFailure(
           firestore: firestore,
@@ -481,6 +620,8 @@ class KnowledgeEngine {
           documentId: documentId,
           error: error,
           label: 'PERSIST FAILURE STATE',
+          clearStorageReference:
+              storageAttempted && failedAt != 'index_error',
         );
         debugPrint('📤 [UPLOAD] ✅ Failure state persisted');
       } catch (persistError, persistStackTrace) {
@@ -509,6 +650,22 @@ class KnowledgeEngine {
     final firestore = _ref.read(firestoreServiceProvider);
     final ownerId = firestore.currentUserId;
     if (ownerId == null) throw StateError('Sign in to retry indexing.');
+    final operationId = _newOperationId('retry');
+    final stopwatch = Stopwatch()..start();
+    var replacementStorageAttempted = false;
+    try {
+      await _drainStorageDeletionQueue(firestore: firestore, upload: upload);
+    } catch (error) {
+      debugPrint('BACKEND_STORAGE_DELETE status=drain_deferred error=$error');
+    }
+    _logBackendOperation(
+      operationId: operationId,
+      operation: 'retry_index',
+      status: 'started',
+      stopwatch: stopwatch,
+      subjectId: subjectId,
+      documentId: sourceId,
+    );
     var failedAt = 'upload_error';
     debugPrint('UPLOAD RETRY START: document=$sourceId status=$status');
     invalidateSubjectContext(subjectId, ownerId: ownerId);
@@ -531,8 +688,10 @@ class KnowledgeEngine {
             documentId: sourceId,
             status: 'uploading',
             uploadStatus: 'uploading',
+            operationId: operationId,
           ),
         );
+        replacementStorageAttempted = true;
         downloadUrl = await _uploadStage(
           'RETRY STORAGE UPLOAD AND DOWNLOAD URL',
           () => upload.uploadToStorage(
@@ -552,6 +711,7 @@ class KnowledgeEngine {
             status: 'extracting',
             uploadStatus: 'uploading',
             downloadUrl: downloadUrl,
+            operationId: operationId,
           ),
         );
       }
@@ -570,12 +730,40 @@ class KnowledgeEngine {
           cachedText: extractedText,
           mimeType: _mimeTypeFor(fileType),
           downloadUrl: downloadUrl,
+          operationId: operationId,
           onStage: (stage) => failedAt = stage,
         ),
       );
     } catch (error, stackTrace) {
       debugPrint('UPLOAD RETRY FAILED at $failedAt: $error');
       debugPrintStack(stackTrace: stackTrace);
+      _logBackendOperation(
+        operationId: operationId,
+        operation: 'retry_index',
+        status: 'failed',
+        stopwatch: stopwatch,
+        subjectId: subjectId,
+        documentId: sourceId,
+        error: error,
+      );
+      if (replacementStorageAttempted && failedAt != 'extract_error') {
+        try {
+          await _deleteStorageObjectIfPresent(upload, storagePath);
+        } catch (compensationError) {
+          try {
+            await firestore.enqueueStorageDelete(
+              storagePath: storagePath,
+              operationId: operationId,
+              subjectId: subjectId,
+              documentId: sourceId,
+              reason: 'retry_compensation',
+            );
+          } catch (queueError) {
+            debugPrint('BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$sourceId status=queue_failed error=$queueError');
+          }
+          debugPrint('BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$sourceId status=storage_retry_pending error=$compensationError');
+        }
+      }
       try {
         await _persistUploadFailure(
           firestore: firestore,
@@ -583,6 +771,8 @@ class KnowledgeEngine {
           documentId: sourceId,
           error: error,
           label: 'PERSIST RETRY FAILURE STATE',
+          clearStorageReference:
+              replacementStorageAttempted && failedAt != 'extract_error',
         );
       } catch (persistError, persistStackTrace) {
         debugPrint('RETRY FAILURE STATE WRITE FAILED: $persistError');
@@ -591,6 +781,14 @@ class KnowledgeEngine {
       Error.throwWithStackTrace(error, stackTrace);
     }
     invalidateSubjectContext(subjectId, ownerId: ownerId);
+    _logBackendOperation(
+      operationId: operationId,
+      operation: 'retry_index',
+      status: 'indexed',
+      stopwatch: stopwatch,
+      subjectId: subjectId,
+      documentId: sourceId,
+    );
   }
 
   Future<void> deleteDocument({
@@ -601,6 +799,16 @@ class KnowledgeEngine {
     final firestore = _ref.read(firestoreServiceProvider);
     final upload = _ref.read(firebaseUploadServiceProvider);
     final ownerId = firestore.currentUserId;
+    final operationId = _newOperationId('delete');
+    final stopwatch = Stopwatch()..start();
+    _logBackendOperation(
+      operationId: operationId,
+      operation: 'delete_document',
+      status: 'started',
+      stopwatch: stopwatch,
+      subjectId: subjectId,
+      documentId: documentId,
+    );
 
     if (ownerId == null) {
       debugPrint('🔥 [KnowledgeEngine] ERROR: User not signed in');
@@ -608,32 +816,54 @@ class KnowledgeEngine {
     }
     debugPrint('🔥 [KnowledgeEngine] User verified: $ownerId');
 
-    debugPrint('🔥 [KnowledgeEngine] Fetching document metadata...');
-    final document = await firestore.getSubjectDocument(subjectId, documentId);
-    if (document == null) {
-      debugPrint('🔥 [KnowledgeEngine] ERROR: Document not found');
-      throw StateError('Document is not available.');
-    }
+    try {
+      final document = await firestore.getSubjectDocument(subjectId, documentId) ??
+          (throw StateError('Document is not available.'));
     debugPrint('🔥 [KnowledgeEngine] Document found: ${document.fileName}, storagePath: ${document.storagePath}');
 
-    // Step 1: Delete from Firebase Storage
-    debugPrint('🔥 [KnowledgeEngine] Step 1: Deleting from Firebase Storage...');
-    await _deleteStorageObjectIfPresent(upload, document.storagePath);
-    debugPrint('🔥 [KnowledgeEngine] ✅ Storage deletion complete');
-
-    // Step 2: Delete from Firestore
-    debugPrint('🔥 [KnowledgeEngine] Step 2: Deleting from Firestore...');
-    await firestore.deleteDocument(
+    // The Firestore delete and durable Storage cleanup task commit together.
+    final storageTaskId = await firestore.deleteDocument(
       documentId: documentId,
       subjectId: subjectId,
       ownerId: ownerId,
+      operationId: operationId,
     );
+    if (storageTaskId != null) {
+      try {
+        await _deleteStorageObjectIfPresent(upload, document.storagePath);
+        await firestore.completeStorageDelete(storageTaskId);
+      } catch (error) {
+        await firestore.recordStorageDeleteFailure(storageTaskId, error);
+        debugPrint('BACKEND_STORAGE_DELETE operationId=$operationId subjectId=$subjectId documentId=$documentId status=retry_pending error=$error');
+      }
+    }
+    await _drainStorageDeletionQueue(firestore: firestore, upload: upload);
+    } catch (error) {
+      _logBackendOperation(
+        operationId: operationId,
+        operation: 'delete_document',
+        status: 'failed',
+        stopwatch: stopwatch,
+        subjectId: subjectId,
+        documentId: documentId,
+        error: error,
+      );
+      rethrow;
+    }
     debugPrint('🔥 [KnowledgeEngine] ✅ Firestore deletion complete');
 
     // Step 3: Invalidate cache
     debugPrint('🔥 [KnowledgeEngine] Step 3: Invalidating cache...');
     invalidateSubjectContext(subjectId, ownerId: ownerId);
     debugPrint('🔥 [KnowledgeEngine] ✅ Cache invalidated');
+    _logBackendOperation(
+      operationId: operationId,
+      operation: 'delete_document',
+      status: 'deleted',
+      stopwatch: stopwatch,
+      subjectId: subjectId,
+      documentId: documentId,
+    );
 
     debugPrint('🔥 [KnowledgeEngine] ✅✅✅ DELETE COMPLETE: document=$documentId');
   }
@@ -643,12 +873,38 @@ class KnowledgeEngine {
     final upload = _ref.read(firebaseUploadServiceProvider);
     final ownerId = firestore.currentUserId;
     if (ownerId == null) throw StateError('Sign in to delete this subject.');
-    final documents = await firestore.getSubjectDocuments(subjectId);
-    await Future.wait(documents.map((document) =>
-        _deleteStorageObjectIfPresent(upload, document.storagePath)));
-    await firestore.deleteSubject(subjectId);
-    invalidateSubjectContext(subjectId, ownerId: ownerId);
-    debugPrint('DELETE COMPLETE: subject=$subjectId');
+    final operationId = _newOperationId('delete_subject');
+    final stopwatch = Stopwatch()..start();
+    _logBackendOperation(
+      operationId: operationId,
+      operation: 'delete_subject',
+      status: 'started',
+      stopwatch: stopwatch,
+      subjectId: subjectId,
+    );
+    try {
+      await firestore.deleteSubject(subjectId, operationId: operationId);
+      await _drainStorageDeletionQueue(firestore: firestore, upload: upload);
+      invalidateSubjectContext(subjectId, ownerId: ownerId);
+      _logBackendOperation(
+        operationId: operationId,
+        operation: 'delete_subject',
+        status: 'deleted',
+        stopwatch: stopwatch,
+        subjectId: subjectId,
+      );
+      debugPrint('DELETE COMPLETE: subject=$subjectId');
+    } catch (error) {
+      _logBackendOperation(
+        operationId: operationId,
+        operation: 'delete_subject',
+        status: 'failed',
+        stopwatch: stopwatch,
+        subjectId: subjectId,
+        error: error,
+      );
+      rethrow;
+    }
   }
 
   Future<void> _deleteStorageObjectIfPresent(
@@ -681,6 +937,7 @@ class KnowledgeEngine {
     required String topic,
     required String subtopic,
     required String downloadUrl,
+    required String operationId,
     String cachedText = '',
     String? mimeType,
     void Function(String status)? onStage,
@@ -711,6 +968,7 @@ class KnowledgeEngine {
                 documentId: sourceId,
                 status: 'extracting',
                 uploadStatus: 'uploading',
+                operationId: operationId,
               ));
       debugPrint('📑 [INDEX] ✅ Status set to extracting');
 
@@ -772,6 +1030,7 @@ class KnowledgeEngine {
               documentId: sourceId,
               status: 'indexing',
               uploadStatus: 'uploading',
+              operationId: operationId,
             ));
     debugPrint('📑 [INDEX] ✅ Status set to indexing');
 
@@ -791,6 +1050,7 @@ class KnowledgeEngine {
         sourceBytes: bytes,
         mimeType: mimeType ?? _mimeTypeFor(file?.extension),
         downloadUrl: downloadUrl,
+        operationId: operationId,
         onGenerated: () => debugPrint('📑 [INDEX] ✅ AI index generation complete'),
       ),
     );
@@ -1242,6 +1502,104 @@ class KnowledgeEngine {
     ];
     yield* _completeStream(AIRequest(messages: messages));
   }
+
+  // Subject hierarchy operations stay in FirestoreService; these methods are
+  // the business-logic entry points for callers using KnowledgeEngine.
+  Stream<List<Map<String, dynamic>>> streamTopics(String subjectId) =>
+      _ref.read(firestoreServiceProvider).streamSubjectTopics(subjectId);
+
+  Stream<List<Map<String, dynamic>>> streamSubtopics(
+          String subjectId, String topicId) =>
+      _ref.read(firestoreServiceProvider).streamSubtopics(subjectId, topicId);
+
+  Future<List<Map<String, dynamic>>> getTopicsWithSubtopics(String subjectId) =>
+      _ref
+          .read(firestoreServiceProvider)
+          .getSubjectTopicsWithSubtopics(subjectId);
+
+  Future<String> createTopic({
+    required String subjectId,
+    required String name,
+  }) =>
+      _ref.read(firestoreServiceProvider).createTopic(
+            subjectId: subjectId,
+            name: name,
+          );
+
+  Future<String> createSubtopic({
+    required String subjectId,
+    required String topicId,
+    required String name,
+  }) =>
+      _ref.read(firestoreServiceProvider).createSubtopic(
+            subjectId: subjectId,
+            topicId: topicId,
+            name: name,
+          );
+
+  Future<void> renameTopic({
+    required String subjectId,
+    required String topicId,
+    required String name,
+  }) =>
+      _ref.read(firestoreServiceProvider).updateTopicName(
+            subjectId: subjectId,
+            topicId: topicId,
+            name: name,
+          );
+
+  Future<void> renameSubtopic({
+    required String subjectId,
+    required String topicId,
+    required String subtopicId,
+    required String name,
+  }) =>
+      _ref.read(firestoreServiceProvider).updateSubtopicName(
+            subjectId: subjectId,
+            topicId: topicId,
+            subtopicId: subtopicId,
+            name: name,
+          );
+
+  Future<void> deleteTopic({
+    required String subjectId,
+    required String topicId,
+  }) =>
+      _ref.read(firestoreServiceProvider).deleteTopic(
+            subjectId: subjectId,
+            topicId: topicId,
+          );
+
+  Future<void> deleteSubtopic({
+    required String subjectId,
+    required String topicId,
+    required String subtopicId,
+  }) =>
+      _ref.read(firestoreServiceProvider).deleteSubtopic(
+            subjectId: subjectId,
+            topicId: topicId,
+            subtopicId: subtopicId,
+          );
+
+  Future<void> reorderTopics({
+    required String subjectId,
+    required List<String> topicIds,
+  }) =>
+      _ref.read(firestoreServiceProvider).reorderTopics(
+            subjectId: subjectId,
+            topicIds: topicIds,
+          );
+
+  Future<void> reorderSubtopics({
+    required String subjectId,
+    required String topicId,
+    required List<String> subtopicIds,
+  }) =>
+      _ref.read(firestoreServiceProvider).reorderSubtopics(
+            subjectId: subjectId,
+            topicId: topicId,
+            subtopicIds: subtopicIds,
+          );
 }
 
 final knowledgeEngineProvider =
