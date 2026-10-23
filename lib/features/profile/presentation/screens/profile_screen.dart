@@ -20,14 +20,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   int _avatarTapCount = 0;
 
   Future<void> _onAvatarTap() async {
-    if (_avatarTapCount >= 7) return;
     final taps = _avatarTapCount + 1;
-    setState(() => _avatarTapCount = taps);
+    print("Developer tap: $taps");
+    final unlocked = taps >= 7;
+    setState(() => _avatarTapCount = unlocked ? 0 : taps);
 
     String? feedback;
     if (taps == 5) feedback = '2 more taps to unlock Developer Options';
     if (taps == 6) feedback = '1 more tap to unlock Developer Options';
-    if (taps == 7) {
+    if (unlocked) {
+      print("Developer Options Unlocked");
       await DeveloperModePreferences.enable();
       feedback = 'Developer Options Enabled';
     }
@@ -35,6 +37,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(feedback)),
       );
+    }
+    if (unlocked && mounted) {
+      print("Opening Developer Options");
+      await context.push(AppRoutes.settings);
     }
   }
 
