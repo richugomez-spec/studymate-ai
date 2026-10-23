@@ -1,0 +1,71 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsSubject(subjectId) {
+      return signedIn()
+          && get(/databases/$(database)/documents/subjects/$(subjectId)).data.ownerId
+              == request.auth.uid;
+    }
+
+    function ownsChatSession(sessionId) {
+      return signedIn()
+          && get(/databases/$(database)/documents/chat_sessions/$(sessionId)).data.ownerId
+              == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+
+      match /{userData=**} {
+        allow read, write: if signedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /subjects/{subjectId} {
+      allow create: if signedIn()
+          && request.resource.data.ownerId == request.auth.uid;
+      allow read, delete: if signedIn()
+          && resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn()
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == request.auth.uid;
+
+      match /{subjectData=**} {
+        allow read, write: if ownsSubject(subjectId);
+      }
+    }
+
+    match /knowledge_items/{itemId} {
+      allow create: if signedIn()
+          && request.resource.data.ownerId == request.auth.uid;
+      allow read, delete: if signedIn()
+          && resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn()
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == request.auth.uid;
+    }
+
+    match /chat_sessions/{sessionId} {
+      allow create: if signedIn()
+          && request.resource.data.ownerId == request.auth.uid;
+      allow read, delete: if signedIn()
+          && resource.data.ownerId == request.auth.uid;
+      allow update: if signedIn()
+          && resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerId == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow read, write: if ownsChatSession(sessionId);
+      }
+    }
+
+    match /study_progress/{userId} {
+      allow read, write: if signedIn() && request.auth.uid == userId;
+    }
+  }
+}
