@@ -240,8 +240,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await for (final part in chatService.streamAI(
         prompt:
             'Current subject: ${ref.read(activeKnowledgeSubjectNameProvider) ?? 'Study Workspace'}. '
-            '${ref.read(selectedKnowledgeSourceIdsProvider).isEmpty ? 'Use all manual notes in this subject.' : 'Use only the selected notes.'} '
-            'Use the currently opened subject hierarchy and its manual notes. Do not ask which material to use.\nQuestion: $clean',
+            '${ref.read(selectedKnowledgeSourceIdsProvider).isEmpty ? 'Use all manual notes in this subject when available.' : 'Use only the selected notes when available.'} '
+            'Use the currently opened Subject > Topic > Subtopic hierarchy as the syllabus. Manual notes are optional; expand partial notes and teach from your academic knowledge when notes are absent. Do not ask which material to use.\nQuestion: $clean',
         conversationHistory: _messages.where((m) => !m.isThinking).toList(),
         subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
             ref.read(activeKnowledgeWorkspaceIdProvider),

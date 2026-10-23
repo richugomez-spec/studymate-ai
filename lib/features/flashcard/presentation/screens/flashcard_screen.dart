@@ -1,9 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../../core/routing/app_routes.dart';
 import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -236,7 +234,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                         color: Colors.white)),
                 const SizedBox(height: 8),
                 Text(
-                  'Add notes or materials to generate active-recall flashcards.',
+                  'Flashcards could not be prepared from this subject hierarchy. Try generating them again.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontFamily: 'Inter',
@@ -246,12 +244,12 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(
-                  onPressed: () => context.go(AppRoutes.library),
+                  onPressed: _loadCards,
                   style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white),
-                  icon: const Icon(Icons.note_add_outlined, size: 16),
-                  label: const Text('Add subject notes'),
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('Try again'),
                 ),
               ],
             ),

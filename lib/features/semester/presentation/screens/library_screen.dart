@@ -247,6 +247,111 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     }
   }
 
+  Future<void> _generateAiNotes({
+    required String topicId,
+    required String topic,
+    required String subtopicId,
+    required String subtopic,
+  }) async {
+    if (ref.read(currentUserProvider) == null) {
+      AuthRequiredModal.show(
+        context,
+        title: 'Sign in to save notes',
+        message: 'Sign in to generate and save notes to your subject.',
+      );
+      return;
+    }
+    final subjectId = _activeSubjectId;
+    if (subjectId == null || _saving) return;
+    final subjectName = _activeSubjectName;
+    setState(() => _saving = true);
+    try {
+      final content = await ref.read(knowledgeEngineProvider).generateAiNotes(
+            subjectId: subjectId,
+            topicId: topicId,
+            subtopicId: subtopicId,
+          );
+      final title =
+          subtopic.isNotEmpty ? 'AI Notes - $subtopic' : 'AI Notes - $topic';
+      await ref.read(firestoreServiceProvider).saveKnowledgeNote(
+            title: title,
+            content: content,
+            subject: subjectName,
+            subjectId: subjectId,
+            topic: topic,
+            topicId: topicId,
+            subtopic: subtopic,
+            subtopicId: subtopicId,
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI notes saved and ready to edit.')),
+        );
+      }
+    } catch (error) {
+      _showError('Could not generate AI notes: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _editNote(Map<String, dynamic> note) async {
+    final id = note['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final titleController =
+        TextEditingController(text: note['title']?.toString() ?? 'Note');
+    final contentController =
+        TextEditingController(text: note['content']?.toString() ?? '');
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit note'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(
+                controller: titleController,
+                decoration: const InputDecoration(labelText: 'Note title'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: contentController,
+                minLines: 6,
+                maxLines: 14,
+                decoration: const InputDecoration(labelText: 'Note'),
+              ),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save changes'),
+          ),
+        ],
+      ),
+    );
+    final title = titleController.text;
+    final content = contentController.text;
+    titleController.dispose();
+    contentController.dispose();
+    if (shouldSave != true || content.trim().isEmpty) return;
+    try {
+      await ref.read(firestoreServiceProvider).updateKnowledgeNote(
+            noteId: id,
+            title: title,
+            content: content,
+          );
+    } catch (error) {
+      _showError('Could not update note: $error');
+    }
+  }
+
   Future<void> _clearActiveSubject() async {
     setState(() {
       _activeSubjectId = null;
@@ -336,12 +441,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               subjectName: _activeSubjectName,
                               onClose: _clearActiveSubject,
                               onAddNote: _addNote,
+                              onGenerateAiNotes: _generateAiNotes,
                             ),
                           ),
                           _NotesShelf(
                             notes: notes,
                             isSaving: _saving,
                             onAddNote: () => _addNote(),
+                            onEditNote: _editNote,
                           ),
                         ],
                       ),
@@ -423,11 +530,13 @@ class _NotesShelf extends StatelessWidget {
     required this.notes,
     required this.isSaving,
     required this.onAddNote,
+    required this.onEditNote,
   });
 
   final List<Map<String, dynamic>> notes;
   final bool isSaving;
   final VoidCallback onAddNote;
+  final ValueChanged<Map<String, dynamic>> onEditNote;
 
   @override
   Widget build(BuildContext context) {
@@ -481,23 +590,7 @@ class _NotesShelf extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                onTap: () => showDialog<void>(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title: Text(
-                                        note['title']?.toString() ?? 'Note'),
-                                    content: SingleChildScrollView(
-                                      child: SelectableText(
-                                          note['content']?.toString() ?? ''),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(context),
-                                        child: const Text('Close'),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                onTap: () => onEditNote(note),
                               ),
                             ),
                           ))

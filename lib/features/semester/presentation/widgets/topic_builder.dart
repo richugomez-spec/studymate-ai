@@ -11,6 +11,7 @@ class TopicBuilder extends ConsumerStatefulWidget {
     required this.subjectName,
     required this.onClose,
     required this.onAddNote,
+    required this.onGenerateAiNotes,
   });
 
   final String subjectId;
@@ -22,6 +23,12 @@ class TopicBuilder extends ConsumerStatefulWidget {
     String subtopicId,
     String subtopic,
   }) onAddNote;
+  final Future<void> Function({
+    required String topicId,
+    required String topic,
+    required String subtopicId,
+    required String subtopic,
+  }) onGenerateAiNotes;
 
   @override
   ConsumerState<TopicBuilder> createState() => _TopicBuilderState();
@@ -466,6 +473,16 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                     icon: const Icon(Icons.note_add_outlined, size: 18),
                     label: const Text('Add Topic Note'),
                   ),
+                  OutlinedButton.icon(
+                    onPressed: () => widget.onGenerateAiNotes(
+                      topicId: topicId,
+                      topic: topicName,
+                      subtopicId: '',
+                      subtopic: '',
+                    ),
+                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    label: const Text('\u2728 Generate AI Notes'),
+                  ),
                 ],
               ),
             ),
@@ -489,39 +506,55 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
           color: AppColors.teal.withOpacity(0.2),
         ),
       ),
-      child: ListTile(
-        dense: true,
-        leading: Icon(Icons.subdirectory_arrow_right,
-            color: AppColors.teal, size: 20),
-        title: Text(
-          subtopicName,
-          style: const TextStyle(
-            fontSize: 14,
-            color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            dense: true,
+            leading: Icon(Icons.subdirectory_arrow_right,
+                color: AppColors.teal, size: 20),
+            title: Text(
+              subtopicName,
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.white,
+              ),
+            ),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(
+                tooltip: 'Add note to subtopic',
+                icon: const Icon(Icons.note_add_outlined,
+                    color: AppColors.teal, size: 18),
+                onPressed: () => widget.onAddNote(
+                  topicId: topicId,
+                  topic: topicName,
+                  subtopicId: subtopicId,
+                  subtopic: subtopicName,
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32),
+              ),
+              IconButton(
+                icon: Icon(Icons.close,
+                    color: AppColors.darkTextSecondary, size: 18),
+                onPressed: () =>
+                    _deleteSubtopic(topicId, subtopicId, subtopicName),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32),
+              ),
+            ]),
           ),
-        ),
-        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          IconButton(
-            tooltip: 'Add note to subtopic',
-            icon: const Icon(Icons.note_add_outlined,
-                color: AppColors.teal, size: 18),
-            onPressed: () => widget.onAddNote(
+          TextButton.icon(
+            onPressed: () => widget.onGenerateAiNotes(
               topicId: topicId,
               topic: topicName,
               subtopicId: subtopicId,
               subtopic: subtopicName,
             ),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32),
+            icon: const Icon(Icons.auto_awesome, size: 16),
+            label: const Text('\u2728 Generate AI Notes'),
           ),
-          IconButton(
-            icon:
-                Icon(Icons.close, color: AppColors.darkTextSecondary, size: 18),
-            onPressed: () => _deleteSubtopic(topicId, subtopicId, subtopicName),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32),
-          ),
-        ]),
+        ],
       ),
     );
   }

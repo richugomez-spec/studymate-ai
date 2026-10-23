@@ -1290,6 +1290,26 @@ class FirestoreService {
     return ref.id;
   }
 
+  Future<void> updateKnowledgeNote({
+    required String noteId,
+    required String title,
+    required String content,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to update knowledge.');
+    final ref = _knowledgeCol.doc(noteId);
+    final snapshot = await ref.get();
+    final data = snapshot.data();
+    if (data == null || data['ownerId'] != uid || data['kind'] != 'note') {
+      throw StateError('That note is no longer available.');
+    }
+    await ref.update({
+      'title': title.trim().isEmpty ? 'Note' : title.trim(),
+      'content': content.trim(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
   Future<String> createWorkspaceFolder(
       {required String name,
       String parentId = '',

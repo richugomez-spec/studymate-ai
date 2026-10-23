@@ -128,15 +128,14 @@ class KnowledgeEngine {
 
     void appendNotes(List<Map<String, dynamic>> nodeNotes, String indent) {
       if (nodeNotes.isEmpty) {
-        append('${indent}Notes: (none yet)');
+        append('${indent}Manual Notes: None');
         return;
       }
+      append('${indent}Manual Notes:');
       for (final note in nodeNotes) {
         notes.add(note);
         signatureParts.add(
             '${note['id']}|${note['updatedAt']}|${note['topicId']}|${note['topic']}|${note['subtopicId']}|${note['subtopic']}|${note['title']}|${note['content']}');
-        append(
-            '$indent${note['title']?.toString().trim().isNotEmpty == true ? note['title'] : 'Manual note'}:');
         final content = (note['content'] ?? note['notes'] ?? '').toString();
         if (content.trim().isNotEmpty) {
           // Individual notes are bounded so one long note cannot crowd out
@@ -144,7 +143,8 @@ class KnowledgeEngine {
           final bounded = content.length > 1800
               ? '${content.substring(0, 1800)}…'
               : content;
-          append('$indent  $bounded');
+          append(
+              '$indent  ${note['title']?.toString().trim().isNotEmpty == true ? '${note['title']}: ' : ''}$bounded');
         }
       }
     }
@@ -153,29 +153,32 @@ class KnowledgeEngine {
     signatureParts.add(
         'subject|${subject['id']}|${subject['name']}|${subject['updatedAt']}');
     append('Subject: ${subject['name']?.toString() ?? 'Selected subject'}');
+    append('Topic: (subject-level notes)');
+    append('Subtopic: (none)');
     appendNotes(maps(hierarchy['subjectNotes']), '  ');
     for (final topic in maps(hierarchy['topics'])) {
       signatureParts.add('topic|${topic['id']}|${topic['name']}');
-      append('  Topic: ${topic['name']?.toString() ?? 'Untitled topic'}');
-      appendNotes(maps(topic['notes']), '    ');
+      append('Topic: ${topic['name']?.toString() ?? 'Untitled topic'}');
+      append('Subtopic: (topic-level)');
+      appendNotes(maps(topic['notes']), '  ');
       for (final subtopic in maps(topic['subtopics'])) {
         signatureParts.add('subtopic|${subtopic['id']}|${subtopic['name']}');
+        append('Topic: ${topic['name']?.toString() ?? 'Untitled topic'}');
         append(
-            '    Subtopic: ${subtopic['name']?.toString() ?? 'Untitled subtopic'}');
-        appendNotes(maps(subtopic['notes']), '      ');
+            'Subtopic: ${subtopic['name']?.toString() ?? 'Untitled subtopic'}');
+        appendNotes(maps(subtopic['notes']), '  ');
       }
     }
     for (final note in maps(hierarchy['unplacedNotes'])) {
       append(
-          '  Topic: ${note['topic']?.toString().trim().isNotEmpty == true ? note['topic'] : 'Other topic'}');
+          'Topic: ${note['topic']?.toString().trim().isNotEmpty == true ? note['topic'] : 'Other topic'}');
       if ((note['subtopicId']?.toString() ?? '').isNotEmpty) {
-        append(
-            '    Subtopic: ${note['subtopic']?.toString() ?? 'Other subtopic'}');
+        append('Subtopic: ${note['subtopic']?.toString() ?? 'Other subtopic'}');
       }
-      appendNotes([note], '      ');
+      appendNotes([note], '  ');
     }
     if (notes.isEmpty) {
-      append('No manual notes have been added to this subject.');
+      append('Manual Notes: None');
     }
     if (truncated) {
       buffer.write('\n[Context limit reached; remaining note text omitted.]');
@@ -222,7 +225,6 @@ class KnowledgeEngine {
     final activeSubjectId = loaded['subjectId'] as String;
     final relevant = loaded['notes'] as List<Map<String, dynamic>>;
     final studyContext = loaded['context'] as String;
-    final hasNotes = (loaded['noteCount'] as int) > 0;
     final sourceSignature = loaded['signature'] as String;
     final cacheKey = _stableKey(
       '${firestore.currentUserId ?? 'guest'}|${task.toLowerCase()}|$activeSubjectId|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature',
@@ -248,7 +250,6 @@ class KnowledgeEngine {
       scopeId: activeSubjectId,
       sources: relevant,
       studyContext: studyContext,
-      hasNotes: hasNotes,
     );
     _inFlight[cacheKey] = generation;
     try {
@@ -258,6 +259,93 @@ class KnowledgeEngine {
         _inFlight.remove(cacheKey);
       }
     }
+  }
+
+  /// Generates editable notes for one syllabus node. Firestore persistence is
+  /// deliberately left to the caller so FirestoreService remains the sole
+  /// owner of writes.
+  Future<String> generateAiNotes({
+    required String subjectId,
+    required String topicId,
+    String? subtopicId,
+  }) async {
+    final firestore = _ref.read(firestoreServiceProvider);
+    final hierarchy = await firestore.loadSubjectStudyHierarchy(subjectId);
+    if (hierarchy == null) {
+      throw StateError(
+          'That subject is not available. Select it and try again.');
+    }
+    final subject = hierarchy['subject'] as Map<String, dynamic>? ?? const {};
+    final topics = (hierarchy['topics'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map(Map<String, dynamic>.from);
+    final topicMatches = topics.where((item) => item['id'] == topicId).toList();
+    final topic = topicMatches.isEmpty ? null : topicMatches.first;
+    if (topic == null) throw StateError('That topic is no longer available.');
+    Map<String, dynamic>? subtopic;
+    if (subtopicId != null && subtopicId.isNotEmpty) {
+      final subtopics = (topic['subtopics'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(Map<String, dynamic>.from);
+      final matches =
+          subtopics.where((item) => item['id'] == subtopicId).toList();
+      subtopic = matches.isEmpty ? null : matches.first;
+      if (subtopic == null) {
+        throw StateError('That subtopic is no longer available.');
+      }
+    }
+    final noteNodes = subtopic == null
+        ? [
+            topic,
+            ...(topic['subtopics'] as List<dynamic>? ?? const [])
+                .whereType<Map>()
+                .map(Map<String, dynamic>.from),
+          ]
+        : [subtopic];
+    final noteMaps = <Map<String, dynamic>>[];
+    for (final node in noteNodes) {
+      final nodeNotes = (node['notes'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(Map<String, dynamic>.from);
+      noteMaps.addAll(nodeNotes.map((note) => {
+            ...note,
+            if (node != topic) 'subtopic': node['name'],
+          }));
+    }
+    final manualNotes = noteMaps.isEmpty
+        ? 'None'
+        : noteMaps
+            .map((note) =>
+                '${note['subtopic'] == null ? '' : 'Subtopic: ${note['subtopic']}\n'}${note['title'] ?? 'Manual note'}: ${note['content'] ?? ''}')
+            .join('\n\n');
+    final context = '''Subject:
+${subject['name'] ?? 'Subject'}
+
+Topic:
+${topic['name'] ?? 'Topic'}
+
+Subtopic:
+${subtopic?['name'] ?? '(all subtopics and topic-level syllabus)'}
+
+Manual Notes:
+$manualNotes
+
+Task:
+Generate comprehensive, accurate university-level study notes for this syllabus area. Use existing manual notes as primary context, preserve and expand their correct information, and fill missing concepts with your academic knowledge. If notes are None, teach the topic fully from your knowledge. Include a definition, introduction, core concepts, working principles, architecture or structure where relevant, examples, applications, advantages, disadvantages, exam points, viva questions with concise answers, FAQs, memory tips, and revision notes. Organize with clear Markdown headings. Do not ask for materials.''';
+    final response = await _completeWithFailover(
+      AIRequest(messages: [
+        const AIMessage(
+          role: AIRole.system,
+          content:
+              'You are an expert university-level tutor. Produce clear, correct, comprehensive notes. Treat the hierarchy as the syllabus and manual notes as optional context.',
+        ),
+        AIMessage(role: AIRole.user, content: context),
+      ]),
+      temperature: 0.4,
+    );
+    final content = response.content.trim();
+    if (content.isEmpty) throw StateError('The AI returned empty notes.');
+    return content;
   }
 
   Future<Map<String, dynamic>> _generateAndCache({
@@ -271,17 +359,16 @@ class KnowledgeEngine {
     required String? scopeId,
     required List<Map<String, dynamic>> sources,
     required String studyContext,
-    required bool hasNotes,
   }) async {
     final request = AIRequest(messages: [
       AIMessage(
           role: AIRole.system,
           content:
-              'You are StudyMate, an expert study tutor. The selected subject hierarchy is the source of truth. Use manual note content as evidence and preserve the Subject > Topic > Subtopic structure in your reasoning. Topic and subtopic titles without notes are syllabus hints; you may generate practice questions from those titles, but do not present unsupported details as facts. If the subject has no manual notes, politely tell the user and suggest adding notes under a topic or subtopic. Do not refer to uploaded documents, files, indexing, or internal tools. Return one valid JSON object with no markdown fences and include a user-facing notice when no manual notes are present.'),
+              'You are StudyMate, an expert university-level study tutor. The Subject > Topic > Subtopic hierarchy is the syllabus and primary source of knowledge. If Manual Notes are present, use them as the user\'s primary context, integrate them, expand them, and fill gaps with accurate academic knowledge. If Manual Notes are None, teach the topic fully using your own academic knowledge; hierarchy titles alone are sufficient. Never ask for uploaded material or notes. Do not refer to uploaded documents, files, indexing, or internal tools. Return one valid JSON object with no markdown fences.'),
       AIMessage(
           role: AIRole.user,
           content:
-              'Task: $task\nRequest: $prompt\nOptions: ${jsonEncode(options)}\nSubject hierarchy with manual notes:\n$studyContext'),
+              'Task: $task\nRequest: $prompt\nOptions: ${jsonEncode(options)}\nStructured context:\n$studyContext'),
     ]);
     final response = await _completeWithFailover(request, temperature: 0.4);
     final raw = response.content
@@ -289,10 +376,6 @@ class KnowledgeEngine {
         .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
         .replaceFirst(RegExp(r'\s*```$'), '');
     final result = Map<String, dynamic>.from(jsonDecode(raw) as Map);
-    if (!hasNotes) {
-      result['notice'] =
-          'This subject has no manual notes yet. Add notes under a topic or subtopic for more grounded study materials.';
-    }
     result['sources'] = [
       ...sources.map((r) => {
             'id': r['id'],
@@ -1398,7 +1481,7 @@ class KnowledgeEngine {
           String? subjectId,
           List<String> sourceIds = const [],
           String prompt =
-              'Analyze the selected subject hierarchy and manual notes for examination themes. Do not claim previous-year frequency without evidence in the notes.'}) =>
+              'Analyze the selected subject hierarchy as the syllabus. Use available manual notes as primary context and academic knowledge to identify important units and predict useful questions. Do not claim historical frequency without evidence.'}) =>
       generate(
           task: 'pyq',
           prompt: prompt,
@@ -1439,10 +1522,6 @@ class KnowledgeEngine {
     final loaded = await _loadHierarchyContext(firestore, subjectId);
     final sources = loaded['notes'] as List<Map<String, dynamic>>;
     final context = loaded['context'] as String;
-    if (sources.isEmpty) {
-      yield 'This subject does not have any manual notes yet. Add notes under a topic or subtopic, and I can answer using that study material.';
-      return;
-    }
     var web = const <Map<String, String>>[];
     if (_needsWeb(prompt, sources)) {
       try {
@@ -1459,11 +1538,11 @@ class KnowledgeEngine {
       const AIMessage(
           role: AIRole.system,
           content:
-              'You are StudyMate, an expert study tutor. The selected Subject > Topic > Subtopic hierarchy and manual notes are the primary source of truth. Use note content as evidence, preserve its hierarchy, and do not claim unsupported facts from topic titles alone. You may use web results only for genuinely current facts and identify them as outside the study notes. Never refer to uploaded documents or files. Return a clear answer, not JSON.'),
+              'You are StudyMate, an expert study tutor. The Subject > Topic > Subtopic hierarchy is the syllabus and primary source of knowledge. Use available manual notes as the user\'s primary context, expand partial notes, and fill gaps with sound academic knowledge. If Manual Notes are None, answer fully using your own knowledge; the hierarchy alone is sufficient. Never ask for uploaded material or notes. You may use web results only for genuinely current facts and identify them as outside the study notes. Never refer to uploaded documents or files. Return a clear answer, not JSON.'),
       AIMessage(
           role: AIRole.user,
           content:
-              'Conversation: $history\nQuestion: $prompt\nSelected subject hierarchy with manual notes:\n$context\n\nOptional current web references:\n$webContext')
+              'Conversation: $history\nQuestion: $prompt\nTask: Answer the question as a helpful tutor.\nStructured context:\n$context\n\nOptional current web references:\n$webContext')
     ];
     yield* _completeStream(AIRequest(messages: messages));
   }

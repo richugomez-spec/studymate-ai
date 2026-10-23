@@ -236,7 +236,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                         fontWeight: FontWeight.w700,
                         color: Colors.white)),
                 const SizedBox(height: 8),
-                Text('Add notes to a subject, then return here to practice.',
+                Text('Open a subject with topics to generate a practice quiz.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontFamily: 'Inter',
@@ -419,8 +419,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                   const SizedBox(height: 28),
 
                   ElevatedButton(
-                    onPressed:
-                        _isGenerating ? null : _generateQuiz,
+                    onPressed: _isGenerating ? null : _generateQuiz,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white,

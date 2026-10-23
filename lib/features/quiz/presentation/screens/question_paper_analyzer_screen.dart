@@ -48,7 +48,7 @@ class _QuestionPaperAnalyzerScreenState
                 ref.read(activeKnowledgeWorkspaceIdProvider),
             sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
             prompt:
-                'Answer this manually entered exam question using the currently opened subject topic/subtopic hierarchy and manual notes. Question: $question. Marks: $marks. Return JSON with question, marks, model_answer, marking_scheme, and common_mistakes. If the subject has no manual notes, include a polite notice suggesting the user add notes.',
+                'Answer this manually entered exam question using the currently opened subject hierarchy as syllabus, available manual notes as primary context, and your academic knowledge to fill any gaps. Question: $question. Marks: $marks. Return JSON with question, marks, model_answer, marking_scheme, and common_mistakes. Do not ask for notes or materials.',
           );
       setState(() => _analysis = result);
       await result;
@@ -81,7 +81,7 @@ class _QuestionPaperAnalyzerScreenState
                 ref.read(activeKnowledgeWorkspaceIdProvider),
             sourceIds: [id],
             prompt:
-                'Analyze the currently opened subject topic/subtopic hierarchy and manual notes for examination themes. Return JSON with frequently_repeated_questions (list, only evidence present in the notes), topic_frequency (list of topic and count), marks_distribution (list), important_units (list), and predicted_questions (list grounded in the hierarchy and notes). Do not invent repeated questions, frequencies, or marks. If no manual notes exist, include a polite notice suggesting the user add them.',
+                'Analyze the currently opened subject hierarchy as the syllabus. Use available manual notes as primary context and academic knowledge to identify important units and predict useful questions. Return JSON with frequently_repeated_questions (only when supported by provided evidence), topic_frequency (only when evidence is available), marks_distribution (only when evidence is available), important_units, and predicted_questions grounded in the hierarchy. Never invent historical frequencies or marks, and do not ask for notes or materials.',
           );
       setState(() {
         _paperName = title;
