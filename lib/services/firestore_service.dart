@@ -631,6 +631,104 @@ class FirestoreService {
     return topics;
   }
 
+  /// Loads the current subject syllabus and its manual notes for AI study
+  /// tools. Notes remain in the knowledge collection and are joined through
+  /// their subject/topic/subtopic IDs.
+  Future<Map<String, dynamic>?> loadSubjectStudyHierarchy(
+      String subjectId) async {
+    final uid = currentUserId;
+    final cleanSubjectId = subjectId.trim();
+    if (uid == null || cleanSubjectId.isEmpty) return null;
+
+    final snapshots = await Future.wait([
+      _subjectsCol.doc(cleanSubjectId).get(),
+      _subjectTopicsCol(cleanSubjectId).orderBy('order').get(),
+      _knowledgeCol
+          .where('ownerId', isEqualTo: uid)
+          .where('subjectId', isEqualTo: cleanSubjectId)
+          .get(),
+    ]);
+    final subjectSnapshot =
+        snapshots[0] as DocumentSnapshot<Map<String, dynamic>>;
+    if (!subjectSnapshot.exists || subjectSnapshot.data()?['ownerId'] != uid) {
+      return null;
+    }
+    final topicSnapshot = snapshots[1] as QuerySnapshot<Map<String, dynamic>>;
+    final noteSnapshot = snapshots[2] as QuerySnapshot<Map<String, dynamic>>;
+    final subtopicSnapshots = await Future.wait(topicSnapshot.docs.map(
+      (topic) =>
+          _topicSubtopicsCol(cleanSubjectId, topic.id).orderBy('order').get(),
+    ));
+
+    final notes = noteSnapshot.docs
+        .where((note) => note.data()['kind'] == 'note')
+        .map((note) => <String, dynamic>{
+              'id': note.id,
+              ...note.data(),
+              'content': (note.data()['content'] ?? note.data()['notes'] ?? '')
+                  .toString(),
+            })
+        .toList();
+    notes.sort((a, b) {
+      final pathA =
+          '${a['topicId'] ?? ''}|${a['subtopicId'] ?? ''}|${a['title'] ?? ''}|${a['id']}';
+      final pathB =
+          '${b['topicId'] ?? ''}|${b['subtopicId'] ?? ''}|${b['title'] ?? ''}|${b['id']}';
+      return pathA.compareTo(pathB);
+    });
+
+    List<Map<String, dynamic>> notesAt(String topicId, String subtopicId) =>
+        notes
+            .where((note) =>
+                (note['topicId']?.toString() ?? '') == topicId &&
+                (note['subtopicId']?.toString() ?? '') == subtopicId)
+            .toList(growable: false);
+
+    final topics = <Map<String, dynamic>>[];
+    for (var i = 0; i < topicSnapshot.docs.length; i++) {
+      final topic = topicSnapshot.docs[i];
+      final subtopics = subtopicSnapshots[i]
+          .docs
+          .map((subtopic) => <String, dynamic>{
+                'id': subtopic.id,
+                ...subtopic.data(),
+                'notes': notesAt(topic.id, subtopic.id),
+              })
+          .toList(growable: false);
+      topics.add({
+        'id': topic.id,
+        ...topic.data(),
+        'notes': notesAt(topic.id, ''),
+        'subtopics': subtopics,
+      });
+    }
+
+    final topicIds = topicSnapshot.docs.map((topic) => topic.id).toSet();
+    final subjectNotes = notesAt('', '');
+    final unplacedNotes = notes.where((note) {
+      final topicId = note['topicId']?.toString() ?? '';
+      final subtopicId = note['subtopicId']?.toString() ?? '';
+      return topicId.isEmpty
+          ? subtopicId.isNotEmpty
+          : !topicIds.contains(topicId) || subtopicId.isNotEmpty;
+    }).where((note) {
+      final topicId = note['topicId']?.toString() ?? '';
+      final knownTopic = topicSnapshot.docs.any((topic) => topic.id == topicId);
+      final subtopicId = note['subtopicId']?.toString() ?? '';
+      final knownSubtopic = subtopicSnapshots.asMap().entries.any((entry) =>
+          topicSnapshot.docs[entry.key].id == topicId &&
+          entry.value.docs.any((subtopic) => subtopic.id == subtopicId));
+      return !knownTopic || (subtopicId.isNotEmpty && !knownSubtopic);
+    }).toList(growable: false);
+
+    return {
+      'subject': {'id': subjectSnapshot.id, ...subjectSnapshot.data()!},
+      'subjectNotes': subjectNotes,
+      'topics': topics,
+      'unplacedNotes': unplacedNotes,
+    };
+  }
+
   /// Create a new topic
   Future<String> createTopic({
     required String subjectId,

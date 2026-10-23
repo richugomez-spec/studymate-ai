@@ -5,14 +5,41 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
+import '../../../../core/settings/developer_mode_preferences.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  int _avatarTapCount = 0;
+
+  Future<void> _onAvatarTap() async {
+    if (_avatarTapCount >= 7) return;
+    final taps = _avatarTapCount + 1;
+    setState(() => _avatarTapCount = taps);
+
+    String? feedback;
+    if (taps == 5) feedback = '2 more taps to unlock Developer Options';
+    if (taps == 6) feedback = '1 more tap to unlock Developer Options';
+    if (taps == 7) {
+      await DeveloperModePreferences.enable();
+      feedback = 'Developer Options Enabled';
+    }
+    if (feedback != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(feedback)),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
     final userId =
         user?.id ?? ref.watch(firestoreServiceProvider).currentUserId ?? '';
@@ -88,17 +115,21 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   child: Row(
                     children: [
-                      CircleAvatar(
-                        radius: 32,
-                        backgroundColor:
-                            AppColors.electricViolet.withOpacity(0.2),
-                        child: Text(
-                          initials.isNotEmpty ? initials : 'SM',
-                          style: const TextStyle(
-                            fontFamily: 'JetBrains Mono',
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.electricViolet,
+                      InkWell(
+                        onTap: _onAvatarTap,
+                        customBorder: const CircleBorder(),
+                        child: CircleAvatar(
+                          radius: 32,
+                          backgroundColor:
+                              AppColors.electricViolet.withOpacity(0.2),
+                          child: Text(
+                            initials.isNotEmpty ? initials : 'SM',
+                            style: const TextStyle(
+                              fontFamily: 'JetBrains Mono',
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.electricViolet,
+                            ),
                           ),
                         ),
                       ),

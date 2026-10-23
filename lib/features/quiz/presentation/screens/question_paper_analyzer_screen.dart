@@ -48,7 +48,7 @@ class _QuestionPaperAnalyzerScreenState
                 ref.read(activeKnowledgeWorkspaceIdProvider),
             sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
             prompt:
-                'Answer this manually entered exam question using available workspace notes when relevant; otherwise use general knowledge. Question: $question. Marks: $marks. Return JSON with question, marks, model_answer, marking_scheme, and common_mistakes.',
+                'Answer this manually entered exam question using the currently opened subject topic/subtopic hierarchy and manual notes. Question: $question. Marks: $marks. Return JSON with question, marks, model_answer, marking_scheme, and common_mistakes. If the subject has no manual notes, include a polite notice suggesting the user add notes.',
           );
       setState(() => _analysis = result);
       await result;
@@ -81,7 +81,7 @@ class _QuestionPaperAnalyzerScreenState
                 ref.read(activeKnowledgeWorkspaceIdProvider),
             sourceIds: [id],
             prompt:
-                'Analyze only this saved previous-year question source. Return JSON with frequently_repeated_questions (list, only evidence present in the source), topic_frequency (list of topic and count), marks_distribution (list), important_units (list), and predicted_questions (list grounded in observed patterns). Do not invent repeated questions, frequencies, or marks.',
+                'Analyze the currently opened subject topic/subtopic hierarchy and manual notes for examination themes. Return JSON with frequently_repeated_questions (list, only evidence present in the notes), topic_frequency (list of topic and count), marks_distribution (list), important_units (list), and predicted_questions (list grounded in the hierarchy and notes). Do not invent repeated questions, frequencies, or marks. If no manual notes exist, include a polite notice suggesting the user add them.',
           );
       setState(() {
         _paperName = title;

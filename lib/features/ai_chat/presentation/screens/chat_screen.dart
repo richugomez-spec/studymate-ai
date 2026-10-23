@@ -241,7 +241,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         prompt:
             'Current subject: ${ref.read(activeKnowledgeSubjectNameProvider) ?? 'Study Workspace'}. '
             '${ref.read(selectedKnowledgeSourceIdsProvider).isEmpty ? 'Use all manual notes in this subject.' : 'Use only the selected notes.'} '
-            'Do not ask which document or material to use.\nQuestion: $clean',
+            'Use the currently opened subject hierarchy and its manual notes. Do not ask which material to use.\nQuestion: $clean',
         conversationHistory: _messages.where((m) => !m.isThinking).toList(),
         subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
             ref.read(activeKnowledgeWorkspaceIdProvider),
@@ -308,8 +308,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final subjectName = ref.watch(activeKnowledgeSubjectNameProvider) ??
-        'All Subjects';
+    final subjectName =
+        ref.watch(activeKnowledgeSubjectNameProvider) ?? 'All Subjects';
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,

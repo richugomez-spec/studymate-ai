@@ -33,7 +33,7 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
                 ref.read(activeKnowledgeWorkspaceIdProvider),
             sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
             prompt:
-                'Generate a $_marks mark exam for $_minutes minutes at $_difficulty difficulty. Create precise, varied questions grounded in workspace knowledge. Return JSON with title and questions. Each question must have prompt, marks, modelAnswer, markingScheme (list), and commonMistakes (list). Do not include the answer in the question prompt.',
+                'Generate a $_marks mark exam for $_minutes minutes at $_difficulty difficulty. Ground it in the currently opened subject topics, subtopics, and manual notes, preserving their hierarchy. Use topic titles without notes as syllabus hints. Return JSON with title, questions, and a polite notice suggesting notes when the subject has none. Each question must have prompt, marks, modelAnswer, markingScheme (list), and commonMistakes (list). Do not include the answer in the question prompt.',
           );
     });
     try {

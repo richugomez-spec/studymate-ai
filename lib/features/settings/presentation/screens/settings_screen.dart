@@ -6,11 +6,35 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/ai/services/gemini_api_key_provider.dart';
+import '../../../../core/settings/developer_mode_preferences.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  bool _developerModeEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDeveloperMode();
+  }
+
+  Future<void> _loadDeveloperMode() async {
+    final enabled = await DeveloperModePreferences.isEnabled();
+    if (mounted) setState(() => _developerModeEnabled = enabled);
+  }
+
+  Future<void> _disableDeveloperMode() async {
+    await DeveloperModePreferences.disable();
+    if (mounted) setState(() => _developerModeEnabled = false);
+  }
 
   void _showApiKeyDialog(BuildContext context, WidgetRef ref) {
     final currentKey = ref.read(aiApiKeyProvider) ?? '';
@@ -94,7 +118,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeNotifierProvider);
     final isDark = themeMode == ThemeMode.dark;
     final apiKey = ref.watch(aiApiKeyProvider);
@@ -121,27 +145,14 @@ class SettingsScreen extends ConsumerWidget {
         children: [
           // Profile card
           InkWell(
-            onTap: () => context.push(AppRoutes.profile),
+            onTap: () async {
+              await context.push(AppRoutes.profile);
+              await _loadDeveloperMode();
+            },
             borderRadius: BorderRadius.circular(8),
             child: const _ProfileCard(),
           ).animate().fadeIn(duration: 300.ms).slideY(begin: 0.1, end: 0),
           const SizedBox(height: 24),
-
-          // AI Configuration
-          const _SectionLabel(label: 'AI & INTELLIGENCE'),
-          const SizedBox(height: 8),
-          _SettingsTile(
-            icon: Icons.vpn_key_outlined,
-            iconColor: AppColors.electricViolet,
-            title: 'AI Access Key',
-            subtitle: hasCustomKey
-                ? 'Active (Live Generative AI)'
-                : 'Configure personal API key',
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => _showApiKeyDialog(context, ref),
-          ).animate(delay: 50.ms).fadeIn().slideY(begin: 0.1, end: 0),
-
-          const SizedBox(height: 20),
 
           // Appearance section
           const _SectionLabel(label: 'APPEARANCE'),
@@ -241,6 +252,31 @@ class SettingsScreen extends ConsumerWidget {
               minimumSize: const Size(double.infinity, 52),
             ),
           ).animate(delay: 200.ms).fadeIn(),
+
+          if (_developerModeEnabled) ...[
+            const SizedBox(height: 24),
+            const _SectionLabel(label: 'DEVELOPER OPTIONS'),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.vpn_key_outlined,
+              iconColor: AppColors.electricViolet,
+              title: 'AI Access Key',
+              subtitle: hasCustomKey
+                  ? 'Active (Live Generative AI)'
+                  : 'Configure personal API key',
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _showApiKeyDialog(context, ref),
+            ),
+            const SizedBox(height: 8),
+            _SettingsTile(
+              icon: Icons.developer_mode_outlined,
+              iconColor: AppColors.error,
+              title: 'Disable Developer Mode',
+              subtitle: 'Hide Developer Options from Settings',
+              trailing: null,
+              onTap: _disableDeveloperMode,
+            ),
+          ],
 
           const SizedBox(height: 40),
         ],

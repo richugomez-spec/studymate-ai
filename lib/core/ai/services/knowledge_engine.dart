@@ -20,8 +20,6 @@ class KnowledgeEngine {
   KnowledgeEngine(this._ref);
   final Ref _ref;
   static final Map<String, Future<Map<String, dynamic>>> _inFlight = {};
-  static final Map<String, Future<List<Map<String, dynamic>>>> _contextCache =
-      {};
 
   static const int _operationIdRandomMax = 0x7fffffff;
 
@@ -46,14 +44,14 @@ class KnowledgeEngine {
     Object? error,
   }) {
     debugPrint('BACKEND_OPERATION ${jsonEncode({
-      'operationId': operationId,
-      'operation': operation,
-      'subjectId': subjectId,
-      'documentId': documentId,
-      'status': status,
-      'durationMs': stopwatch.elapsedMilliseconds,
-      'error': error?.toString(),
-    })}');
+          'operationId': operationId,
+          'operation': operation,
+          'subjectId': subjectId,
+          'documentId': documentId,
+          'status': status,
+          'durationMs': stopwatch.elapsedMilliseconds,
+          'error': error?.toString(),
+        })}');
   }
 
   Future<void> _drainStorageDeletionQueue({
@@ -72,47 +70,142 @@ class KnowledgeEngine {
         try {
           await firestore.recordStorageDeleteFailure(taskId, error);
         } catch (queueError) {
-          debugPrint('BACKEND_STORAGE_DELETE operationId=${task['operationId']} status=queue_update_failed error=$queueError');
+          debugPrint(
+              'BACKEND_STORAGE_DELETE operationId=${task['operationId']} status=queue_update_failed error=$queueError');
         }
-        debugPrint('BACKEND_STORAGE_DELETE operationId=${task['operationId']} subjectId=${task['subjectId']} documentId=${task['documentId']} status=retry_pending error=$error');
+        debugPrint(
+            'BACKEND_STORAGE_DELETE operationId=${task['operationId']} subjectId=${task['subjectId']} documentId=${task['documentId']} status=retry_pending error=$error');
       }
     }
   }
 
   static void invalidateSubjectContext(String? subjectId, {String? ownerId}) {
-    if (subjectId == null || subjectId.isEmpty) {
-      if (ownerId == null) {
-        _contextCache.clear();
-      } else {
-        _contextCache.removeWhere((key, _) => key.startsWith('$ownerId|'));
-      }
-      return;
-    }
-    final prefix = '${ownerId ?? ''}|$subjectId|';
-    _contextCache.removeWhere((key, _) => key.startsWith(prefix));
+    // Study hierarchy is read fresh from Firestore for every generation.
   }
 
-  Future<List<Map<String, dynamic>>> _loadContext(
-    FirestoreService firestore, {
-    String? subjectId,
-    required List<String> sourceIds,
-  }) async {
-    final ownerId = firestore.currentUserId ?? 'guest';
-    final selection = List<String>.from(sourceIds)..sort();
-    final key = '$ownerId|${subjectId ?? ''}|${selection.join(',')}';
-    final pending = _contextCache[key];
-    if (pending != null) return pending;
-    final load = firestore.loadKnowledge(
-      subjectId: subjectId,
-      sourceIds: sourceIds,
-    );
-    _contextCache[key] = load;
-    try {
-      return await load;
-    } catch (_) {
-      if (identical(_contextCache[key], load)) _contextCache.remove(key);
-      rethrow;
+  Future<String?> _resolveActiveSubjectId(
+      FirestoreService firestore, String? requestedSubjectId) async {
+    final active = _ref.read(activeKnowledgeSubjectIdProvider) ??
+        _ref.read(activeKnowledgeWorkspaceIdProvider);
+    if (active != null && active.trim().isNotEmpty) return active.trim();
+    if (requestedSubjectId != null && requestedSubjectId.trim().isNotEmpty) {
+      return requestedSubjectId.trim();
     }
+    final persisted = await firestore.getActiveSubjectId();
+    if (persisted == null || persisted.trim().isEmpty) return null;
+    final subjectId = persisted.trim();
+    _ref.read(activeKnowledgeSubjectIdProvider.notifier).state = subjectId;
+    _ref.read(activeKnowledgeWorkspaceIdProvider.notifier).state = subjectId;
+    return subjectId;
+  }
+
+  Map<String, dynamic> _buildHierarchyContext(Map<String, dynamic> hierarchy) {
+    const maxCharacters = 12000;
+    final buffer = StringBuffer();
+    final notes = <Map<String, dynamic>>[];
+    final signatureParts = <String>[];
+    var truncated = false;
+
+    void append(String line) {
+      if (truncated) return;
+      final remaining = maxCharacters - buffer.length;
+      if (remaining <= 0) {
+        truncated = true;
+        return;
+      }
+      final value = '$line\n';
+      if (value.length > remaining) {
+        buffer.write(value.substring(0, remaining));
+        truncated = true;
+      } else {
+        buffer.write(value);
+      }
+    }
+
+    List<Map<String, dynamic>> maps(Object? value) => value is List
+        ? value.whereType<Map>().map(Map<String, dynamic>.from).toList()
+        : const <Map<String, dynamic>>[];
+
+    void appendNotes(List<Map<String, dynamic>> nodeNotes, String indent) {
+      if (nodeNotes.isEmpty) {
+        append('${indent}Notes: (none yet)');
+        return;
+      }
+      for (final note in nodeNotes) {
+        notes.add(note);
+        signatureParts.add(
+            '${note['id']}|${note['updatedAt']}|${note['topicId']}|${note['topic']}|${note['subtopicId']}|${note['subtopic']}|${note['title']}|${note['content']}');
+        append(
+            '$indent${note['title']?.toString().trim().isNotEmpty == true ? note['title'] : 'Manual note'}:');
+        final content = (note['content'] ?? note['notes'] ?? '').toString();
+        if (content.trim().isNotEmpty) {
+          // Individual notes are bounded so one long note cannot crowd out
+          // every remaining topic and subtopic in the selected subject.
+          final bounded = content.length > 1800
+              ? '${content.substring(0, 1800)}…'
+              : content;
+          append('$indent  $bounded');
+        }
+      }
+    }
+
+    final subject = hierarchy['subject'] as Map<String, dynamic>? ?? const {};
+    signatureParts.add(
+        'subject|${subject['id']}|${subject['name']}|${subject['updatedAt']}');
+    append('Subject: ${subject['name']?.toString() ?? 'Selected subject'}');
+    appendNotes(maps(hierarchy['subjectNotes']), '  ');
+    for (final topic in maps(hierarchy['topics'])) {
+      signatureParts.add('topic|${topic['id']}|${topic['name']}');
+      append('  Topic: ${topic['name']?.toString() ?? 'Untitled topic'}');
+      appendNotes(maps(topic['notes']), '    ');
+      for (final subtopic in maps(topic['subtopics'])) {
+        signatureParts.add('subtopic|${subtopic['id']}|${subtopic['name']}');
+        append(
+            '    Subtopic: ${subtopic['name']?.toString() ?? 'Untitled subtopic'}');
+        appendNotes(maps(subtopic['notes']), '      ');
+      }
+    }
+    for (final note in maps(hierarchy['unplacedNotes'])) {
+      append(
+          '  Topic: ${note['topic']?.toString().trim().isNotEmpty == true ? note['topic'] : 'Other topic'}');
+      if ((note['subtopicId']?.toString() ?? '').isNotEmpty) {
+        append(
+            '    Subtopic: ${note['subtopic']?.toString() ?? 'Other subtopic'}');
+      }
+      appendNotes([note], '      ');
+    }
+    if (notes.isEmpty) {
+      append('No manual notes have been added to this subject.');
+    }
+    if (truncated) {
+      buffer.write('\n[Context limit reached; remaining note text omitted.]');
+    }
+    return {
+      'context': buffer.toString().trim(),
+      'notes': notes,
+      'noteCount': notes.length,
+      'signature': _stableKey(signatureParts.join('\n')),
+    };
+  }
+
+  Future<Map<String, dynamic>> _loadHierarchyContext(
+      FirestoreService firestore, String? requestedSubjectId) async {
+    final subjectId =
+        await _resolveActiveSubjectId(firestore, requestedSubjectId);
+    if (subjectId == null) {
+      throw StateError('Open a subject to use its topics and manual notes.');
+    }
+    final hierarchy = await firestore.loadSubjectStudyHierarchy(subjectId);
+    if (hierarchy == null) {
+      throw StateError(
+          'That subject is not available. Select a subject and try again.');
+    }
+    return {
+      ..._buildHierarchyContext(hierarchy),
+      'subjectId': subjectId,
+      'subjectName': (hierarchy['subject'] as Map<String, dynamic>?)?['name'] ??
+          'Selected subject',
+    };
   }
 
   Future<Map<String, dynamic>> generate({
@@ -125,37 +218,20 @@ class KnowledgeEngine {
     Map<String, dynamic> options = const {},
   }) async {
     final firestore = _ref.read(firestoreServiceProvider);
-    final scopedIds = sourceIds.isNotEmpty
-        ? sourceIds
-        : subjectId != null && subjectId.isNotEmpty
-            ? const <String>[]
-            : (topicId != null && topicId.contains(',')
-                ? topicId
-                    .split(',')
-                    .map((id) => id.trim())
-                    .where((id) => id.isNotEmpty)
-                    .toList()
-                : const <String>[]);
-    final records = await _loadContext(firestore,
-        subjectId: subjectId, sourceIds: scopedIds);
-    final relevant = _prioritize(records,
-        subjectId != null && subjectId.isNotEmpty ? null : topicId, prompt,
-        sourceIds: scopedIds,
-        includeAll:
-            subjectId != null && subjectId.isNotEmpty && scopedIds.isEmpty);
-    final sourceSignature = relevant
-        .map((r) => '${r['id']}:${r['updatedAt']}:${r['indexedAt']}')
-        .join('|');
-    final dateSignature = _needsWeb(prompt, relevant)
-        ? DateTime.now().toIso8601String().substring(0, 10)
-        : '';
+    final loaded = await _loadHierarchyContext(firestore, subjectId);
+    final activeSubjectId = loaded['subjectId'] as String;
+    final relevant = loaded['notes'] as List<Map<String, dynamic>>;
+    final studyContext = loaded['context'] as String;
+    final hasNotes = (loaded['noteCount'] as int) > 0;
+    final sourceSignature = loaded['signature'] as String;
     final cacheKey = _stableKey(
-      '${firestore.currentUserId ?? 'guest'}|${task.toLowerCase()}|${subjectId ?? ''}|${subjectId != null && subjectId.isNotEmpty ? subjectId : topicId ?? ''}|${scopedIds.join(',')}|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|$dateSignature',
+      '${firestore.currentUserId ?? 'guest'}|${task.toLowerCase()}|$activeSubjectId|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature',
     );
     final cached =
         forceRefresh ? null : await firestore.getGenerationCache(cacheKey);
     if (cached != null) {
-      await _updateSourceCounts(firestore, task, topicId, subjectId, cached);
+      await _updateSourceCounts(
+          firestore, task, topicId, activeSubjectId, cached);
       return cached;
     }
 
@@ -168,9 +244,11 @@ class KnowledgeEngine {
       prompt: prompt,
       options: options,
       topicId: topicId,
-      subjectId: subjectId,
-      scopeId: subjectId ?? topicId,
+      subjectId: activeSubjectId,
+      scopeId: activeSubjectId,
       sources: relevant,
+      studyContext: studyContext,
+      hasNotes: hasNotes,
     );
     _inFlight[cacheKey] = generation;
     try {
@@ -192,33 +270,18 @@ class KnowledgeEngine {
     required String? subjectId,
     required String? scopeId,
     required List<Map<String, dynamic>> sources,
+    required String studyContext,
+    required bool hasNotes,
   }) async {
-    final webResults = _needsWeb(prompt, sources)
-        ? await _ref
-            .read(webSearchServiceProvider)
-            .search(prompt)
-            .catchError((_) => <Map<String, String>>[])
-        : const <Map<String, String>>[];
-
-    final context = _rankedContexts(sources, prompt);
-    final webContext = webResults
-        .map((r) => '[web: ${r['title']} | ${r['url']}]\n${r['snippet']}')
-        .join('\n\n');
     final request = AIRequest(messages: [
       AIMessage(
           role: AIRole.system,
           content:
-              'You are StudyMate, an expert study tutor. The model is responsible for every answer. Treat documents and notes only as reference context: synthesize an original answer, never reproduce paragraphs, OCR text, or source passages. Use web results when present for current facts. Do not mention internal tools, models, retries, source routing, or whether any source was used. If evidence is incomplete, explain the uncertainty naturally. Return one valid JSON object with no markdown fences.'),
+              'You are StudyMate, an expert study tutor. The selected subject hierarchy is the source of truth. Use manual note content as evidence and preserve the Subject > Topic > Subtopic structure in your reasoning. Topic and subtopic titles without notes are syllabus hints; you may generate practice questions from those titles, but do not present unsupported details as facts. If the subject has no manual notes, politely tell the user and suggest adding notes under a topic or subtopic. Do not refer to uploaded documents, files, indexing, or internal tools. Return one valid JSON object with no markdown fences and include a user-facing notice when no manual notes are present.'),
       AIMessage(
           role: AIRole.user,
           content:
-              'Task: $task\nRequest: $prompt\nOptions: ${jsonEncode(options)}\nSources (user notes, indexed concepts, uploaded documents, then web results):\n${[
-            context,
-            webContext
-          ].where((s) => s.isNotEmpty).join('\n\n').isEmpty ? '(No source material found. Use general knowledge and identify that limitation in your response.)' : [
-                  context,
-                  webContext
-                ].where((s) => s.isNotEmpty).join('\n\n')}'),
+              'Task: $task\nRequest: $prompt\nOptions: ${jsonEncode(options)}\nSubject hierarchy with manual notes:\n$studyContext'),
     ]);
     final response = await _completeWithFailover(request, temperature: 0.4);
     final raw = response.content
@@ -226,14 +289,16 @@ class KnowledgeEngine {
         .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
         .replaceFirst(RegExp(r'\s*```$'), '');
     final result = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    if (!hasNotes) {
+      result['notice'] =
+          'This subject has no manual notes yet. Add notes under a topic or subtopic for more grounded study materials.';
+    }
     result['sources'] = [
       ...sources.map((r) => {
             'id': r['id'],
-            'title': r['title'] ?? r['fileName'],
-            'kind': r['kind']
+            'title': r['title'] ?? 'Manual note',
+            'kind': 'note',
           }),
-      ...webResults
-          .map((r) => {'title': r['title'], 'url': r['url'], 'kind': 'web'}),
     ];
     await firestore.cacheGeneration(cacheKey, result, scopeId: scopeId);
     await _updateSourceCounts(firestore, task, topicId, subjectId, result);
@@ -294,71 +359,73 @@ class KnowledgeEngine {
       documentId: sourceId,
     );
     try {
-    debugPrint('🔍 [INDEX] ========== AI INDEX GENERATION START ==========');
-    debugPrint('🔍 [INDEX] Source ID: $sourceId');
-    debugPrint('🔍 [INDEX] Title: $title');
-    debugPrint('🔍 [INDEX] Content length: ${content.length} chars');
-    debugPrint('🔍 [INDEX] Subject: $subject ($subjectId)');
+      debugPrint('🔍 [INDEX] ========== AI INDEX GENERATION START ==========');
+      debugPrint('🔍 [INDEX] Source ID: $sourceId');
+      debugPrint('🔍 [INDEX] Title: $title');
+      debugPrint('🔍 [INDEX] Content length: ${content.length} chars');
+      debugPrint('🔍 [INDEX] Subject: $subject ($subjectId)');
 
-    if (content.trim().isEmpty && sourceBytes == null) {
-      throw StateError('No readable text was found in this source.');
-    }
+      if (content.trim().isEmpty && sourceBytes == null) {
+        throw StateError('No readable text was found in this source.');
+      }
 
-    // Step 5.6.1: Generate AI index
-    debugPrint('🔍 [INDEX] ----- STEP 5.6.1: AI MODEL GENERATION -----');
-    final structured = await _uploadStage(
-      'AI INDEX GENERATION',
-      () => _generateUncached(
-        task: 'index_knowledge',
-        prompt:
-            'Index this source as structured knowledge. Extract concepts, definitions, relationships, formulas, examples, important facts, and exam points. Include sourceConfidence as a decimal from 0 to 1 based on source clarity and completeness. Do not create flashcards, quizzes, or summaries.',
-        sourceText: content,
-        metadata: {
-          'title': title,
-          'subject': subject,
-          'topic': topic,
-          'subtopic': subtopic
-        },
-        sourceBytes: content.trim().isEmpty ? sourceBytes : null,
-        mimeType: mimeType,
-      ),
-    );
-    debugPrint('🔍 [INDEX] ✅ AI index generated: ${structured.keys.join(", ")}');
+      // Step 5.6.1: Generate AI index
+      debugPrint('🔍 [INDEX] ----- STEP 5.6.1: AI MODEL GENERATION -----');
+      final structured = await _uploadStage(
+        'AI INDEX GENERATION',
+        () => _generateUncached(
+          task: 'index_knowledge',
+          prompt:
+              'Index this source as structured knowledge. Extract concepts, definitions, relationships, formulas, examples, important facts, and exam points. Include sourceConfidence as a decimal from 0 to 1 based on source clarity and completeness. Do not create flashcards, quizzes, or summaries.',
+          sourceText: content,
+          metadata: {
+            'title': title,
+            'subject': subject,
+            'topic': topic,
+            'subtopic': subtopic
+          },
+          sourceBytes: content.trim().isEmpty ? sourceBytes : null,
+          mimeType: mimeType,
+        ),
+      );
+      debugPrint(
+          '🔍 [INDEX] ✅ AI index generated: ${structured.keys.join(", ")}');
 
-    onGenerated?.call();
-    debugPrint('🔍 [INDEX] onGenerated callback invoked');
+      onGenerated?.call();
+      debugPrint('🔍 [INDEX] onGenerated callback invoked');
 
-    // Step 5.6.2: Save index to Firestore
-    debugPrint('🔍 [INDEX] ----- STEP 5.6.2: SAVE INDEX TO FIRESTORE -----');
-    final firestore = _ref.read(firestoreServiceProvider);
-    await _uploadStage(
-      'FIRESTORE INDEX UPDATE',
-      () => firestore.saveKnowledgeIndex(
-        sourceId,
-        structured,
-        sourceText: content,
-        sourceKind: sourceKind,
-        subjectId: subjectId,
-        downloadUrl: downloadUrl,
+      // Step 5.6.2: Save index to Firestore
+      debugPrint('🔍 [INDEX] ----- STEP 5.6.2: SAVE INDEX TO FIRESTORE -----');
+      final firestore = _ref.read(firestoreServiceProvider);
+      await _uploadStage(
+        'FIRESTORE INDEX UPDATE',
+        () => firestore.saveKnowledgeIndex(
+          sourceId,
+          structured,
+          sourceText: content,
+          sourceKind: sourceKind,
+          subjectId: subjectId,
+          downloadUrl: downloadUrl,
+          operationId: currentOperationId,
+        ),
+      );
+      debugPrint('🔍 [INDEX] ✅ Index saved to Firestore');
+
+      invalidateSubjectContext(subjectId,
+          ownerId: _ref.read(firestoreServiceProvider).currentUserId);
+      debugPrint('🔍 [INDEX] Subject context invalidated');
+
+      debugPrint(
+          '🔍 [INDEX] ========== AI INDEX GENERATION COMPLETE ==========');
+      _logBackendOperation(
         operationId: currentOperationId,
-      ),
-    );
-    debugPrint('🔍 [INDEX] ✅ Index saved to Firestore');
-
-    invalidateSubjectContext(subjectId,
-        ownerId: _ref.read(firestoreServiceProvider).currentUserId);
-    debugPrint('🔍 [INDEX] Subject context invalidated');
-
-    debugPrint('🔍 [INDEX] ========== AI INDEX GENERATION COMPLETE ==========');
-    _logBackendOperation(
-      operationId: currentOperationId,
-      operation: 'index',
-      status: 'indexed',
-      stopwatch: stopwatch,
-      subjectId: subjectId,
-      documentId: sourceId,
-    );
-    return structured;
+        operation: 'index',
+        status: 'indexed',
+        stopwatch: stopwatch,
+        subjectId: subjectId,
+        documentId: sourceId,
+      );
+      return structured;
     } catch (error) {
       _logBackendOperation(
         operationId: currentOperationId,
@@ -577,7 +644,8 @@ class KnowledgeEngine {
 
       debugPrint('📤 [UPLOAD] ========== UPLOAD PIPELINE COMPLETE ==========');
       debugPrint('📤 [UPLOAD] Document ID: $documentId');
-      debugPrint('📤 [UPLOAD] All async operations completed, returning result');
+      debugPrint(
+          '📤 [UPLOAD] All async operations completed, returning result');
 
       _logBackendOperation(
         operationId: operationId,
@@ -617,27 +685,31 @@ class KnowledgeEngine {
               reason: 'upload_compensation',
             );
           } catch (queueError) {
-            debugPrint('BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$documentId status=queue_failed error=$queueError');
+            debugPrint(
+                'BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$documentId status=queue_failed error=$queueError');
           }
-          debugPrint('BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$documentId status=storage_retry_pending error=$compensationError');
+          debugPrint(
+              'BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$documentId status=storage_retry_pending error=$compensationError');
         }
       }
-      if (firestoreRecordCreated) try {
-        debugPrint('📤 [UPLOAD] Persisting failure state to Firestore...');
-        await _persistUploadFailure(
-          firestore: firestore,
-          subjectId: subjectId,
-          documentId: documentId,
-          error: error,
-          label: 'PERSIST FAILURE STATE',
-          clearStorageReference:
-              storageAttempted && failedAt != 'index_error',
-        );
-        debugPrint('📤 [UPLOAD] ✅ Failure state persisted');
-      } catch (persistError, persistStackTrace) {
-        debugPrint('📤 [UPLOAD] ❌ FAILURE STATE PERSISTENCE FAILED: $persistError');
-        debugPrintStack(stackTrace: persistStackTrace);
-      }
+      if (firestoreRecordCreated)
+        try {
+          debugPrint('📤 [UPLOAD] Persisting failure state to Firestore...');
+          await _persistUploadFailure(
+            firestore: firestore,
+            subjectId: subjectId,
+            documentId: documentId,
+            error: error,
+            label: 'PERSIST FAILURE STATE',
+            clearStorageReference:
+                storageAttempted && failedAt != 'index_error',
+          );
+          debugPrint('📤 [UPLOAD] ✅ Failure state persisted');
+        } catch (persistError, persistStackTrace) {
+          debugPrint(
+              '📤 [UPLOAD] ❌ FAILURE STATE PERSISTENCE FAILED: $persistError');
+          debugPrintStack(stackTrace: persistStackTrace);
+        }
       invalidateSubjectContext(subjectId, ownerId: ownerId);
       Error.throwWithStackTrace(error, stackTrace);
     }
@@ -769,9 +841,11 @@ class KnowledgeEngine {
               reason: 'retry_compensation',
             );
           } catch (queueError) {
-            debugPrint('BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$sourceId status=queue_failed error=$queueError');
+            debugPrint(
+                'BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$sourceId status=queue_failed error=$queueError');
           }
-          debugPrint('BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$sourceId status=storage_retry_pending error=$compensationError');
+          debugPrint(
+              'BACKEND_COMPENSATION operationId=$operationId subjectId=$subjectId documentId=$sourceId status=storage_retry_pending error=$compensationError');
         }
       }
       try {
@@ -827,27 +901,30 @@ class KnowledgeEngine {
     debugPrint('🔥 [KnowledgeEngine] User verified: $ownerId');
 
     try {
-      final document = await firestore.getSubjectDocument(subjectId, documentId) ??
-          (throw StateError('Document is not available.'));
-    debugPrint('🔥 [KnowledgeEngine] Document found: ${document.fileName}, storagePath: ${document.storagePath}');
+      final document =
+          await firestore.getSubjectDocument(subjectId, documentId) ??
+              (throw StateError('Document is not available.'));
+      debugPrint(
+          '🔥 [KnowledgeEngine] Document found: ${document.fileName}, storagePath: ${document.storagePath}');
 
-    // The Firestore delete and durable Storage cleanup task commit together.
-    final storageTaskId = await firestore.deleteDocument(
-      documentId: documentId,
-      subjectId: subjectId,
-      ownerId: ownerId,
-      operationId: operationId,
-    );
-    if (storageTaskId != null) {
-      try {
-        await _deleteStorageObjectIfPresent(upload, document.storagePath);
-        await firestore.completeStorageDelete(storageTaskId);
-      } catch (error) {
-        await firestore.recordStorageDeleteFailure(storageTaskId, error);
-        debugPrint('BACKEND_STORAGE_DELETE operationId=$operationId subjectId=$subjectId documentId=$documentId status=retry_pending error=$error');
+      // The Firestore delete and durable Storage cleanup task commit together.
+      final storageTaskId = await firestore.deleteDocument(
+        documentId: documentId,
+        subjectId: subjectId,
+        ownerId: ownerId,
+        operationId: operationId,
+      );
+      if (storageTaskId != null) {
+        try {
+          await _deleteStorageObjectIfPresent(upload, document.storagePath);
+          await firestore.completeStorageDelete(storageTaskId);
+        } catch (error) {
+          await firestore.recordStorageDeleteFailure(storageTaskId, error);
+          debugPrint(
+              'BACKEND_STORAGE_DELETE operationId=$operationId subjectId=$subjectId documentId=$documentId status=retry_pending error=$error');
+        }
       }
-    }
-    await _drainStorageDeletionQueue(firestore: firestore, upload: upload);
+      await _drainStorageDeletionQueue(firestore: firestore, upload: upload);
     } catch (error) {
       _logBackendOperation(
         operationId: operationId,
@@ -875,7 +952,8 @@ class KnowledgeEngine {
       documentId: documentId,
     );
 
-    debugPrint('🔥 [KnowledgeEngine] ✅✅✅ DELETE COMPLETE: document=$documentId');
+    debugPrint(
+        '🔥 [KnowledgeEngine] ✅✅✅ DELETE COMPLETE: document=$documentId');
   }
 
   Future<void> deleteSubject(String subjectId) async {
@@ -929,7 +1007,8 @@ class KnowledgeEngine {
       debugPrint('🔥 [Storage] ✅ File deleted successfully');
     } catch (error) {
       if (error.toString().contains('object-not-found')) {
-        debugPrint('🔥 [Storage] ⚠️ Storage object already missing: $storagePath');
+        debugPrint(
+            '🔥 [Storage] ⚠️ Storage object already missing: $storagePath');
         return;
       }
       debugPrint('🔥 [Storage] ❌ Storage deletion error: $error');
@@ -1061,7 +1140,8 @@ class KnowledgeEngine {
         mimeType: mimeType ?? _mimeTypeFor(file?.extension),
         downloadUrl: downloadUrl,
         operationId: operationId,
-        onGenerated: () => debugPrint('📑 [INDEX] ✅ AI index generation complete'),
+        onGenerated: () =>
+            debugPrint('📑 [INDEX] ✅ AI index generation complete'),
       ),
     );
     debugPrint('📑 [INDEX] ✅ Index saved to Firestore');
@@ -1112,124 +1192,6 @@ class KnowledgeEngine {
         .replaceFirst(RegExp(r'\s*```$'), '');
     return Map<String, dynamic>.from(jsonDecode(raw) as Map);
   }
-
-  List<Map<String, dynamic>> _prioritize(
-      List<Map<String, dynamic>> records, String? topicId, String prompt,
-      {List<String> sourceIds = const [], bool includeAll = false}) {
-    final scoped = sourceIds.isNotEmpty
-        ? records
-        : topicId == null || topicId == 'current'
-            ? records
-            : records
-                .where((r) =>
-                    r['id'] == topicId ||
-                    r['sourceId'] == topicId ||
-                    r['topicId'] == topicId ||
-                    r['folderId'] == topicId)
-                .toList();
-    if ((sourceIds.isNotEmpty || (topicId != null && topicId != 'current')) &&
-        scoped.isEmpty) {
-      return const [];
-    }
-    final queryTerms = prompt
-        .toLowerCase()
-        .split(RegExp(r'[^a-z0-9]+'))
-        .where((term) => term.length > 2)
-        .toSet();
-    int relevance(Map<String, dynamic> r) {
-      final text =
-          '${r['title'] ?? ''} ${r['topic'] ?? ''} ${r['content'] ?? ''} ${r['extractedText'] ?? ''}'
-              .toLowerCase();
-      return queryTerms.fold<int>(
-          0, (score, term) => score + (text.contains(term) ? 1 : 0));
-    }
-
-    final hasParentSource = scoped.any((r) => r['kind'] != 'concept');
-    final ordered = List<Map<String, dynamic>>.from(
-        hasParentSource ? scoped.where((r) => r['kind'] != 'concept') : scoped);
-    int priority(Map<String, dynamic> r) => switch (r['kind']) {
-          'note' => 0,
-          'concept' => 1,
-          'document' => 2,
-          _ => 3
-        };
-    ordered.sort((a, b) {
-      final score = relevance(b).compareTo(relevance(a));
-      return score != 0 ? score : priority(a).compareTo(priority(b));
-    });
-    return sourceIds.isNotEmpty || includeAll
-        ? ordered
-        : ordered.take(24).toList();
-  }
-
-  String _rankedContexts(List<Map<String, dynamic>> sources, String prompt) {
-    final query = _terms(prompt);
-    final chunks =
-        <({Map<String, dynamic> source, String text, double score})>[];
-    for (final source in sources) {
-      final raw = <String>[
-        if (source['content'] is String) source['content'] as String,
-        if (source['structuredKnowledge'] is Map)
-          jsonEncode(source['structuredKnowledge']),
-        if (source['extractedText'] is String)
-          source['extractedText'] as String,
-      ].where((part) => part.trim().isNotEmpty).join('\n');
-      if (raw.isEmpty) continue;
-      final words = raw.split(RegExp(r'\s+'));
-      const window = 150;
-      const overlap = 30;
-      for (var start = 0; start < words.length; start += window - overlap) {
-        final text = words.skip(start).take(window).join(' ').trim();
-        if (text.isEmpty) continue;
-        final terms = _terms(text);
-        final intersection = query.intersection(terms).length;
-        final score = query.isEmpty || terms.isEmpty
-            ? 0.0
-            : intersection /
-                math.sqrt((query.length * terms.length).toDouble());
-        chunks.add((source: source, text: text, score: score));
-        if (start + window >= words.length) break;
-      }
-    }
-    chunks.sort((a, b) => b.score.compareTo(a.score));
-    final selected = <String>[];
-    final perSource = <String, int>{};
-    var chars = 0;
-    final sourceHeads =
-        <String, ({Map<String, dynamic> source, String text, double score})>{};
-    for (final chunk in chunks) {
-      sourceHeads.putIfAbsent(
-          (chunk.source['id'] ?? '').toString(), () => chunk);
-    }
-    final firstChunks = sourceHeads.values.toList()
-      ..sort((a, b) => b.score.compareTo(a.score));
-    final prioritized =
-        <({Map<String, dynamic> source, String text, double score})>[
-      ...firstChunks,
-      ...chunks,
-    ];
-    final seen = <String>{};
-    for (final chunk in prioritized) {
-      final id = (chunk.source['id'] ?? '').toString();
-      final identity = '$id:${chunk.text.hashCode}';
-      if (!seen.add(identity)) continue;
-      if ((perSource[id] ?? 0) >= 4) continue;
-      final header =
-          '[${chunk.source['kind'] ?? 'document'}: ${chunk.source['title'] ?? chunk.source['fileName'] ?? 'Source'} | ${chunk.source['subject'] ?? ''} / ${chunk.source['topic'] ?? ''}]';
-      final entry = '$header\n${chunk.text}';
-      if (chars + entry.length > 9000) continue;
-      selected.add(entry);
-      chars += entry.length;
-      perSource[id] = (perSource[id] ?? 0) + 1;
-    }
-    return selected.join('\n\n');
-  }
-
-  Set<String> _terms(String text) => text
-      .toLowerCase()
-      .split(RegExp(r'[^a-z0-9]+'))
-      .where((term) => term.length > 2)
-      .toSet();
 
   bool _needsWeb(String prompt, List<Map<String, dynamic>> sources) {
     final q = prompt.toLowerCase();
@@ -1353,7 +1315,7 @@ class KnowledgeEngine {
           List<String> sourceIds = const [],
           bool forceRefresh = false,
           String prompt =
-              'Build a substantial hierarchical mind map from all retrieved source chunks. Identify at least 12 distinct concepts when the material supports them, organize them beneath meaningful parent branches, and return at least 12 nodes and 12 parent-child edges. Add cross-links between related branches using labeled edges. Include concise descriptions and stable unique IDs. Never return an empty map or a root-only result; use the strongest available concepts if the source is sparse.'}) =>
+              'Build a substantial hierarchical mind map from the selected subject topics, subtopics, and manual notes. Preserve their hierarchy, include empty-note topic titles as syllabus structure, and return a useful map grounded in the available material.'}) =>
       generate(
           task: 'mind_map',
           prompt: prompt,
@@ -1436,7 +1398,7 @@ class KnowledgeEngine {
           String? subjectId,
           List<String> sourceIds = const [],
           String prompt =
-              'Analyze uploaded previous-year questions for patterns. Do not claim frequency without evidence.'}) =>
+              'Analyze the selected subject hierarchy and manual notes for examination themes. Do not claim previous-year frequency without evidence in the notes.'}) =>
       generate(
           task: 'pyq',
           prompt: prompt,
@@ -1474,14 +1436,13 @@ class KnowledgeEngine {
       List<String> sourceIds = const [],
       String history = ''}) async* {
     final firestore = _ref.read(firestoreServiceProvider);
-    final selectedIds = sourceIds;
-    final records = await _loadContext(firestore,
-        subjectId: subjectId, sourceIds: selectedIds);
-    final sources = _prioritize(records, null, prompt,
-        sourceIds: selectedIds,
-        includeAll:
-            subjectId != null && subjectId.isNotEmpty && selectedIds.isEmpty);
-    final context = _rankedContexts(sources, prompt);
+    final loaded = await _loadHierarchyContext(firestore, subjectId);
+    final sources = loaded['notes'] as List<Map<String, dynamic>>;
+    final context = loaded['context'] as String;
+    if (sources.isEmpty) {
+      yield 'This subject does not have any manual notes yet. Add notes under a topic or subtopic, and I can answer using that study material.';
+      return;
+    }
     var web = const <Map<String, String>>[];
     if (_needsWeb(prompt, sources)) {
       try {
@@ -1498,17 +1459,11 @@ class KnowledgeEngine {
       const AIMessage(
           role: AIRole.system,
           content:
-              'You are StudyMate, an expert study tutor. Synthesize an original answer using source context; never reproduce source passages. Return a clear answer, not JSON.'),
+              'You are StudyMate, an expert study tutor. The selected Subject > Topic > Subtopic hierarchy and manual notes are the primary source of truth. Use note content as evidence, preserve its hierarchy, and do not claim unsupported facts from topic titles alone. You may use web results only for genuinely current facts and identify them as outside the study notes. Never refer to uploaded documents or files. Return a clear answer, not JSON.'),
       AIMessage(
           role: AIRole.user,
           content:
-              'Conversation: $history\nQuestion: $prompt\nReference context:\n${[
-            context,
-            webContext
-          ].where((part) => part.isNotEmpty).join('\n\n').isEmpty ? '(No source material found; use general knowledge.)' : [
-                  context,
-                  webContext
-                ].where((part) => part.isNotEmpty).join('\n\n')}')
+              'Conversation: $history\nQuestion: $prompt\nSelected subject hierarchy with manual notes:\n$context\n\nOptional current web references:\n$webContext')
     ];
     yield* _completeStream(AIRequest(messages: messages));
   }
