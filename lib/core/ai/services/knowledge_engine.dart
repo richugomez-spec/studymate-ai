@@ -23,8 +23,18 @@ class KnowledgeEngine {
   static final Map<String, Future<List<Map<String, dynamic>>>> _contextCache =
       {};
 
-  String _newOperationId(String kind) =>
-      '${kind}_${DateTime.now().microsecondsSinceEpoch}_${math.Random().nextInt(1 << 32)}';
+  static const int _operationIdRandomMax = 0x7fffffff;
+
+  String _newOperationId(String kind) {
+    // Keep this positive and below 2^31. In JavaScript, `1 << 32` truncates
+    // to 32 bits and becomes zero, which makes Random.nextInt throw.
+    final max = _operationIdRandomMax;
+    if (max <= 0) {
+      throw StateError('Operation ID random range must be positive.');
+    }
+    final suffix = math.Random().nextInt(max);
+    return '${kind}_${DateTime.now().microsecondsSinceEpoch}_$suffix';
+  }
 
   void _logBackendOperation({
     required String operationId,
