@@ -26,7 +26,7 @@ class DashboardScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
 
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
@@ -34,15 +34,15 @@ class DashboardScreen extends ConsumerWidget {
           SliverAppBar(
             floating: true,
             pinned: false,
-            backgroundColor: AppColors.darkBackground,
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             surfaceTintColor: Colors.transparent,
-            title: const Text(
+            title: Text(
               'StudyMate AI',
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
             actions: [
@@ -88,7 +88,8 @@ class DashboardScreen extends ConsumerWidget {
                   tooltip: 'Profile',
                   icon: CircleAvatar(
                     radius: 14,
-                    backgroundColor: AppColors.darkSurfaceContainerHigh,
+                    backgroundColor:
+                        Theme.of(context).colorScheme.surfaceContainerHigh,
                     child: Text(
                       user.displayName?.isNotEmpty == true
                           ? user.displayName![0].toUpperCase()
@@ -196,29 +197,29 @@ class _GreetingAndStatusHeader extends ConsumerWidget {
                         fontFamily: 'JetBrains Mono',
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.darkTextTertiary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         letterSpacing: 1.0,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       greetingTitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 26,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.6,
-                        color: AppColors.darkTextPrimary,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 5),
                     Text(
                       courseSubtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 13,
                         fontWeight: FontWeight.w400,
-                        color: AppColors.darkTextSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -280,14 +281,14 @@ class _EmptyLearningMissionCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
       decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.darkBorderSubtle, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'YOUR LEARNING WORKSPACE',
             style: TextStyle(
               fontFamily: 'JetBrains Mono',
@@ -298,7 +299,7 @@ class _EmptyLearningMissionCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'Build your knowledge one topic at a time',
             style: TextStyle(
               fontFamily: 'Inter',
@@ -306,17 +307,17 @@ class _EmptyLearningMissionCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
               height: 1.35,
               letterSpacing: -0.3,
-              color: AppColors.darkTextPrimary,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Organize subjects into topics and subtopics, add your own notes, and use your study tools to review.',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 13,
               height: 1.45,
-              color: AppColors.darkTextSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 18),
@@ -342,8 +343,9 @@ class _EmptyLearningMissionCard extends StatelessWidget {
                   ElevatedButton.icon(
                     onPressed: () => context.push(AppRoutes.library),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.darkSurfaceContainerHigh,
-                      foregroundColor: AppColors.darkTextPrimary,
+                      backgroundColor:
+                          Theme.of(context).colorScheme.surfaceContainerHigh,
+                      foregroundColor: Theme.of(context).colorScheme.onSurface,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(6),
@@ -388,18 +390,18 @@ class _StitchMetric extends StatelessWidget {
             fontFamily: 'JetBrains Mono',
             fontSize: 9,
             fontWeight: FontWeight.w600,
-            color: AppColors.darkTextTertiary,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             letterSpacing: 0.8,
           ),
         ),
         const SizedBox(height: 3),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Inter',
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: AppColors.darkTextPrimary,
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
       ],
@@ -454,13 +456,13 @@ class _SuggestedActionsAndDeadlinesRow extends StatelessWidget {
         final actions = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'SUGGESTED NEXT ACTIONS',
               style: TextStyle(
                 fontFamily: 'JetBrains Mono',
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
-                color: AppColors.darkTextTertiary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 letterSpacing: 0.8,
               ),
             ),
@@ -535,7 +537,7 @@ class _DashboardActionCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: AppColors.darkSurfaceVariant,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppColors.darkBorderSubtle),
           ),
@@ -547,22 +549,24 @@ class _DashboardActionCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.darkTextPrimary)),
+                          color: Theme.of(context).colorScheme.onSurface)),
                   const SizedBox(height: 3),
                   Text(subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 11.5,
-                          color: AppColors.darkTextSecondary)),
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded,
-                size: 18, color: AppColors.darkTextTertiary),
+            Icon(Icons.chevron_right_rounded,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
           ]),
         ),
       );
@@ -687,7 +691,7 @@ class _VitalCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.darkBorderSubtle),
       ),
@@ -704,7 +708,7 @@ class _VitalCard extends StatelessWidget {
                   fontFamily: 'Inter',
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.darkTextPrimary,
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
             ],
@@ -712,11 +716,11 @@ class _VitalCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: AppColors.darkTextSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 3),
@@ -725,7 +729,7 @@ class _VitalCard extends StatelessWidget {
             style: TextStyle(
               fontFamily: 'JetBrains Mono',
               fontSize: 10,
-              color: AppColors.darkTextTertiary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),

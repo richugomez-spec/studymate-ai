@@ -13,9 +13,9 @@ class TopicScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.darkBackground,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
@@ -42,7 +42,8 @@ class TopicScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: AppColors.darkSurfaceVariant,
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppColors.darkBorderSubtle),
                   ),
@@ -55,7 +56,7 @@ class TopicScreen extends ConsumerWidget {
                           fontFamily: 'JetBrains Mono',
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.darkTextTertiary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -86,9 +87,8 @@ class TopicScreen extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () => context.push(AppRoutes.quiz
-                            .replaceFirst(
-                                ':topicId', 'current')),
+                        onPressed: () => context.push(
+                            AppRoutes.quiz.replaceFirst(':topicId', 'current')),
                         icon: const Icon(Icons.quiz_rounded, size: 16),
                         label: const Text('Topic Quiz'),
                         style: ElevatedButton.styleFrom(
@@ -104,8 +104,7 @@ class TopicScreen extends ConsumerWidget {
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => context.push(AppRoutes.flashcards
-                            .replaceFirst(
-                                ':topicId', 'current')),
+                            .replaceFirst(':topicId', 'current')),
                         icon: const Icon(Icons.flip_to_front_rounded, size: 16),
                         label: const Text('Topic Flashcards'),
                         style: OutlinedButton.styleFrom(

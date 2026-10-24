@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
-import '../providers/auth_provider.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -16,7 +15,6 @@ class SplashScreen extends ConsumerStatefulWidget {
 
 class _SplashScreenState extends ConsumerState<SplashScreen>
     with SingleTickerProviderStateMixin {
-
   @override
   void initState() {
     super.initState();
@@ -34,16 +32,17 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              Color(0xFF0D0D12),
-              Color(0xFF1A1035),
+              Theme.of(context).scaffoldBackgroundColor,
+              scheme.surfaceContainerHigh,
             ],
           ),
         ),
@@ -66,36 +65,36 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                     ),
                   ],
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.auto_stories_rounded,
                   size: 44,
-                  color: Colors.white,
+                  color: scheme.onSurface,
                 ),
               )
-              .animate()
-              .scale(
-                duration: 600.ms,
-                curve: Curves.elasticOut,
-                begin: const Offset(0.3, 0.3),
-              )
-              .fadeIn(duration: 400.ms),
+                  .animate()
+                  .scale(
+                    duration: 600.ms,
+                    curve: Curves.elasticOut,
+                    begin: const Offset(0.3, 0.3),
+                  )
+                  .fadeIn(duration: 400.ms),
 
               const SizedBox(height: 24),
 
               // App name
-              const Text(
+              Text(
                 'StudyMate AI',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 28,
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: scheme.onSurface,
                   letterSpacing: -0.5,
                 ),
               )
-              .animate(delay: 300.ms)
-              .fadeIn(duration: 500.ms)
-              .slideY(begin: 0.3, end: 0, curve: Curves.easeOut),
+                  .animate(delay: 300.ms)
+                  .fadeIn(duration: 500.ms)
+                  .slideY(begin: 0.3, end: 0, curve: Curves.easeOut),
 
               const SizedBox(height: 8),
 
@@ -106,12 +105,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   fontFamily: 'Inter',
                   fontSize: 15,
                   fontWeight: FontWeight.w400,
-                  color: Colors.white.withOpacity(0.5),
+                  color: scheme.onSurface.withOpacity(0.6),
                   letterSpacing: 0.2,
                 ),
-              )
-              .animate(delay: 500.ms)
-              .fadeIn(duration: 500.ms),
+              ).animate(delay: 500.ms).fadeIn(duration: 500.ms),
 
               const SizedBox(height: 64),
 
@@ -119,15 +116,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               SizedBox(
                 width: 120,
                 child: LinearProgressIndicator(
-                  backgroundColor: Colors.white.withOpacity(0.1),
+                  backgroundColor: scheme.onSurface.withOpacity(0.1),
                   valueColor: const AlwaysStoppedAnimation<Color>(
                     AppColors.electricViolet,
                   ),
                   borderRadius: BorderRadius.circular(4),
                 ),
-              )
-              .animate(delay: 800.ms)
-              .fadeIn(duration: 400.ms),
+              ).animate(delay: 800.ms).fadeIn(duration: 400.ms),
             ],
           ),
         ),

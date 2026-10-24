@@ -22,7 +22,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       title: 'Your AI Learning\nCoach',
       subtitle:
           'StudyMate AI understands your notes, tracks what you know, and guides you to master every topic.',
-      gradientColors: [Color(0xFF7B61FF), Color(0xFF9D87FF)],
+      gradientColors: [Color(0xFF367FE3), Color(0xFF56C7F2)],
     ),
     _OnboardingPage(
       emoji: '📚',
@@ -67,7 +67,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -78,10 +78,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 padding: const EdgeInsets.all(16),
                 child: TextButton(
                   onPressed: () => context.go(AppRoutes.login),
-                  child: const Text(
+                  child: Text(
                     'Skip',
                     style: TextStyle(
-                      color: AppColors.darkTextSecondary,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -117,7 +117,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         decoration: BoxDecoration(
                           color: _currentPage == i
                               ? AppColors.electricViolet
-                              : AppColors.darkBorder,
+                              : Theme.of(context).colorScheme.outlineVariant,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
@@ -155,10 +155,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           _currentPage == _pages.length - 1
                               ? 'Get Started'
                               : 'Continue',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.onPrimary,
                           ),
                         ),
                       ),
@@ -220,11 +220,11 @@ class _OnboardingPageView extends StatelessWidget {
           Text(
             page.title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 30,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               height: 1.2,
               letterSpacing: -0.5,
             ),
@@ -242,7 +242,7 @@ class _OnboardingPageView extends StatelessWidget {
               fontFamily: 'Inter',
               fontSize: 16,
               fontWeight: FontWeight.w400,
-              color: Colors.white.withOpacity(0.6),
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
               height: 1.6,
             ),
           )

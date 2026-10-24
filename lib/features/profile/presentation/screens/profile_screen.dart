@@ -57,9 +57,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         .toUpperCase();
 
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.darkBackground,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
@@ -87,7 +87,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 Container(
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: AppColors.darkSurfaceVariant,
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppColors.darkBorderSubtle),
                   ),
@@ -114,20 +115,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           children: [
                             Text(
                               name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontFamily: 'Inter',
                                 fontSize: 20,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.darkTextPrimary,
+                                color: Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               email,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontFamily: 'Inter',
                                 fontSize: 13,
-                                color: AppColors.darkTextSecondary,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -168,7 +171,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     fontFamily: 'JetBrains Mono',
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.darkTextTertiary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -226,7 +229,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     fontFamily: 'JetBrains Mono',
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.darkTextTertiary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -235,7 +238,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                   decoration: BoxDecoration(
-                    color: AppColors.darkSurfaceVariant,
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppColors.darkBorderSubtle),
                   ),
@@ -313,7 +317,7 @@ class _ProfileMetricCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.darkBorderSubtle),
       ),

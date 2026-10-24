@@ -110,50 +110,54 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.darkSurface,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
+        title: Text(
           'AI Access Key',
           style: TextStyle(
               fontFamily: 'Inter',
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 17),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Enter an access key for AI study features.',
               style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 13,
-                  color: AppColors.darkTextSecondary,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   height: 1.4),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: controller,
-              style: const TextStyle(
+              style: TextStyle(
                   fontFamily: 'JetBrains Mono',
                   fontSize: 12,
-                  color: Colors.white),
+                  color: Theme.of(context).colorScheme.onSurface),
               decoration: InputDecoration(
                 hintText: 'AIzaSy...',
-                hintStyle: const TextStyle(color: Colors.white24),
+                hintStyle: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
                 filled: true,
-                fillColor: AppColors.darkSurfaceContainerLowest,
+                fillColor:
+                    Theme.of(context).colorScheme.surfaceContainerHighest,
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: AppColors.darkBorder)),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.outline)),
                 enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: AppColors.darkBorder)),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.outline)),
                 focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide:
-                        const BorderSide(color: AppColors.electricViolet)),
+                    borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.primary)),
               ),
             ),
           ],
@@ -161,8 +165,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel',
-                style: TextStyle(color: AppColors.darkTextSecondary)),
+            child: Text('Cancel',
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -194,16 +199,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.darkBackground,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         titleSpacing: 20,
-        title: const Text(
+        title: Text(
           'Settings',
           style: TextStyle(
             fontFamily: 'Inter',
             fontWeight: FontWeight.w600,
             fontSize: 18,
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
       ),
@@ -318,27 +323,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               final shouldLogout = await showDialog<bool>(
                 context: context,
                 builder: (dialogCtx) => AlertDialog(
-                  backgroundColor: AppColors.darkSurface,
+                  backgroundColor:
+                      Theme.of(dialogCtx).colorScheme.surfaceContainerLow,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  title: const Text('Sign Out',
+                  title: Text('Sign Out',
                       style: TextStyle(
                           fontFamily: 'Inter',
                           fontWeight: FontWeight.w700,
-                          color: Colors.white)),
-                  content: const Text(
+                          color: Theme.of(dialogCtx).colorScheme.onSurface)),
+                  content: Text(
                     'Are you sure you want to sign out of StudyMate AI?',
                     style: TextStyle(
                         fontFamily: 'Inter',
-                        color: AppColors.darkTextSecondary),
+                        color:
+                            Theme.of(dialogCtx).colorScheme.onSurfaceVariant),
                   ),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.of(dialogCtx).pop(false),
                       child: Text('Cancel',
-                          style:
-                              TextStyle(color: Colors.white.withOpacity(0.6))),
+                          style: TextStyle(
+                              color: Theme.of(dialogCtx)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
                     ),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
@@ -401,9 +410,9 @@ class _ProfileCard extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.darkBorderSubtle),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Row(
         children: [
@@ -417,11 +426,11 @@ class _ProfileCard extends ConsumerWidget {
             child: (user?.photoUrl == null || user!.photoUrl!.isEmpty)
                 ? Text(
                     initial,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.electricViolet,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   )
                 : null,
@@ -433,11 +442,11 @@ class _ProfileCard extends ConsumerWidget {
               children: [
                 Text(
                   displayName,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 Text(
@@ -445,7 +454,7 @@ class _ProfileCard extends ConsumerWidget {
                   style: TextStyle(
                     fontFamily: 'Inter',
                     fontSize: 12,
-                    color: Colors.white.withOpacity(0.55),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -456,13 +465,13 @@ class _ProfileCard extends ConsumerWidget {
                     color: AppColors.electricViolet.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text(
+                  child: Text(
                     'Active Learner',
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.electricViolet,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ),
                 ),
@@ -470,7 +479,7 @@ class _ProfileCard extends ConsumerWidget {
             ),
           ),
           Icon(Icons.chevron_right_rounded,
-              size: 20, color: Colors.white.withOpacity(0.4)),
+              size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
         ],
       ),
     );
@@ -487,12 +496,12 @@ class _SectionLabel extends StatelessWidget {
       padding: const EdgeInsets.only(left: 2, bottom: 4),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: 'JetBrains Mono',
           fontSize: 9.5,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.8,
-          color: AppColors.darkTextTertiary,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
     );
@@ -524,9 +533,10 @@ class _SettingsTile extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: AppColors.darkSurfaceVariant,
+          color: Theme.of(context).colorScheme.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.darkBorderSubtle),
+          border:
+              Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         ),
         child: Row(
           children: [
@@ -546,11 +556,11 @@ class _SettingsTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   Text(
@@ -558,7 +568,7 @@ class _SettingsTile extends StatelessWidget {
                     style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 12,
-                      color: Colors.white.withOpacity(0.45),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -567,10 +577,12 @@ class _SettingsTile extends StatelessWidget {
             if (trailing != null) ...[
               const SizedBox(width: 8),
               DefaultTextStyle(
-                style: TextStyle(color: Colors.white.withOpacity(0.3)),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
                 child: IconTheme(
                   data: IconThemeData(
-                      color: Colors.white.withOpacity(0.3), size: 18),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      size: 18),
                   child: trailing!,
                 ),
               ),

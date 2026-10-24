@@ -113,9 +113,9 @@ class StudyToolsScreen extends ConsumerWidget {
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.darkBackground,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         title: const Text(
           'Study Tools',
           style: TextStyle(
@@ -138,7 +138,8 @@ class StudyToolsScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: AppColors.darkSurfaceVariant,
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: AppColors.darkBorderSubtle),
                   ),
@@ -184,13 +185,13 @@ class StudyToolsScreen extends ConsumerWidget {
 
                 const SizedBox(height: 20),
 
-                const Text(
+                Text(
                   'AVAILABLE STUDY ENGINES',
                   style: TextStyle(
                     fontFamily: 'JetBrains Mono',
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.darkTextTertiary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -205,7 +206,9 @@ class StudyToolsScreen extends ConsumerWidget {
                         child: Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: AppColors.darkSurface,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerLow,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: AppColors.darkBorder),
                           ),

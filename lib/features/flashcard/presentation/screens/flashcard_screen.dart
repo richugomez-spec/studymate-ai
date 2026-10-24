@@ -216,7 +216,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
             constraints: const BoxConstraints(maxWidth: 460),
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
-              color: AppColors.darkSurfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.darkBorderSubtle),
             ),
@@ -274,7 +274,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
             margin: const EdgeInsets.all(24),
             padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
-              color: AppColors.darkSurfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppColors.darkBorderSubtle),
             ),
@@ -371,10 +371,10 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Card ${_currentIndex + 1} of ${_cards.length}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontFamily: 'JetBrains Mono',
                         fontSize: 11,
-                        color: AppColors.darkTextSecondary)),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ],
             ),
           ),
@@ -419,7 +419,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           Container(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             decoration: BoxDecoration(
-              color: AppColors.darkSurface,
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
               border: Border(
                   top:
                       BorderSide(color: AppColors.darkBorder.withOpacity(0.5))),
@@ -445,7 +445,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.darkBorderSubtle),
       ),
@@ -494,7 +494,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        color: AppColors.darkSurface,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.electricViolet.withOpacity(0.4)),
       ),

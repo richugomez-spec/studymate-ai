@@ -400,9 +400,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final isDesktop = MediaQuery.sizeOf(context).width >= 1100;
 
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.darkSurface,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
         leading: _activeSubjectId == null
             ? null
             : IconButton(
@@ -501,7 +501,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       itemBuilder: (context, index) {
         final subject = subjects[index];
         return Card(
-          color: AppColors.darkCard,
+          color: Theme.of(context).colorScheme.surfaceContainer,
           child: ListTile(
             onTap: () => _selectSubject(subject),
             leading: const Icon(Icons.folder_outlined,
@@ -543,8 +543,8 @@ class _NotesShelf extends StatelessWidget {
     return Container(
       height: 170,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      decoration: const BoxDecoration(
-        color: AppColors.darkCard,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainer,
         border: Border(top: BorderSide(color: AppColors.darkBorderSubtle)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -15,9 +15,9 @@ class SubjectScreen extends ConsumerWidget {
     final subjectTitle = 'Subject ($subjectId)';
 
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.darkBackground,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
@@ -44,7 +44,8 @@ class SubjectScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: AppColors.darkSurfaceVariant,
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppColors.darkBorderSubtle),
                   ),
@@ -57,7 +58,7 @@ class SubjectScreen extends ConsumerWidget {
                           fontFamily: 'JetBrains Mono',
                           fontSize: 10,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.darkTextTertiary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           letterSpacing: 0.8,
                         ),
                       ),
@@ -91,7 +92,7 @@ class SubjectScreen extends ConsumerWidget {
                     fontFamily: 'JetBrains Mono',
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.darkTextTertiary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -99,15 +100,18 @@ class SubjectScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: AppColors.darkSurfaceVariant,
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppColors.darkBorderSubtle),
                   ),
                   child: Center(
                     child: Column(
                       children: [
-                        const Icon(Icons.menu_book_outlined,
-                            size: 30, color: AppColors.darkTextTertiary),
+                        Icon(Icons.menu_book_outlined,
+                            size: 30,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant),
                         const SizedBox(height: 10),
                         const Text(
                             'Add topics and manual notes to build your study outline.',

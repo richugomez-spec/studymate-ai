@@ -21,9 +21,9 @@ class PlannerScreen extends ConsumerWidget {
     final days = List.generate(7, (i) => now.add(Duration(days: i)));
 
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.darkBackground,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
@@ -54,7 +54,7 @@ class PlannerScreen extends ConsumerWidget {
                     fontFamily: 'JetBrains Mono',
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.darkTextTertiary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -85,7 +85,9 @@ class PlannerScreen extends ConsumerWidget {
                         decoration: BoxDecoration(
                           color: isToday
                               ? AppColors.electricViolet.withOpacity(0.15)
-                              : AppColors.darkSurfaceVariant,
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
                             color: isToday
@@ -106,7 +108,9 @@ class PlannerScreen extends ConsumerWidget {
                                     isToday ? FontWeight.w700 : FontWeight.w500,
                                 color: isToday
                                     ? AppColors.electricViolet
-                                    : AppColors.darkTextTertiary,
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -118,7 +122,9 @@ class PlannerScreen extends ConsumerWidget {
                                 fontWeight: FontWeight.w700,
                                 color: isToday
                                     ? Colors.white
-                                    : AppColors.darkTextSecondary,
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                               ),
                             ),
                           ],
@@ -137,7 +143,7 @@ class PlannerScreen extends ConsumerWidget {
                     fontFamily: 'JetBrains Mono',
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.darkTextTertiary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -147,19 +153,21 @@ class PlannerScreen extends ConsumerWidget {
                   _PlannerTargetCard(
                     title: ref.watch(activeKnowledgeSubjectNameProvider) ??
                         'Current Subject',
-                    subtitle: 'Practice questions generated from your manual notes',
+                    subtitle:
+                        'Practice questions generated from your manual notes',
                     badge: 'Ready to Study',
                     badgeColor: AppColors.emerald,
                     onAction: () {
-                      context.push(AppRoutes.quiz
-                          .replaceFirst(':topicId', 'current'));
+                      context.push(
+                          AppRoutes.quiz.replaceFirst(':topicId', 'current'));
                     },
                   ),
                 ] else ...[
                   Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      color: AppColors.darkSurfaceVariant,
+                      color:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppColors.darkBorderSubtle),
                     ),
@@ -215,7 +223,7 @@ class PlannerScreen extends ConsumerWidget {
                     fontFamily: 'JetBrains Mono',
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.darkTextTertiary,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     letterSpacing: 0.8,
                   ),
                 ),
@@ -223,7 +231,8 @@ class PlannerScreen extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: AppColors.darkSurfaceVariant,
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppColors.darkBorderSubtle),
                   ),
@@ -307,7 +316,7 @@ class _PlannerTargetCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.darkSurfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.darkBorderSubtle),
       ),
@@ -360,7 +369,8 @@ class _PlannerTargetCard extends StatelessWidget {
           ElevatedButton(
             onPressed: onAction,
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.darkSurfaceContainerHigh,
+              backgroundColor:
+                  Theme.of(context).colorScheme.surfaceContainerHigh,
               foregroundColor: Colors.white,
               elevation: 0,
               side: const BorderSide(color: AppColors.darkBorder),

@@ -407,7 +407,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           // Messages list
           Expanded(
             child: _isLoadingHistory
-                ? const Center(
+                ? Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -423,7 +423,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           style: TextStyle(
                             fontFamily: 'Inter',
                             fontSize: 12,
-                            color: AppColors.darkTextSecondary,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -443,7 +444,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           Container(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             decoration: BoxDecoration(
-              color: AppColors.darkSurface,
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
               border: Border(
                   top:
                       BorderSide(color: AppColors.darkBorder.withOpacity(0.5))),
@@ -461,7 +462,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       hintStyle: TextStyle(
                           color: Colors.white.withOpacity(0.3), fontSize: 13),
                       filled: true,
-                      fillColor: AppColors.darkSurfaceVariant,
+                      fillColor:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 12),
                       border: OutlineInputBorder(
@@ -518,7 +520,7 @@ class _PromptChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: AppColors.darkSurfaceContainer,
+          color: Theme.of(context).colorScheme.surfaceContainer,
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: AppColors.darkBorder),
         ),
@@ -529,11 +531,11 @@ class _PromptChip extends StatelessWidget {
             const SizedBox(width: 6),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
-                color: AppColors.darkTextSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ],
@@ -591,7 +593,7 @@ class _RealMessageBubble extends StatelessWidget {
                   letterSpacing: 0.5,
                   color: isUser
                       ? AppColors.electricVioletLight
-                      : AppColors.darkTextSecondary,
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -601,8 +603,8 @@ class _RealMessageBubble extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: isUser
-                  ? AppColors.darkSurfaceContainerHigh
-                  : AppColors.darkSurfaceVariant,
+                  ? Theme.of(context).colorScheme.surfaceContainerHigh
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: isUser
@@ -612,7 +614,7 @@ class _RealMessageBubble extends StatelessWidget {
               ),
             ),
             child: message.isThinking
-                ? const Row(
+                ? Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       SizedBox(
@@ -625,17 +627,19 @@ class _RealMessageBubble extends StatelessWidget {
                           style: TextStyle(
                               fontFamily: 'JetBrains Mono',
                               fontSize: 12,
-                              color: AppColors.darkTextSecondary)),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
                     ],
                   )
                 : MarkdownBody(
                     data: message.content,
                     selectable: true,
                     styleSheet: MarkdownStyleSheet(
-                      p: const TextStyle(
+                      p: TextStyle(
                         fontFamily: 'Inter',
                         fontSize: 13.5,
-                        color: AppColors.darkTextPrimary,
+                        color: Theme.of(context).colorScheme.onSurface,
                         height: 1.55,
                       ),
                       h1: const TextStyle(
@@ -674,7 +678,9 @@ class _RealMessageBubble extends StatelessWidget {
                         color: AppColors.teal,
                       ),
                       codeblockDecoration: BoxDecoration(
-                        color: AppColors.darkSurfaceContainerLowest,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerLowest,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppColors.darkBorder),
                       ),

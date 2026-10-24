@@ -212,7 +212,7 @@ class _StatCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.darkSurface,
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.darkBorder),
         ),
@@ -277,7 +277,7 @@ class _StudyTimeChart extends StatelessWidget {
       height: 180,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.darkSurface,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.darkBorder),
       ),
@@ -354,6 +354,7 @@ class _SubjectMasteryList extends StatelessWidget {
 
     if (flashcards.isEmpty) {
       return _emptyCard(
+        context: context,
         icon: Icons.bar_chart_rounded,
         message:
             'No subject mastery data yet.\nAdd notes and review flashcards to track progress.',
@@ -383,7 +384,7 @@ class _SubjectMasteryList extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: AppColors.darkSurface,
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: AppColors.darkBorder),
             ),
@@ -447,6 +448,7 @@ class _WeakTopicsList extends StatelessWidget {
 
     if (quizzes.isEmpty) {
       return _emptyCard(
+        context: context,
         icon: Icons.warning_amber_rounded,
         message:
             'No weak topics identified yet.\nComplete quizzes to find areas that need attention.',
@@ -468,6 +470,7 @@ class _WeakTopicsList extends StatelessWidget {
 
     if (weak.isEmpty) {
       return _emptyCard(
+        context: context,
         icon: Icons.check_circle_outline_rounded,
         message:
             'Great work! No weak topics detected.\nKeep taking quizzes to track your performance.',
@@ -543,6 +546,7 @@ class _AchievementsEmpty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _emptyCard(
+      context: context,
       icon: Icons.emoji_events_outlined,
       message:
           'Achievements will appear here as you\nstudy, complete quizzes, and hit streaks.',
@@ -551,18 +555,23 @@ class _AchievementsEmpty extends StatelessWidget {
 }
 
 // Shared empty-state helper
-Widget _emptyCard({required IconData icon, required String message}) {
+Widget _emptyCard({
+  required BuildContext context,
+  required IconData icon,
+  required String message,
+}) {
   return Container(
     width: double.infinity,
     padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
     decoration: BoxDecoration(
-      color: AppColors.darkSurface,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: AppColors.darkBorder),
+      border: Border.all(color: Theme.of(context).colorScheme.outline),
     ),
     child: Column(
       children: [
-        Icon(icon, size: 32, color: Colors.white.withOpacity(0.2)),
+        Icon(icon,
+            size: 32, color: Theme.of(context).colorScheme.onSurfaceVariant),
         const SizedBox(height: 10),
         Text(
           message,
@@ -570,7 +579,7 @@ Widget _emptyCard({required IconData icon, required String message}) {
           style: TextStyle(
             fontFamily: 'Inter',
             fontSize: 13,
-            color: Colors.white.withOpacity(0.4),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             height: 1.5,
           ),
         ),

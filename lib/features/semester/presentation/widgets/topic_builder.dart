@@ -247,7 +247,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.darkCard,
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(12),
         border:
             Border.all(color: AppColors.electricVioletLight.withOpacity(0.3)),
@@ -278,7 +278,9 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                       Text(
                         widget.subjectName,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppColors.darkTextSecondary,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
                             ),
                       ),
                     ],
@@ -293,7 +295,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                   tooltip: 'Back to subjects',
                   icon: const Icon(Icons.close),
                   onPressed: widget.onClose,
-                  color: AppColors.darkTextSecondary,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ],
             ),
@@ -319,12 +321,17 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                         child: Column(
                           children: [
                             Icon(Icons.topic_outlined,
-                                size: 48, color: AppColors.darkTextSecondary),
+                                size: 48,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant),
                             const SizedBox(height: 16),
                             Text(
                               'No topics yet',
                               style: TextStyle(
-                                color: AppColors.darkTextSecondary,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                                 fontSize: 16,
                               ),
                             ),
@@ -408,7 +415,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                   const SizedBox(width: 8),
                   PopupMenuButton<String>(
                     icon: Icon(Icons.more_vert,
-                        color: AppColors.darkTextSecondary),
+                        color: Theme.of(context).colorScheme.onSurfaceVariant),
                     onSelected: (action) {
                       if (action == 'delete') {
                         _deleteTopic(topicId, topicName);
@@ -444,7 +451,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                       child: Text(
                         'No subtopics yet',
                         style: TextStyle(
-                          color: AppColors.darkTextSecondary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 14,
                         ),
                       ),
@@ -500,7 +507,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: AppColors.darkCard,
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: AppColors.teal.withOpacity(0.2),
@@ -536,7 +543,8 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
               ),
               IconButton(
                 icon: Icon(Icons.close,
-                    color: AppColors.darkTextSecondary, size: 18),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    size: 18),
                 onPressed: () =>
                     _deleteSubtopic(topicId, subtopicId, subtopicName),
                 padding: EdgeInsets.zero,

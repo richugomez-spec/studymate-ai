@@ -219,7 +219,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
             constraints: const BoxConstraints(maxWidth: 460),
             padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
-              color: AppColors.darkSurfaceVariant,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.darkBorderSubtle),
             ),
@@ -276,7 +276,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
               constraints: const BoxConstraints(maxWidth: 500),
               padding: const EdgeInsets.all(28),
               decoration: BoxDecoration(
-                color: AppColors.darkSurface,
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppColors.darkBorder),
               ),
@@ -305,12 +305,13 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                   const SizedBox(height: 24),
 
                   // Question count selector (5, 10, 20)
-                  const Text('NUMBER OF QUESTIONS',
+                  Text('NUMBER OF QUESTIONS',
                       style: TextStyle(
                           fontFamily: 'JetBrains Mono',
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.darkTextTertiary)),
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 8),
                   Row(
                     children: [5, 10, 20].map((count) {
@@ -326,7 +327,9 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                               decoration: BoxDecoration(
                                 color: sel
                                     ? AppColors.electricViolet
-                                    : AppColors.darkSurfaceVariant,
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                     color: sel
@@ -351,12 +354,13 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                   const SizedBox(height: 20),
 
                   // Difficulty (Easy, Medium, Hard)
-                  const Text('DIFFICULTY LEVEL',
+                  Text('DIFFICULTY LEVEL',
                       style: TextStyle(
                           fontFamily: 'JetBrains Mono',
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.darkTextTertiary)),
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 8),
                   Row(
                     children: QuizDifficulty.values.map((d) {
@@ -373,7 +377,9 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                               decoration: BoxDecoration(
                                 color: sel
                                     ? AppColors.teal
-                                    : AppColors.darkSurfaceVariant,
+                                    : Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
                                     color: sel
@@ -398,12 +404,13 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                   const SizedBox(height: 20),
 
                   // Quiz format (MCQ, True/False, Fill blank, Short Answer)
-                  const Text('QUESTION FORMAT',
+                  Text('QUESTION FORMAT',
                       style: TextStyle(
                           fontFamily: 'JetBrains Mono',
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.darkTextTertiary)),
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
@@ -460,7 +467,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
               constraints: const BoxConstraints(maxWidth: 480),
               padding: const EdgeInsets.all(32),
               decoration: BoxDecoration(
-                color: AppColors.darkSurfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: AppColors.darkBorderSubtle),
               ),
@@ -625,7 +632,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                     ...List.generate(q.options.length, (idx) {
                       final opt = q.options[idx];
                       Color borderCol = AppColors.darkBorderSubtle;
-                      Color bgCol = AppColors.darkSurfaceVariant;
+                      Color bgCol =
+                          Theme.of(context).colorScheme.surfaceContainerHighest;
                       if (_answered) {
                         if (idx == q.correctIndex) {
                           borderCol = AppColors.teal;
@@ -682,7 +690,9 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                         hintStyle:
                             TextStyle(color: Colors.white.withOpacity(0.3)),
                         filled: true,
-                        fillColor: AppColors.darkSurfaceVariant,
+                        fillColor: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8)),
                       ),
@@ -704,7 +714,8 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: AppColors.darkSurface,
+                        color:
+                            Theme.of(context).colorScheme.surfaceContainerLow,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppColors.darkBorder),
                       ),
@@ -744,7 +755,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                  color: AppColors.darkSurface,
+                  color: Theme.of(context).colorScheme.surfaceContainerLow,
                   border: Border(
                       top: BorderSide(
                           color: AppColors.darkBorder.withOpacity(0.5)))),
@@ -776,7 +787,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
               color: sel ? Colors.white : Colors.white70)),
       selected: sel,
       selectedColor: AppColors.electricViolet,
-      backgroundColor: AppColors.darkSurfaceVariant,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
       onSelected: (_) => setState(() => _quizType = type),
     );
   }
