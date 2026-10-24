@@ -15,6 +15,18 @@ import '../providers/gemini_provider.dart';
 import 'gemini_api_key_provider.dart';
 import 'web_search_service.dart';
 
+const _marksBasedAnswerGuidelines = '''
+MARKS-BASED UNIVERSITY EXAM ANSWER RULES
+Write like a high-scoring KJU student. Use clear headings and subheadings, structured paragraphs, useful bullets or numbered steps, examples, practical applications, exam-relevant points, and a text diagram or flowchart when it clarifies the answer. Do not collapse a descriptive answer into a summary or one long paragraph.
+
+For each model answer, use the question's marks:
+- 2 marks: 50–100 words. Give a definition, direct explanation, and one or two important points.
+- 5 marks: 300–500 words. Include a definition, introduction, detailed explanation, key concepts, working or process where applicable, an example, and a conclusion.
+- 10 marks: 800–1200+ words, with a minimum of 800. Give a full descriptive university answer with definition, introduction, thorough explanation of each concept, working/architecture/process where applicable, components, advantages, limitations, applications, real-world examples, a text diagram/flowchart where useful, and conclusion. Do not summarize; explain each section.
+- For other mark values, scale the depth proportionally to the nearest listed format. If marks are not provided, write a complete study answer of appropriate depth without inventing a mark value.
+
+Use the complete supplied Subject > Topic > Subtopic hierarchy and all available manual or AI-generated study notes. When notes are absent, teach accurately from the syllabus hierarchy and established academic knowledge. Make each answer self-contained enough to study and reproduce in a university exam.''';
+
 /// The single Gemini reasoning path for all StudyMate knowledge tools.
 class KnowledgeEngine {
   KnowledgeEngine(this._ref);
@@ -116,10 +128,10 @@ class KnowledgeEngine {
 
     void appendNotes(List<Map<String, dynamic>> nodeNotes, String indent) {
       if (nodeNotes.isEmpty) {
-        append('${indent}Manual Notes: None');
+        append('${indent}Study Notes: None');
         return;
       }
-      append('${indent}Manual Notes:');
+      append('${indent}Study Notes:');
       for (final note in nodeNotes) {
         notes.add(note);
         signatureParts.add(
@@ -168,7 +180,7 @@ class KnowledgeEngine {
       appendNotes([note], '  ');
     }
     if (notes.isEmpty) {
-      append('Manual Notes: None');
+      append('Study Notes: None');
     }
     return {
       'context': buffer.toString().trim(),
@@ -233,7 +245,7 @@ class KnowledgeEngine {
         ? '${DateTime.now().microsecondsSinceEpoch}_${math.Random().nextInt(_operationIdRandomMax)}'
         : '';
     final cacheKey = _stableKey(
-      '${firestore.currentUserId ?? 'guest'}|${task.toLowerCase()}|$activeSubjectId|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|$regenerationId',
+      '${firestore.currentUserId ?? 'guest'}|${task.toLowerCase()}|$activeSubjectId|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|${_stableKey(_marksBasedAnswerGuidelines)}|$regenerationId',
     );
     final cached =
         forceRefresh ? null : await firestore.getGenerationCache(cacheKey);
@@ -385,13 +397,17 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
       AIMessage(
           role: AIRole.system,
           content:
-              'You are StudyMate, an expert university-level study tutor. The Subject > Topic > Subtopic hierarchy is the syllabus and primary source of knowledge. If Manual Notes are present, use them as the user\'s primary context, integrate them, expand them, and fill gaps with accurate academic knowledge. If Manual Notes are None, teach the topic fully using your own academic knowledge; hierarchy titles alone are sufficient. Never ask for uploaded material or notes. Do not refer to uploaded documents, files, indexing, or internal tools. Return one valid JSON object with no markdown fences.'),
+              'You are StudyMate, an expert university-level study tutor. The Subject > Topic > Subtopic hierarchy is the syllabus and primary source of knowledge. Use all available manual or AI-generated Study Notes as primary context, integrate and expand them, and fill gaps with accurate academic knowledge. If Study Notes are absent, teach the topic fully from your own academic knowledge; hierarchy titles alone are sufficient. Never ask for uploaded material or notes. Do not refer to uploaded documents, files, indexing, or internal tools. For exam and PYQ model-answer fields, follow these rules exactly: $_marksBasedAnswerGuidelines Return one valid JSON object with no markdown fences.'),
       AIMessage(
           role: AIRole.user,
           content:
               'Task: $task\nRequest: $prompt${regenerationId.isEmpty ? '' : '\nRegeneration ID: $regenerationId. Create a fresh, materially different set of content from any prior generation while covering the complete syllabus.'}\nOptions: ${jsonEncode(options)}\nStructured context:\n$studyContext'),
     ]);
-    final response = await _completeWithFailover(request, temperature: 0.4);
+    final response = await _completeWithFailover(
+      request,
+      temperature: 0.4,
+      maxTokens: task == 'exam' || task == 'pyq' ? 16384 : 4096,
+    );
     final raw = response.content
         .trim()
         .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
@@ -1328,6 +1344,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
   Future<AIResponse> _completeWithFailover(
     AIRequest request, {
     required double temperature,
+    int maxTokens = 4096,
     Uint8List? sourceBytes,
     String? mimeType,
   }) {
@@ -1337,7 +1354,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
         apiKey: apiKey,
         model: model,
         temperature: temperature,
-        maxTokens: 4096,
+        maxTokens: maxTokens,
       ));
       if (sourceBytes != null) {
         return provider.completeWithInlineData(
@@ -1587,7 +1604,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
           String history = ''}) =>
       generate(
           task: 'chat',
-          prompt: '$history\n$prompt',
+          prompt: '$_marksBasedAnswerGuidelines\n$history\n$prompt',
           topicId: topicId,
           subjectId: subjectId,
           sourceIds: sourceIds,
@@ -1620,7 +1637,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
       const AIMessage(
           role: AIRole.system,
           content:
-              'You are StudyMate, an expert study tutor. The Subject > Topic > Subtopic hierarchy is the syllabus and primary source of knowledge. Use available manual notes as the user\'s primary context, expand partial notes, and fill gaps with sound academic knowledge. If Manual Notes are None, answer fully using your own knowledge; the hierarchy alone is sufficient. Never ask for uploaded material or notes. You may use web results only for genuinely current facts and identify them as outside the study notes. Never refer to uploaded documents or files. Return a clear answer, not JSON.'),
+              'You are StudyMate, an expert study tutor. The Subject > Topic > Subtopic hierarchy is the syllabus and primary source of knowledge. Use available manual or AI-generated notes as the user\'s primary context, expand partial notes, and fill gaps with sound academic knowledge. If notes are absent, answer fully using your own knowledge and the hierarchy. Never ask for uploaded material or notes. You may use web results only for genuinely current facts and identify them as outside the study notes. Never refer to uploaded documents or files. When the question specifies marks, follow these answer requirements: $_marksBasedAnswerGuidelines Otherwise give a complete, well-structured study answer at an appropriate depth. Return a clear answer, not JSON.'),
       AIMessage(
           role: AIRole.user,
           content:
