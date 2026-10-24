@@ -211,13 +211,13 @@ class KnowledgeEngine {
       (total, topic) => total + ((topic['subtopics'] as List?)?.length ?? 0),
     );
     debugPrint('STUDY_HIERARCHY_LOADED ${jsonEncode({
-      'subjectId': subjectId,
-      'subject': subject['name'],
-      'topics': topics.length,
-      'subtopics': subtopicCount,
-      'notes': context['noteCount'],
-      'signature': context['signature'],
-    })}');
+          'subjectId': subjectId,
+          'subject': subject['name'],
+          'topics': topics.length,
+          'subtopics': subtopicCount,
+          'notes': context['noteCount'],
+          'signature': context['signature'],
+        })}');
     return {
       ...context,
       'subjectId': subjectId,
@@ -285,9 +285,8 @@ class KnowledgeEngine {
     }
   }
 
-  /// Generates editable notes for one syllabus node. Firestore persistence is
-  /// deliberately left to the caller so FirestoreService remains the sole
-  /// owner of writes.
+  /// Generates coherent lecture notes for a topic or an individual subtopic.
+  /// Topic-level generation includes every current subtopic in hierarchy order.
   Future<String> generateAiNotes({
     required String subjectId,
     required String topicId,
@@ -318,58 +317,95 @@ class KnowledgeEngine {
         throw StateError('That subtopic is no longer available.');
       }
     }
-    final noteNodes = subtopic == null
-        ? [
-            topic,
-            ...(topic['subtopics'] as List<dynamic>? ?? const [])
-                .whereType<Map>()
-                .map(Map<String, dynamic>.from),
-          ]
-        : [subtopic];
-    final noteMaps = <Map<String, dynamic>>[];
+    final allSubtopics = (topic['subtopics'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map(Map<String, dynamic>.from)
+        .toList(growable: false);
+    final noteNodes = subtopic == null ? [topic, ...allSubtopics] : [subtopic];
+    final existingNotes = <String>[];
     for (final node in noteNodes) {
+      final nodeName = node == topic ? topic['name'] : node['name'];
       final nodeNotes = (node['notes'] as List<dynamic>? ?? const [])
           .whereType<Map>()
           .map(Map<String, dynamic>.from);
-      noteMaps.addAll(nodeNotes.map((note) => {
-            ...note,
-            if (node != topic) 'subtopic': node['name'],
-          }));
+      for (final note in nodeNotes) {
+        final origin = note['origin']?.toString() ??
+            ((note['title']?.toString().startsWith('AI Notes -') ?? false)
+                ? 'ai_generated'
+                : 'user');
+        // Regeneration replaces only this node's prior AI note. User-authored
+        // notes and notes on other hierarchy nodes remain available as input.
+        if (origin == 'ai_generated' && node == (subtopic ?? topic)) continue;
+        final content = (note['content'] ?? note['notes'] ?? '').toString();
+        if (content.trim().isEmpty) continue;
+        existingNotes.add(
+            '[$nodeName · ${origin == 'ai_generated' ? 'existing AI note reference' : 'student note'}] ${note['title'] ?? 'Note'}:\n$content');
+      }
     }
-    final manualNotes = noteMaps.isEmpty
-        ? 'None'
-        : noteMaps
-            .map((note) =>
-                '${note['subtopic'] == null ? '' : 'Subtopic: ${note['subtopic']}\n'}${note['title'] ?? 'Manual note'}: ${note['content'] ?? ''}')
-            .join('\n\n');
+    final hierarchySections = subtopic == null
+        ? allSubtopics
+            .map((item) => '- ${item['name']}: create a dedicated section')
+            .join('\n')
+        : '- ${subtopic['name']}: create a dedicated section';
     final context = '''Subject:
 ${subject['name'] ?? 'Subject'}
 
 Topic:
 ${topic['name'] ?? 'Topic'}
 
-Subtopic:
-${subtopic?['name'] ?? '(all subtopics and topic-level syllabus)'}
+Requested scope:
+${subtopic?['name'] ?? 'Complete topic and every subtopic'}
 
-Manual Notes:
-$manualNotes
+Required hierarchy sections:
+$hierarchySections
+
+Existing notes to preserve and improve:
+${existingNotes.isEmpty ? 'None' : existingNotes.join('\n\n')}
 
 Task:
-Generate comprehensive, accurate university-level study notes for this syllabus area. Use existing manual notes as primary context, preserve and expand their correct information, and fill missing concepts with your academic knowledge. If notes are None, teach the topic fully from your knowledge. Include a definition, introduction, core concepts, working principles, architecture or structure where relevant, examples, applications, advantages, disadvantages, exam points, viva questions with concise answers, FAQs, memory tips, and revision notes. Organize with clear Markdown headings. Do not ask for materials.''';
+Generate concise, structured university lecture notes, not a chatbot response. For topic scope, first read the whole hierarchy and create a separate, clearly titled section for the topic introduction and for EVERY listed subtopic, in the same order. Do not omit or merge subtopics. For subtopic scope, write only that subtopic's complete note under its own title. Integrate student notes accurately and improve their organization; use existing AI notes only as references to verify and update, never as text to copy blindly. Cover missing areas from accurate academic knowledge. Use Markdown headings and clean bullet lists (no decorative horizontal rules, repeated asterisks, or markdown fences). Each section should include a definition, explanation, key concepts, important points, an example, and applications where relevant. Include working/process steps where applicable and a short memory tip when useful. End each section with a compact exam revision takeaway. Do not flatten the hierarchy, invent syllabus sections, or ask for materials.''';
     final response = await _completeWithFailover(
       AIRequest(messages: [
         const AIMessage(
           role: AIRole.system,
           content:
-              'You are an expert university-level tutor. Produce clear, correct, comprehensive notes. Treat the hierarchy as the syllabus and manual notes as optional context.',
+              'You are an expert university lecturer. Produce accurate, readable, structured study notes that follow the supplied hierarchy exactly. Preserve student-written notes and improve them; regenerate only the AI-authored note. Notes should be revision-friendly and exam-ready, not conversational.',
         ),
         AIMessage(role: AIRole.user, content: context),
       ]),
       temperature: 0.4,
+      maxTokens: 8192,
     );
-    final content = response.content.trim();
+    final content = _cleanGeneratedNotes(response.content);
     if (content.isEmpty) throw StateError('The AI returned empty notes.');
     return content;
+  }
+
+  String _cleanGeneratedNotes(String value) {
+    final lines = value.trim().split('\n');
+    if (lines.isNotEmpty && lines.first.trim().startsWith('```')) {
+      lines.removeAt(0);
+    }
+    if (lines.isNotEmpty && lines.last.trim() == '```') lines.removeLast();
+    final cleaned = lines
+        .where((line) {
+          final marker = line.trim();
+          if (marker.length >= 3 &&
+              marker.runes
+                  .every((rune) => rune == 45 || rune == 42 || rune == 95)) {
+            return false;
+          }
+          return marker != '**' && marker != '*' && marker != '__';
+        })
+        .map((line) {
+          final trimmed = line.trimLeft();
+          if (trimmed.startsWith('####'))
+            return line.replaceFirst('####', '###');
+          return line;
+        })
+        .join('\n')
+        .trim();
+    return cleaned;
   }
 
   Future<Map<String, dynamic>> _generateAndCache({
@@ -387,12 +423,12 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
     required String regenerationId,
   }) async {
     debugPrint('STUDY_TOOL_AI_INPUT ${jsonEncode({
-      'task': task,
-      'subjectId': subjectId,
-      'sourceSignature': _stableKey(studyContext),
-      'regenerationId': regenerationId,
-      'input': studyContext,
-    })}');
+          'task': task,
+          'subjectId': subjectId,
+          'sourceSignature': _stableKey(studyContext),
+          'regenerationId': regenerationId,
+          'input': studyContext,
+        })}');
     final request = AIRequest(messages: [
       AIMessage(
           role: AIRole.system,

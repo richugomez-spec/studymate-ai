@@ -745,14 +745,15 @@ class FirestoreService {
         .get(const GetOptions(source: Source.server));
     if (subject.data()?['ownerId'] != uid) return const [];
 
-    final topicsSnapshot =
-        await _subjectTopicsCol(subjectId).orderBy('order').get();
+    final topicsSnapshot = await _subjectTopicsCol(subjectId)
+        .orderBy('order')
+        .get(const GetOptions(source: Source.server));
 
     final topics = <Map<String, dynamic>>[];
     for (final topicDoc in topicsSnapshot.docs) {
       final subtopicsSnapshot = await _topicSubtopicsCol(subjectId, topicDoc.id)
           .orderBy('order')
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       topics.add({
         'id': topicDoc.id,
@@ -795,10 +796,9 @@ class FirestoreService {
     final topicSnapshot = snapshots[1] as QuerySnapshot<Map<String, dynamic>>;
     final noteSnapshot = snapshots[2] as QuerySnapshot<Map<String, dynamic>>;
     final subtopicSnapshots = await Future.wait(topicSnapshot.docs.map(
-      (topic) =>
-          _topicSubtopicsCol(cleanSubjectId, topic.id)
-              .orderBy('order')
-              .get(const GetOptions(source: Source.server)),
+      (topic) => _topicSubtopicsCol(cleanSubjectId, topic.id)
+          .orderBy('order')
+          .get(const GetOptions(source: Source.server)),
     ));
 
     final notes = noteSnapshot.docs
@@ -867,14 +867,14 @@ class FirestoreService {
       (total, snapshot) => total + snapshot.docs.length,
     );
     debugPrint('STUDY_FIRESTORE_HIERARCHY ${jsonEncode({
-      'subjectId': cleanSubjectId,
-      'subject': subjectSnapshot.data()?['name'],
-      'topics': topics.length,
-      'topicNames': topics.map((topic) => topic['name']).toList(),
-      'subtopics': subtopicCount,
-      'notes': notes.length,
-      'readSource': 'server',
-    })}');
+          'subjectId': cleanSubjectId,
+          'subject': subjectSnapshot.data()?['name'],
+          'topics': topics.length,
+          'topicNames': topics.map((topic) => topic['name']).toList(),
+          'subtopics': subtopicCount,
+          'notes': notes.length,
+          'readSource': 'server',
+        })}');
 
     return {
       'subject': {'id': subjectSnapshot.id, ...subjectSnapshot.data()!},
@@ -1422,7 +1422,8 @@ class FirestoreService {
       String subtopicId = '',
       String notes = '',
       String folderId = '',
-      List<String> tags = const []}) async {
+      List<String> tags = const [],
+      String origin = 'user'}) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to save knowledge.');
     final ref = await _knowledgeCol.add({
@@ -1439,10 +1440,67 @@ class FirestoreService {
       'folderId': folderId,
       'tags': tags,
       'kind': 'note',
+      'origin': origin,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     });
     return ref.id;
+  }
+
+  Future<String> saveOrUpdateAiKnowledgeNote({
+    required String title,
+    required String content,
+    required String subject,
+    required String subjectId,
+    required String topic,
+    required String topicId,
+    String subtopic = '',
+    String subtopicId = '',
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to save knowledge.');
+    final matches = await _knowledgeCol
+        .where('ownerId', isEqualTo: uid)
+        .where('subjectId', isEqualTo: subjectId)
+        .where('topicId', isEqualTo: topicId)
+        .where('kind', isEqualTo: 'note')
+        .get(const GetOptions(source: Source.server));
+    final generated = matches.docs.where((document) {
+      final data = document.data();
+      if ((data['subtopicId']?.toString() ?? '') != subtopicId) return false;
+      return data['origin'] == 'ai_generated' ||
+          (data['origin'] == null &&
+              (data['title']?.toString().startsWith('AI Notes -') ?? false));
+    }).toList(growable: false);
+    final fields = <String, dynamic>{
+      'ownerId': uid,
+      'title': title,
+      'content': content,
+      'subject': subject,
+      'subjectId': subjectId,
+      'topic': topic,
+      'topicId': topicId,
+      'subtopic': subtopic,
+      'subtopicId': subtopicId,
+      'kind': 'note',
+      'origin': 'ai_generated',
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+    if (generated.isEmpty) {
+      final ref = await _knowledgeCol.add({
+        ...fields,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      return ref.id;
+    }
+
+    final batch = _firestore.batch();
+    batch.update(generated.first.reference, fields);
+    for (final duplicate in generated.skip(1)) {
+      batch.delete(duplicate.reference);
+    }
+    await batch.commit();
+    return generated.first.id;
   }
 
   Future<void> updateKnowledgeNote({
@@ -1461,8 +1519,47 @@ class FirestoreService {
     await ref.update({
       'title': title.trim().isEmpty ? 'Note' : title.trim(),
       'content': content.trim(),
+      'origin': 'user',
       'updatedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  Future<int> deleteKnowledgeNotesForNode({
+    required String subjectId,
+    required String topicId,
+    String subtopicId = '',
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to delete notes.');
+    final snapshot = await _knowledgeCol
+        .where('ownerId', isEqualTo: uid)
+        .where('subjectId', isEqualTo: subjectId)
+        .where('topicId', isEqualTo: topicId)
+        .where('kind', isEqualTo: 'note')
+        .get(const GetOptions(source: Source.server));
+    final targets = snapshot.docs.where((document) =>
+        (document.data()['subtopicId']?.toString() ?? '') == subtopicId);
+    final documents = targets.toList(growable: false);
+    for (var i = 0; i < documents.length; i += 450) {
+      final batch = _firestore.batch();
+      for (final document in documents.skip(i).take(450)) {
+        batch.delete(document.reference);
+      }
+      await batch.commit();
+    }
+    return documents.length;
+  }
+
+  Future<void> deleteKnowledgeNote(String noteId) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to delete notes.');
+    final ref = _knowledgeCol.doc(noteId);
+    final snapshot = await ref.get(const GetOptions(source: Source.server));
+    final data = snapshot.data();
+    if (data == null || data['ownerId'] != uid || data['kind'] != 'note') {
+      throw StateError('That note is no longer available.');
+    }
+    await ref.delete();
   }
 
   Future<String> createWorkspaceFolder(

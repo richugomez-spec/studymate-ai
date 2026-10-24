@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,13 +13,17 @@ class TopicBuilder extends ConsumerStatefulWidget {
     super.key,
     required this.subjectId,
     required this.subjectName,
+    required this.notes,
     required this.onClose,
     required this.onAddNote,
     required this.onGenerateAiNotes,
+    required this.onEditNotes,
+    required this.onDeleteNotes,
   });
 
   final String subjectId;
   final String subjectName;
+  final List<Map<String, dynamic>> notes;
   final VoidCallback onClose;
   final Future<void> Function({
     String topicId,
@@ -31,6 +37,13 @@ class TopicBuilder extends ConsumerStatefulWidget {
     required String subtopicId,
     required String subtopic,
   }) onGenerateAiNotes;
+  final Future<void> Function(List<Map<String, dynamic>> notes) onEditNotes;
+  final Future<void> Function({
+    required String topicId,
+    required String topicName,
+    required String subtopicId,
+    required String subtopicName,
+  }) onDeleteNotes;
 
   @override
   ConsumerState<TopicBuilder> createState() => _TopicBuilderState();
@@ -40,6 +53,16 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
   final Map<String, bool> _expandedTopics = {};
   bool _isLoading = false;
   List<Map<String, dynamic>> _topics = [];
+  String? _lastLibraryVersion;
+  Timer? _libraryChangeDebounce;
+
+  List<Map<String, dynamic>> _notesAt(String topicId,
+          [String subtopicId = '']) =>
+      widget.notes
+          .where((note) =>
+              note['topicId']?.toString() == topicId &&
+              (note['subtopicId']?.toString() ?? '') == subtopicId)
+          .toList();
 
   @override
   void initState() {
@@ -68,6 +91,12 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
         );
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _libraryChangeDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _addTopic() async {
@@ -276,6 +305,23 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AsyncValue<String>>(
+      subjectTopicsVersionProvider(widget.subjectId),
+      (_, next) {
+        final version = next.valueOrNull;
+        if (version == null || version.isEmpty) return;
+        if (_lastLibraryVersion == null) {
+          _lastLibraryVersion = version;
+          return;
+        }
+        if (_lastLibraryVersion == version) return;
+        _lastLibraryVersion = version;
+        _libraryChangeDebounce?.cancel();
+        _libraryChangeDebounce = Timer(const Duration(milliseconds: 350), () {
+          if (mounted) _loadTopics();
+        });
+      },
+    );
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainer,
@@ -396,6 +442,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
         (topic['subtopics'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
             [];
     final isExpanded = _expandedTopics[topicId] ?? false;
+    final topicNotes = _notesAt(topicId);
 
     return AppHoverCard(
       margin: const EdgeInsets.only(bottom: 12),
@@ -460,9 +507,36 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                     onSelected: (action) {
                       if (action == 'delete') {
                         _deleteTopic(topicId, topicName);
+                      } else if (action == 'edit-notes') {
+                        widget.onEditNotes(topicNotes);
+                      } else if (action == 'delete-notes') {
+                        widget.onDeleteNotes(
+                          topicId: topicId,
+                          topicName: topicName,
+                          subtopicId: '',
+                          subtopicName: '',
+                        );
                       }
                     },
                     itemBuilder: (_) => [
+                      if (topicNotes.isNotEmpty)
+                        const PopupMenuItem(
+                          value: 'edit-notes',
+                          child: Row(children: [
+                            Icon(Icons.edit_note_outlined, size: 20),
+                            SizedBox(width: 8),
+                            Text('Edit Notes'),
+                          ]),
+                        ),
+                      if (topicNotes.isNotEmpty)
+                        const PopupMenuItem(
+                          value: 'delete-notes',
+                          child: Row(children: [
+                            Icon(Icons.delete_outline, size: 20),
+                            SizedBox(width: 8),
+                            Text('Delete Notes'),
+                          ]),
+                        ),
                       const PopupMenuItem(
                         value: 'delete',
                         child: Row(
@@ -552,7 +626,14 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                             subtopic: '',
                           ),
                           icon: const Icon(Icons.auto_awesome, size: 18),
-                          label: const Text('\u2728 Generate AI Notes'),
+                          label: Text(topicNotes.any((note) =>
+                                  note['origin'] == 'ai_generated' ||
+                                  (note['title']
+                                          ?.toString()
+                                          .startsWith('AI Notes -') ??
+                                      false))
+                              ? '\u2728 Regenerate AI Notes'
+                              : '\u2728 Generate AI Notes'),
                         ),
                       ),
                     ],
@@ -570,6 +651,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
       String topicId, String topicName, Map<String, dynamic> subtopic) {
     final subtopicId = subtopic['id'] as String;
     final subtopicName = subtopic['name'] as String;
+    final subtopicNotes = _notesAt(topicId, subtopicId);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
@@ -608,6 +690,43 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32),
               ),
+              if (subtopicNotes.isNotEmpty)
+                PopupMenuButton<String>(
+                  tooltip: 'Manage notes',
+                  onSelected: (action) {
+                    if (action == 'edit') {
+                      widget.onEditNotes(subtopicNotes);
+                    } else if (action == 'delete-notes') {
+                      widget.onDeleteNotes(
+                        topicId: topicId,
+                        topicName: topicName,
+                        subtopicId: subtopicId,
+                        subtopicName: subtopicName,
+                      );
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Row(children: [
+                        Icon(Icons.edit_note_outlined, size: 20),
+                        SizedBox(width: 8),
+                        Text('Edit Notes'),
+                      ]),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete-notes',
+                      child: Row(children: [
+                        Icon(Icons.delete_outline, size: 20),
+                        SizedBox(width: 8),
+                        Text('Delete Notes'),
+                      ]),
+                    ),
+                  ],
+                  icon: const Icon(Icons.more_vert, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32),
+                ),
               IconButton(
                 icon: Icon(Icons.close,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -627,7 +746,12 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
               subtopic: subtopicName,
             ),
             icon: const Icon(Icons.auto_awesome, size: 16),
-            label: const Text('\u2728 Generate AI Notes'),
+            label: Text(subtopicNotes.any((note) =>
+                    note['origin'] == 'ai_generated' ||
+                    (note['title']?.toString().startsWith('AI Notes -') ??
+                        false))
+                ? '\u2728 Regenerate AI Notes'
+                : '\u2728 Generate AI Notes'),
           ),
         ],
       ),

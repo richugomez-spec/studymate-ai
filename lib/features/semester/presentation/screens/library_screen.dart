@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -274,7 +275,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           );
       final title =
           subtopic.isNotEmpty ? 'AI Notes - $subtopic' : 'AI Notes - $topic';
-      await ref.read(firestoreServiceProvider).saveKnowledgeNote(
+      await ref.read(firestoreServiceProvider).saveOrUpdateAiKnowledgeNote(
             title: title,
             content: content,
             subject: subjectName,
@@ -284,10 +285,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             subtopic: subtopic,
             subtopicId: subtopicId,
           );
+      KnowledgeEngine.invalidateSubjectContext(subjectId,
+          ownerId: ref.read(firestoreServiceProvider).currentUserId);
+      ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
       if (mounted) {
         AppNotification.showSuccess(
           context: context,
-          message: 'AI notes saved and ready to edit.',
+          message: 'AI notes updated and ready to review.',
         );
       }
     } catch (error) {
@@ -349,6 +353,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             title: title,
             content: content,
           );
+      final subjectId = note['subjectId']?.toString() ?? '';
+      if (subjectId.isNotEmpty) {
+        KnowledgeEngine.invalidateSubjectContext(subjectId,
+            ownerId: ref.read(firestoreServiceProvider).currentUserId);
+      }
       if (mounted) {
         AppNotification.showSuccess(
           context: context,
@@ -357,6 +366,210 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       }
     } catch (error) {
       _showError('Could not update note: $error');
+    }
+  }
+
+  Future<void> _viewNote(Map<String, dynamic> note) async {
+    final topicId = note['topicId']?.toString() ?? '';
+    final noteContent = (note['content'] ?? note['notes'] ?? '').toString();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(note['title']?.toString() ?? 'Study note'),
+        content: SizedBox(
+          width: 760,
+          child: SingleChildScrollView(
+            child: MarkdownBody(
+              data: _cleanNoteForDisplay(noteContent),
+              selectable: true,
+              styleSheet:
+                  MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                h1: Theme.of(context).textTheme.headlineSmall,
+                h2: Theme.of(context).textTheme.titleLarge,
+                h3: Theme.of(context).textTheme.titleMedium,
+                p: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(height: 1.5),
+                listBullet: Theme.of(context).textTheme.bodyMedium,
+                horizontalRuleDecoration: const BoxDecoration(),
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          if (topicId.isNotEmpty)
+            TextButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _generateAiNotes(
+                  topicId: topicId,
+                  topic: note['topic']?.toString() ?? '',
+                  subtopicId: note['subtopicId']?.toString() ?? '',
+                  subtopic: note['subtopic']?.toString() ?? '',
+                );
+              },
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('Regenerate'),
+            ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _editNote(note);
+            },
+            child: const Text('Edit'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _cleanNoteForDisplay(String value) {
+    final lines = value.trim().split('\n');
+    if (lines.isNotEmpty && lines.first.trim().startsWith('```')) {
+      lines.removeAt(0);
+    }
+    if (lines.isNotEmpty && lines.last.trim() == '```') lines.removeLast();
+    return lines
+        .where((line) {
+          final marker = line.trim();
+          if (marker.length >= 3 &&
+              marker.runes
+                  .every((rune) => rune == 45 || rune == 42 || rune == 95)) {
+            return false;
+          }
+          return marker != '**' && marker != '*' && marker != '__';
+        })
+        .join('\n')
+        .trim();
+  }
+
+  Future<void> _editNotes(List<Map<String, dynamic>> notes) async {
+    if (notes.isEmpty) return;
+    if (notes.length == 1) {
+      await _editNote(notes.single);
+      return;
+    }
+    final selected = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Choose a note to edit'),
+        content: SizedBox(
+          width: 480,
+          child: ListView(
+            shrinkWrap: true,
+            children: notes
+                .map((note) => ListTile(
+                      title: Text(note['title']?.toString() ?? 'Note'),
+                      subtitle: Text(note['origin'] == 'ai_generated'
+                          ? 'AI-generated study note'
+                          : 'Your note'),
+                      onTap: () => Navigator.pop(dialogContext, note),
+                    ))
+                .toList(growable: false),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (selected != null) await _editNote(selected);
+  }
+
+  Future<void> _deleteNote(Map<String, dynamic> note) async {
+    final id = note['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete this note?'),
+        content: const Text(
+            'Only this note will be deleted. Its topic and subtopic will remain in the Library.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete note'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _saving = true);
+    try {
+      await ref.read(firestoreServiceProvider).deleteKnowledgeNote(id);
+      final subjectId = note['subjectId']?.toString() ?? '';
+      if (subjectId.isNotEmpty) {
+        KnowledgeEngine.invalidateSubjectContext(subjectId,
+            ownerId: ref.read(firestoreServiceProvider).currentUserId);
+      }
+      if (mounted) {
+        AppNotification.showSuccess(context: context, message: 'Note deleted.');
+      }
+    } catch (error) {
+      _showError('Could not delete note: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _deleteNodeNotes({
+    required String topicId,
+    required String topicName,
+    required String subtopicId,
+    required String subtopicName,
+  }) async {
+    final nodeName = subtopicName.isEmpty ? topicName : subtopicName;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete notes for $nodeName?'),
+        content: Text(
+            'This removes only notes attached to $nodeName. The topic and subtopic will remain in the Library.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete Notes'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || _activeSubjectId == null) return;
+    setState(() => _saving = true);
+    try {
+      final count =
+          await ref.read(firestoreServiceProvider).deleteKnowledgeNotesForNode(
+                subjectId: _activeSubjectId!,
+                topicId: topicId,
+                subtopicId: subtopicId,
+              );
+      KnowledgeEngine.invalidateSubjectContext(_activeSubjectId,
+          ownerId: ref.read(firestoreServiceProvider).currentUserId);
+      if (mounted) {
+        AppNotification.showSuccess(
+          context: context,
+          message: '$count ${count == 1 ? 'note' : 'notes'} deleted.',
+        );
+      }
+    } catch (error) {
+      _showError('Could not delete notes: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -385,7 +598,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             _activeSubjectName = prevName;
           });
           ref.read(activeKnowledgeSubjectIdProvider.notifier).state = prevId;
-          ref.read(activeKnowledgeSubjectNameProvider.notifier).state = prevName;
+          ref.read(activeKnowledgeSubjectNameProvider.notifier).state =
+              prevName;
           await ref.read(firestoreServiceProvider).setActiveSubjectId(prevId);
           if (mounted) {
             AppNotification.showSuccess(
@@ -474,9 +688,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                               key: ValueKey(_activeSubjectId),
                               subjectId: _activeSubjectId!,
                               subjectName: _activeSubjectName,
+                              notes: notes,
                               onClose: _clearActiveSubject,
                               onAddNote: _addNote,
                               onGenerateAiNotes: _generateAiNotes,
+                              onEditNotes: _editNotes,
+                              onDeleteNotes: _deleteNodeNotes,
                             ),
                           ),
                           _NotesShelf(
@@ -484,6 +701,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                             isSaving: _saving,
                             onAddNote: () => _addNote(),
                             onEditNote: _editNote,
+                            onViewNote: _viewNote,
+                            onDeleteNote: _deleteNote,
+                            onRegenerateNote: (note) => _generateAiNotes(
+                              topicId: note['topicId']?.toString() ?? '',
+                              topic: note['topic']?.toString() ?? '',
+                              subtopicId: note['subtopicId']?.toString() ?? '',
+                              subtopic: note['subtopic']?.toString() ?? '',
+                            ),
                           ),
                         ],
                       ),
@@ -566,12 +791,18 @@ class _NotesShelf extends StatelessWidget {
     required this.isSaving,
     required this.onAddNote,
     required this.onEditNote,
+    required this.onViewNote,
+    required this.onDeleteNote,
+    required this.onRegenerateNote,
   });
 
   final List<Map<String, dynamic>> notes;
   final bool isSaving;
   final VoidCallback onAddNote;
   final ValueChanged<Map<String, dynamic>> onEditNote;
+  final ValueChanged<Map<String, dynamic>> onViewNote;
+  final ValueChanged<Map<String, dynamic>> onDeleteNote;
+  final ValueChanged<Map<String, dynamic>> onRegenerateNote;
 
   @override
   Widget build(BuildContext context) {
@@ -625,7 +856,35 @@ class _NotesShelf extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                onTap: () => onEditNote(note),
+                                trailing: PopupMenuButton<String>(
+                                  tooltip: 'Manage note',
+                                  onSelected: (action) {
+                                    if (action == 'edit') {
+                                      onEditNote(note);
+                                    } else if (action == 'regenerate') {
+                                      onRegenerateNote(note);
+                                    } else if (action == 'delete') {
+                                      onDeleteNote(note);
+                                    }
+                                  },
+                                  itemBuilder: (_) => [
+                                    const PopupMenuItem(
+                                      value: 'edit',
+                                      child: Text('Edit Notes'),
+                                    ),
+                                    if ((note['topicId']?.toString() ?? '')
+                                        .isNotEmpty)
+                                      const PopupMenuItem(
+                                        value: 'regenerate',
+                                        child: Text('Regenerate Notes'),
+                                      ),
+                                    const PopupMenuItem(
+                                      value: 'delete',
+                                      child: Text('Delete Notes'),
+                                    ),
+                                  ],
+                                ),
+                                onTap: () => onViewNote(note),
                               ),
                             ),
                           ))
