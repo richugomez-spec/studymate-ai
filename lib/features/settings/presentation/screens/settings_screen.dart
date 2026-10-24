@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
+import '../../../../core/widgets/notifications/app_notification.dart';
 import '../../../../core/ai/ai_config.dart';
 import '../../../../core/ai/ai_message.dart';
 import '../../../../core/ai/services/gemini_api_key_provider.dart';
@@ -27,21 +28,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _currentModel = ApiKeyManager.modelFallbacks.first;
 
   void _onAboutTileTap() {
-    if (_developerUnlocked) return;
-    _developerTapCount++;
-    if (_developerTapCount >= 7) {
-      setState(() => _developerUnlocked = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Developer Options unlocked')),
+    if (_developerUnlocked) {
+      AppNotification.showInfo(
+        context: context,
+        message: 'Developer Options are already unlocked.',
       );
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-            '${7 - _developerTapCount} more taps to unlock Developer Options'),
-        duration: const Duration(milliseconds: 700),
-      ),
+    _developerTapCount++;
+    if (_developerTapCount >= 7) {
+      setState(() => _developerUnlocked = true);
+      AppNotification.showSuccess(
+        context: context,
+        title: 'Developer Mode',
+        message: 'Developer Options unlocked!',
+      );
+      return;
+    }
+    AppNotification.showInfo(
+      context: context,
+      message: '${7 - _developerTapCount} more taps to unlock Developer Options',
+      duration: const Duration(milliseconds: 1200),
     );
   }
 
@@ -67,8 +74,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (shouldReset != true) return;
     await ref.read(aiApiKeyProvider.notifier).setApiKey('');
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved API key reset.')),
+      AppNotification.showWarning(
+        context: context,
+        title: 'API Key Reset',
+        message: 'Saved personal API key has been cleared.',
       );
     }
   }
@@ -76,6 +85,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _testConnection() async {
     if (_testingConnection) return;
     setState(() => _testingConnection = true);
+    final loadingHandle = AppNotification.showLoading(
+      context: context,
+      title: 'Testing Gemini API',
+      message: 'Connecting to AI backend...',
+    );
     try {
       final response = await ref.read(apiKeyManagerProvider).run(
             (apiKey, model) => GeminiProvider(AIConfig(
@@ -89,13 +103,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           );
       if (!mounted) return;
       setState(() => _currentModel = response.model);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Connection successful (${response.model}).')),
+      loadingHandle.success(
+        title: 'Connection Successful',
+        message: 'Active Model: ${response.model}',
       );
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Connection test failed.')),
+        loadingHandle.error(
+          title: 'Connection Failed',
+          message: 'Unable to reach Gemini API ($e)',
         );
       }
     } finally {
@@ -173,9 +189,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onPressed: () {
               ref.read(aiApiKeyProvider.notifier).setApiKey(controller.text);
               Navigator.of(ctx).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text('AI access key updated successfully.')),
+              AppNotification.showSuccess(
+                context: context,
+                message: 'AI access key updated successfully.',
               );
             },
             style: ElevatedButton.styleFrom(
@@ -185,6 +201,279 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showNotificationShowcase(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        final theme = Theme.of(sheetCtx);
+        final isDark = theme.brightness == Brightness.dark;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.darkSurface : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            border: Border.all(
+              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Handle bar
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: (isDark ? Colors.white : Colors.black).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: AppColors.electricViolet.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.notifications_active_rounded,
+                      color: AppColors.electricViolet,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Floating Notification System',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: isDark
+                                ? AppColors.darkTextPrimary
+                                : AppColors.lightTextPrimary,
+                          ),
+                        ),
+                        Text(
+                          'Tap any item to test entrance animations, blur, & actions',
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 12,
+                            color: isDark
+                                ? AppColors.darkTextSecondary
+                                : AppColors.lightTextSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(sheetCtx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Notification Type Buttons Grid
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  // 1. Success
+                  _buildShowcaseButton(
+                    label: 'Success Notification',
+                    icon: Icons.check_circle_rounded,
+                    color: AppColors.success,
+                    onTap: () {
+                      AppNotification.showSuccess(
+                        context: context,
+                        title: 'Study Session Saved',
+                        message: 'Quiz completed with 95% accuracy! +50 XP earned.',
+                      );
+                    },
+                  ),
+
+                  // 2. Error
+                  _buildShowcaseButton(
+                    label: 'Error Notification',
+                    icon: Icons.error_outline_rounded,
+                    color: AppColors.error,
+                    onTap: () {
+                      AppNotification.showError(
+                        context: context,
+                        title: 'Sync Failed',
+                        message: 'Could not connect to the database. Tap Retry.',
+                        actionLabel: 'Retry',
+                        onAction: () {
+                          AppNotification.showInfo(
+                            context: context,
+                            message: 'Retrying sync operation...',
+                          );
+                        },
+                      );
+                    },
+                  ),
+
+                  // 3. Warning
+                  _buildShowcaseButton(
+                    label: 'Warning Notification',
+                    icon: Icons.warning_amber_rounded,
+                    color: AppColors.warning,
+                    onTap: () {
+                      AppNotification.showWarning(
+                        context: context,
+                        title: 'Storage Warning',
+                        message: 'Local offline cache is 88% full.',
+                        actionLabel: 'Clean',
+                        onAction: () {
+                          AppNotification.showSuccess(
+                            context: context,
+                            message: 'Offline cache cleared (124 MB freed).',
+                          );
+                        },
+                      );
+                    },
+                  ),
+
+                  // 4. Loading
+                  _buildShowcaseButton(
+                    label: 'Loading Notification',
+                    icon: Icons.autorenew_rounded,
+                    color: AppColors.skyBlue,
+                    onTap: () {
+                      final handle = AppNotification.showLoading(
+                        context: context,
+                        title: 'AI Processing',
+                        message: 'Extracting mind map nodes from lecture notes...',
+                      );
+                      // Auto-transition after 2.5s to showcase in-place morphing
+                      Future.delayed(const Duration(milliseconds: 2500), () {
+                        handle.success(
+                          title: 'Mind Map Ready',
+                          message: 'Generated 24 interactive concept nodes.',
+                        );
+                      });
+                    },
+                  ),
+
+                  // 5. Information
+                  _buildShowcaseButton(
+                    label: 'Info Notification',
+                    icon: Icons.info_outline_rounded,
+                    color: AppColors.brandAccent,
+                    onTap: () {
+                      AppNotification.showInfo(
+                        context: context,
+                        title: 'System Notice',
+                        message: 'Scheduled backup will start tonight at 2:00 AM.',
+                      );
+                    },
+                  ),
+
+                  // 6. Undo
+                  _buildShowcaseButton(
+                    label: 'Undo Notification',
+                    icon: Icons.undo_rounded,
+                    color: AppColors.electricViolet,
+                    onTap: () {
+                      AppNotification.showUndo(
+                        context: context,
+                        title: 'Topic Deleted',
+                        message: 'Topic "Organic Chemistry" was deleted.',
+                        onUndo: () {
+                          AppNotification.showSuccess(
+                            context: context,
+                            message: 'Topic "Organic Chemistry" restored.',
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Dismiss all button
+              OutlinedButton.icon(
+                onPressed: () => AppNotification.dismissAll(),
+                icon: const Icon(Icons.clear_all_rounded, size: 18),
+                label: const Text('Dismiss All Floating Notifications'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildShowcaseButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        hoverColor: color.withOpacity(0.12),
+        child: Container(
+          width: 190,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: color.withOpacity(isDark ? 0.12 : 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: color.withOpacity(isDark ? 0.35 : 0.25),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -312,6 +601,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     )
                   : const Icon(Icons.chevron_right_rounded),
               onTap: _testConnection,
+            ),
+            _SettingsTile(
+              icon: Icons.notifications_active_outlined,
+              iconColor: AppColors.electricViolet,
+              title: 'Floating Notifications Showcase',
+              subtitle: 'Test all 6 modern glass notification variants',
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _showNotificationShowcase(context),
             ),
           ],
 

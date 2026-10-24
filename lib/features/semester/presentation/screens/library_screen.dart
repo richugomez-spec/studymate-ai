@@ -6,6 +6,7 @@ import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/notifications/app_notification.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/auth_required_modal.dart';
@@ -284,8 +285,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             subtopicId: subtopicId,
           );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI notes saved and ready to edit.')),
+        AppNotification.showSuccess(
+          context: context,
+          message: 'AI notes saved and ready to edit.',
         );
       }
     } catch (error) {
@@ -347,12 +349,20 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
             title: title,
             content: content,
           );
+      if (mounted) {
+        AppNotification.showSuccess(
+          context: context,
+          message: 'Note saved successfully.',
+        );
+      }
     } catch (error) {
       _showError('Could not update note: $error');
     }
   }
 
   Future<void> _clearActiveSubject() async {
+    final prevId = _activeSubjectId;
+    final prevName = _activeSubjectName;
     setState(() {
       _activeSubjectId = null;
       _activeSubjectName = 'My Subjects';
@@ -363,12 +373,37 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     ref.read(selectedKnowledgeSourceIdsProvider.notifier).state = const [];
     ref.read(activeDocumentProvider.notifier).clearDocument();
     await ref.read(firestoreServiceProvider).setActiveSubjectId(null);
+
+    if (mounted && prevId != null) {
+      AppNotification.showUndo(
+        context: context,
+        message: 'Active subject deselected',
+        onUndo: () async {
+          if (!mounted) return;
+          setState(() {
+            _activeSubjectId = prevId;
+            _activeSubjectName = prevName;
+          });
+          ref.read(activeKnowledgeSubjectIdProvider.notifier).state = prevId;
+          ref.read(activeKnowledgeSubjectNameProvider.notifier).state = prevName;
+          await ref.read(firestoreServiceProvider).setActiveSubjectId(prevId);
+          if (mounted) {
+            AppNotification.showSuccess(
+              context: context,
+              message: 'Subject restored: $prevName',
+            );
+          }
+        },
+      );
+    }
   }
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    AppNotification.showError(
+      context: context,
+      message: message,
+    );
   }
 
   void _openTool(String route) {

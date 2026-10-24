@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/notifications/app_notification.dart';
 import '../../../../services/firestore_service.dart';
 
 class TopicBuilder extends ConsumerStatefulWidget {
@@ -60,8 +61,9 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
     } catch (error) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load topics: $error')),
+        AppNotification.showError(
+          context: context,
+          message: 'Failed to load topics: $error',
         );
       }
     }
@@ -105,11 +107,18 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
           );
       await _loadTopics();
       setState(() => _expandedTopics[topicId] = true);
+      if (mounted) {
+        AppNotification.showSuccess(
+          context: context,
+          message: 'Topic "$name" created successfully.',
+        );
+      }
     } catch (error) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create topic: $error')),
+        AppNotification.showError(
+          context: context,
+          message: 'Failed to create topic: $error',
         );
       }
     }
@@ -153,11 +162,18 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
             name: name,
           );
       await _loadTopics();
+      if (mounted) {
+        AppNotification.showSuccess(
+          context: context,
+          message: 'Subtopic "$name" created successfully.',
+        );
+      }
     } catch (error) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to create subtopic: $error')),
+        AppNotification.showError(
+          context: context,
+          message: 'Failed to create subtopic: $error',
         );
       }
     }
@@ -193,11 +209,18 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
             topicId: topicId,
           );
       await _loadTopics();
+      if (mounted) {
+        AppNotification.showSuccess(
+          context: context,
+          message: 'Topic "$topicName" deleted.',
+        );
+      }
     } catch (error) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete topic: $error')),
+        AppNotification.showError(
+          context: context,
+          message: 'Failed to delete topic: $error',
         );
       }
     }
@@ -233,11 +256,18 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
             subtopicId: subtopicId,
           );
       await _loadTopics();
+      if (mounted) {
+        AppNotification.showSuccess(
+          context: context,
+          message: 'Subtopic "$subtopicName" deleted.',
+        );
+      }
     } catch (error) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete subtopic: $error')),
+        AppNotification.showError(
+          context: context,
+          message: 'Failed to delete subtopic: $error',
         );
       }
     }

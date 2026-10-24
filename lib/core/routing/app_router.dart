@@ -25,6 +25,7 @@ import '../../features/planner/presentation/screens/planner_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/achievements/presentation/screens/achievements_screen.dart';
 import '../../features/study_tools/presentation/screens/study_tools_screen.dart';
+import '../widgets/notifications/app_notification.dart';
 import '../widgets/shell/main_shell.dart';
 import 'app_routes.dart';
 
@@ -53,6 +54,7 @@ GoRouter appRouter(AppRouterRef ref) {
   ref.onDispose(refreshNotifier.dispose);
 
   return GoRouter(
+    navigatorKey: AppNotification.globalNavigatorKey,
     initialLocation: AppRoutes.home,
     refreshListenable: refreshNotifier,
     redirect: (context, state) {

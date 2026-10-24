@@ -3,8 +3,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/notifications/app_notification.dart';
 import '../providers/auth_provider.dart';
 
 /// Modern, AI SaaS Login Screen inspired by Linear, Google AI Studio, and Perplexity.
@@ -206,41 +207,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message,
-            style: const TextStyle(
-                fontFamily: 'Inter', fontWeight: FontWeight.w600)),
-        backgroundColor: AppColors.error,
-        behavior: SnackBarBehavior.floating,
-      ),
+    AppNotification.showError(
+      context: context,
+      message: message,
     );
   }
 
   void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message,
-            style: const TextStyle(
-                fontFamily: 'Inter', fontWeight: FontWeight.w600)),
-        backgroundColor: AppColors.success,
-        behavior: SnackBarBehavior.floating,
-      ),
+    AppNotification.showSuccess(
+      context: context,
+      message: message,
     );
   }
 
   void _showWarning(String message) {
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message,
-            style: const TextStyle(
-                fontFamily: 'Inter', fontWeight: FontWeight.w600)),
-        backgroundColor: const Color(0xFFF59E0B),
-        behavior: SnackBarBehavior.floating,
-      ),
+    AppNotification.showWarning(
+      context: context,
+      message: message,
     );
   }
 
