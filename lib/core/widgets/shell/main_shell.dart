@@ -10,15 +10,10 @@ import '../../../features/auth/presentation/widgets/auth_required_modal.dart';
 
 /// Main navigation shell with sidebar (desktop) or bottom nav (mobile).
 /// Wraps all ShellRoute tabs using GoRouter.
-class MainShell extends ConsumerStatefulWidget {
+class MainShell extends StatelessWidget {
   final Widget child;
   const MainShell({required this.child, super.key});
 
-  @override
-  ConsumerState<MainShell> createState() => _MainShellState();
-}
-
-class _MainShellState extends ConsumerState<MainShell> {
   static const _sectionedNav = [
     _NavSection(label: 'WORKSPACE', destinations: [
       _NavDestination(
@@ -86,6 +81,14 @@ class _MainShellState extends ConsumerState<MainShell> {
   static final _allDestinations =
       _sectionedNav.expand((s) => s.destinations).toList();
 
+  static final _mobileDestinations = [
+    _allDestinations[0], // Home
+    _allDestinations[1], // Library
+    _allDestinations[2], // AI Chat
+    _allDestinations[9], // Progress
+    _allDestinations[10], // Settings
+  ];
+
   int _calculateSelectedIndex(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
     for (int i = 0; i < _allDestinations.length; i++) {
@@ -100,13 +103,15 @@ class _MainShellState extends ConsumerState<MainShell> {
     return 0;
   }
 
-  void _onDestinationSelected(int index) {
+  void _onDestinationSelected(BuildContext context, int index) {
     context.go(_allDestinations[index].route);
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
+    // Depend only on the available width so keyboard/inset changes do not
+    // rebuild the navigation shell unnecessarily.
+    final screenWidth = MediaQuery.sizeOf(context).width;
     final isDesktop = screenWidth >= 900;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final selectedIndex = _calculateSelectedIndex(context);
@@ -121,7 +126,8 @@ class _MainShellState extends ConsumerState<MainShell> {
               selectedIndex: selectedIndex,
               sectionedNav: _sectionedNav,
               allDestinations: _allDestinations,
-              onDestinationSelected: _onDestinationSelected,
+              onDestinationSelected: (index) =>
+                  _onDestinationSelected(context, index),
             ),
             VerticalDivider(
               width: 1,
@@ -129,27 +135,28 @@ class _MainShellState extends ConsumerState<MainShell> {
               color:
                   isDark ? AppColors.darkBorderSubtle : AppColors.lightBorder,
             ),
-            Expanded(child: widget.child),
+            Expanded(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1600),
+                  child: child,
+                ),
+              ),
+            ),
           ],
         ),
       );
     }
 
     // Mobile bottom nav — workspace + account tabs only
-    final mobileDestinations = [
-      _allDestinations[0], // Home
-      _allDestinations[1], // Library
-      _allDestinations[2], // AI Chat
-      _allDestinations[9], // Progress
-      _allDestinations[10], // Settings
-    ];
-
     return Scaffold(
-      body: widget.child,
+      body: child,
       bottomNavigationBar: _StudyMateBottomNav(
         selectedIndex: selectedIndex,
-        destinations: mobileDestinations,
-        onDestinationSelected: _onDestinationSelected,
+        destinations: _mobileDestinations,
+        onDestinationSelected: (index) =>
+            _onDestinationSelected(context, index),
       ),
     );
   }

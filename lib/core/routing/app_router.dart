@@ -25,6 +25,7 @@ import '../../features/planner/presentation/screens/planner_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
 import '../../features/achievements/presentation/screens/achievements_screen.dart';
 import '../../features/study_tools/presentation/screens/study_tools_screen.dart';
+import '../animations/animations.dart';
 import '../widgets/notifications/app_notification.dart';
 import '../widgets/shell/main_shell.dart';
 import 'app_routes.dart';
@@ -78,15 +79,24 @@ GoRouter appRouter(AppRouterRef ref) {
       // ── Auth Routes ────────────────────────────────────────────────────────
       GoRoute(
         path: AppRoutes.splash,
-        builder: (_, __) => const SplashScreen(),
+        pageBuilder: (_, state) => AppPageTransitions.fadeThrough(
+          key: state.pageKey,
+          child: const SplashScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.onboarding,
-        builder: (_, __) => const OnboardingScreen(),
+        pageBuilder: (_, state) => AppPageTransitions.fadeThrough(
+          key: state.pageKey,
+          child: const OnboardingScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.login,
-        builder: (_, __) => const LoginScreen(),
+        pageBuilder: (_, state) => AppPageTransitions.fadeThrough(
+          key: state.pageKey,
+          child: const LoginScreen(),
+        ),
       ),
 
       // ── Shell (Bottom Navigation) ─────────────────────────────────────────
@@ -95,39 +105,51 @@ GoRouter appRouter(AppRouterRef ref) {
         routes: [
           GoRoute(
             path: AppRoutes.home,
-            pageBuilder: (_, __) =>
-                const NoTransitionPage(child: DashboardScreen()),
+            pageBuilder: (_, state) => AppPageTransitions.fadeThrough(
+              key: state.pageKey,
+              child: const DashboardScreen(),
+            ),
           ),
           GoRoute(
             path: AppRoutes.library,
-            pageBuilder: (_, __) =>
-                const NoTransitionPage(child: LibraryScreen()),
+            pageBuilder: (_, state) => AppPageTransitions.fadeThrough(
+              key: state.pageKey,
+              child: const LibraryScreen(),
+            ),
           ),
           GoRoute(
             path: AppRoutes.aiChat,
-            pageBuilder: (_, __) => const NoTransitionPage(child: ChatScreen()),
+            pageBuilder: (_, state) => AppPageTransitions.fadeThrough(
+              key: state.pageKey,
+              child: const ChatScreen(),
+            ),
           ),
           GoRoute(
             path: AppRoutes.studyTools,
-            pageBuilder: (_, __) =>
-                const NoTransitionPage(child: StudyToolsScreen()),
+            pageBuilder: (_, state) => AppPageTransitions.fadeThrough(
+              key: state.pageKey,
+              child: const StudyToolsScreen(),
+            ),
           ),
           GoRoute(
             path: AppRoutes.flashcards,
-            pageBuilder: (_, state) => NoTransitionPage(
+            pageBuilder: (_, state) => AppPageTransitions.slide(
+              key: state.pageKey,
               child: FlashcardScreen(topicId: state.pathParameters['topicId']),
             ),
           ),
           GoRoute(
             path: AppRoutes.quiz,
-            pageBuilder: (_, state) => NoTransitionPage(
+            pageBuilder: (_, state) => AppPageTransitions.slide(
+              key: state.pageKey,
               child: QuizScreen(
                   topicId: state.pathParameters['topicId'] ?? 'current'),
             ),
           ),
           GoRoute(
             path: AppRoutes.summary,
-            pageBuilder: (_, state) => NoTransitionPage(
+            pageBuilder: (_, state) => AppPageTransitions.slide(
+              key: state.pageKey,
               child: SummaryScreen(
                 topicId: state.pathParameters['topicId'] ?? 'current',
                 initialMode: state.uri.queryParameters['mode'],
@@ -136,34 +158,41 @@ GoRouter appRouter(AppRouterRef ref) {
           ),
           GoRoute(
             path: AppRoutes.mindMap,
-            pageBuilder: (_, state) => NoTransitionPage(
+            pageBuilder: (_, state) => AppPageTransitions.slide(
+              key: state.pageKey,
               child: MindMapScreen(
                   topicId: state.pathParameters['topicId'] ?? 'current'),
             ),
           ),
           GoRoute(
             path: AppRoutes.questionPaperAnalyzer,
-            pageBuilder: (_, state) => NoTransitionPage(
+            pageBuilder: (_, state) => AppPageTransitions.slide(
+              key: state.pageKey,
               child: QuestionPaperAnalyzerScreen(
                   topicId: state.pathParameters['topicId'] ?? 'current'),
             ),
           ),
           GoRoute(
             path: AppRoutes.examGenerator,
-            pageBuilder: (_, state) => NoTransitionPage(
+            pageBuilder: (_, state) => AppPageTransitions.slide(
+              key: state.pageKey,
               child: ExamGeneratorScreen(
                   topicId: state.pathParameters['topicId'] ?? 'current'),
             ),
           ),
           GoRoute(
             path: AppRoutes.progress,
-            pageBuilder: (_, __) =>
-                const NoTransitionPage(child: AnalyticsScreen()),
+            pageBuilder: (_, state) => AppPageTransitions.fadeThrough(
+              key: state.pageKey,
+              child: const AnalyticsScreen(),
+            ),
           ),
           GoRoute(
             path: AppRoutes.settings,
-            pageBuilder: (_, __) =>
-                const NoTransitionPage(child: SettingsScreen()),
+            pageBuilder: (_, state) => AppPageTransitions.fadeThrough(
+              key: state.pageKey,
+              child: const SettingsScreen(),
+            ),
           ),
         ],
       ),
@@ -171,35 +200,53 @@ GoRouter appRouter(AppRouterRef ref) {
       // ── Content Routes ────────────────────────────────────────────────────
       GoRoute(
         path: AppRoutes.subject,
-        builder: (_, state) => SubjectScreen(
-          subjectId: state.pathParameters['subjectId']!,
+        pageBuilder: (_, state) => AppPageTransitions.slide(
+          key: state.pageKey,
+          child: SubjectScreen(
+            subjectId: state.pathParameters['subjectId']!,
+          ),
         ),
       ),
       GoRoute(
         path: AppRoutes.unit,
-        builder: (_, state) => UnitScreen(
-          unitId: state.pathParameters['unitId']!,
+        pageBuilder: (_, state) => AppPageTransitions.slide(
+          key: state.pageKey,
+          child: UnitScreen(
+            unitId: state.pathParameters['unitId']!,
+          ),
         ),
       ),
       GoRoute(
         path: AppRoutes.topic,
-        builder: (_, state) => TopicScreen(
-          topicId: state.pathParameters['topicId']!,
+        pageBuilder: (_, state) => AppPageTransitions.slide(
+          key: state.pageKey,
+          child: TopicScreen(
+            topicId: state.pathParameters['topicId']!,
+          ),
         ),
       ),
 
       // ── Tool Routes ───────────────────────────────────────────────────────
       GoRoute(
         path: AppRoutes.studyPlanner,
-        builder: (_, __) => const PlannerScreen(),
+        pageBuilder: (_, state) => AppPageTransitions.scale(
+          key: state.pageKey,
+          child: const PlannerScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.profile,
-        builder: (_, __) => const ProfileScreen(),
+        pageBuilder: (_, state) => AppPageTransitions.scale(
+          key: state.pageKey,
+          child: const ProfileScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.achievements,
-        builder: (_, __) => const AchievementsScreen(),
+        pageBuilder: (_, state) => AppPageTransitions.scale(
+          key: state.pageKey,
+          child: const AchievementsScreen(),
+        ),
       ),
     ],
   );
