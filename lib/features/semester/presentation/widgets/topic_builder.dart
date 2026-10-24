@@ -56,13 +56,25 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
   String? _lastLibraryVersion;
   Timer? _libraryChangeDebounce;
 
-  List<Map<String, dynamic>> _notesAt(String topicId,
-          [String subtopicId = '']) =>
-      widget.notes
-          .where((note) =>
-              note['topicId']?.toString() == topicId &&
-              (note['subtopicId']?.toString() ?? '') == subtopicId)
-          .toList();
+  List<Map<String, dynamic>> _notesAt(
+    String topicId,
+    String topicName, [
+    String subtopicId = '',
+    String subtopicName = '',
+  ]) =>
+      widget.notes.where((note) {
+        final noteTopicId = note['topicId']?.toString() ?? '';
+        final noteSubtopicId = note['subtopicId']?.toString() ?? '';
+        final topicMatches = noteTopicId == topicId ||
+            (noteTopicId.isEmpty && note['topic']?.toString() == topicName);
+        final subtopicMatches = subtopicId.isEmpty
+            ? noteSubtopicId.isEmpty &&
+                (note['subtopic']?.toString() ?? '').isEmpty
+            : noteSubtopicId == subtopicId ||
+                (noteSubtopicId.isEmpty &&
+                    note['subtopic']?.toString() == subtopicName);
+        return topicMatches && subtopicMatches;
+      }).toList();
 
   @override
   void initState() {
@@ -442,7 +454,7 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
         (topic['subtopics'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ??
             [];
     final isExpanded = _expandedTopics[topicId] ?? false;
-    final topicNotes = _notesAt(topicId);
+    final topicNotes = _notesAt(topicId, topicName);
 
     return AppHoverCard(
       margin: const EdgeInsets.only(bottom: 12),
@@ -651,7 +663,8 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
       String topicId, String topicName, Map<String, dynamic> subtopic) {
     final subtopicId = subtopic['id'] as String;
     final subtopicName = subtopic['name'] as String;
-    final subtopicNotes = _notesAt(topicId, subtopicId);
+    final subtopicNotes =
+        _notesAt(topicId, topicName, subtopicId, subtopicName);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

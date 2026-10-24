@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/ai/services/knowledge_engine.dart';
+import '../../../../core/formatting/study_text_formatter.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -12,6 +13,8 @@ import '../../../../services/firestore_service.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../auth/presentation/widgets/auth_required_modal.dart';
 import '../widgets/topic_builder.dart';
+
+enum _NoteEditAction { cancel, save, delete }
 
 class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
@@ -229,7 +232,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     try {
       await ref.read(firestoreServiceProvider).saveKnowledgeNote(
             title: title.isEmpty ? 'Note' : title,
-            content: content,
+            content: StudyTextFormatter.toPlainText(content),
             subject: _activeSubjectName,
             subjectId: subjectId,
             topic: topic,
@@ -306,9 +309,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (id.isEmpty) return;
     final titleController =
         TextEditingController(text: note['title']?.toString() ?? 'Note');
-    final contentController =
-        TextEditingController(text: note['content']?.toString() ?? '');
-    final shouldSave = await showDialog<bool>(
+    final contentController = TextEditingController(
+      text: StudyTextFormatter.toPlainText(
+          (note['content'] ?? note['notes'] ?? '').toString()),
+    );
+    final action = await showDialog<_NoteEditAction>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Edit note'),
@@ -332,28 +337,48 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, _NoteEditAction.cancel),
             child: const Text('Cancel'),
           ),
+          TextButton.icon(
+            onPressed: () => Navigator.pop(context, _NoteEditAction.delete),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Delete'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, _NoteEditAction.save),
             child: const Text('Save changes'),
           ),
         ],
       ),
     );
     final title = titleController.text;
-    final content = contentController.text;
+    final content = StudyTextFormatter.toPlainText(contentController.text);
     titleController.dispose();
     contentController.dispose();
-    if (shouldSave != true || content.trim().isEmpty) return;
+    if (action == _NoteEditAction.delete) {
+      await _deleteNote(note);
+      return;
+    }
+    if (action != _NoteEditAction.save || content.trim().isEmpty) return;
     try {
-      await ref.read(firestoreServiceProvider).updateKnowledgeNote(
-            noteId: id,
-            title: title,
-            content: content,
-          );
-      final subjectId = note['subjectId']?.toString() ?? '';
+      final sourceId = note['sourceId']?.toString();
+      if (sourceId != null && sourceId.isNotEmpty) {
+        await ref.read(firestoreServiceProvider).updateSubjectDocumentNotes(
+              subjectId:
+                  _activeSubjectId ?? note['subjectId']?.toString() ?? '',
+              documentId: sourceId,
+              content: content,
+              title: title,
+            );
+      } else {
+        await ref.read(firestoreServiceProvider).updateKnowledgeNote(
+              noteId: id,
+              title: title,
+              content: content,
+            );
+      }
+      final subjectId = note['subjectId']?.toString() ?? _activeSubjectId ?? '';
       if (subjectId.isNotEmpty) {
         KnowledgeEngine.invalidateSubjectContext(subjectId,
             ownerId: ref.read(firestoreServiceProvider).currentUserId);
@@ -371,7 +396,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   Future<void> _viewNote(Map<String, dynamic> note) async {
     final topicId = note['topicId']?.toString() ?? '';
-    final noteContent = (note['content'] ?? note['notes'] ?? '').toString();
+    final noteContent = StudyTextFormatter.toPlainText(
+        (note['content'] ?? note['notes'] ?? '').toString());
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -380,7 +406,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           width: 760,
           child: SingleChildScrollView(
             child: MarkdownBody(
-              data: _cleanNoteForDisplay(noteContent),
+              data: StudyTextFormatter.toMarkdownDisplay(noteContent),
               selectable: true,
               styleSheet:
                   MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
@@ -428,26 +454,6 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     );
   }
 
-  String _cleanNoteForDisplay(String value) {
-    final lines = value.trim().split('\n');
-    if (lines.isNotEmpty && lines.first.trim().startsWith('```')) {
-      lines.removeAt(0);
-    }
-    if (lines.isNotEmpty && lines.last.trim() == '```') lines.removeLast();
-    return lines
-        .where((line) {
-          final marker = line.trim();
-          if (marker.length >= 3 &&
-              marker.runes
-                  .every((rune) => rune == 45 || rune == 42 || rune == 95)) {
-            return false;
-          }
-          return marker != '**' && marker != '*' && marker != '__';
-        })
-        .join('\n')
-        .trim();
-  }
-
   Future<void> _editNotes(List<Map<String, dynamic>> notes) async {
     if (notes.isEmpty) return;
     if (notes.length == 1) {
@@ -492,7 +498,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete this note?'),
         content: const Text(
-            'Only this note will be deleted. Its topic and subtopic will remain in the Library.'),
+            'This cannot be undone. Only this note will be deleted; its topic and subtopic will remain in the Library.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -508,14 +514,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     if (confirmed != true) return;
     setState(() => _saving = true);
     try {
-      await ref.read(firestoreServiceProvider).deleteKnowledgeNote(id);
-      final subjectId = note['subjectId']?.toString() ?? '';
+      final sourceId = note['sourceId']?.toString();
+      if (sourceId != null && sourceId.isNotEmpty) {
+        await ref.read(firestoreServiceProvider).deleteSubjectDocumentNotes(
+              subjectId:
+                  _activeSubjectId ?? note['subjectId']?.toString() ?? '',
+              documentId: sourceId,
+            );
+      } else {
+        await ref.read(firestoreServiceProvider).deleteKnowledgeNote(id);
+      }
+      final subjectId = note['subjectId']?.toString() ?? _activeSubjectId ?? '';
       if (subjectId.isNotEmpty) {
         KnowledgeEngine.invalidateSubjectContext(subjectId,
             ownerId: ref.read(firestoreServiceProvider).currentUserId);
       }
       if (mounted) {
-        AppNotification.showSuccess(context: context, message: 'Note deleted.');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Note deleted successfully.')),
+        );
       }
     } catch (error) {
       _showError('Could not delete note: $error');
@@ -556,15 +573,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           await ref.read(firestoreServiceProvider).deleteKnowledgeNotesForNode(
                 subjectId: _activeSubjectId!,
                 topicId: topicId,
+                topicName: topicName,
                 subtopicId: subtopicId,
+                subtopicName: subtopicName,
               );
       KnowledgeEngine.invalidateSubjectContext(_activeSubjectId,
           ownerId: ref.read(firestoreServiceProvider).currentUserId);
       if (mounted) {
-        AppNotification.showSuccess(
-          context: context,
-          message: '$count ${count == 1 ? 'note' : 'notes'} deleted.',
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$count ${count == 1 ? 'note' : 'notes'} deleted.'),
+        ));
       }
     } catch (error) {
       _showError('Could not delete notes: $error');

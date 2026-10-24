@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart' show debugPrint, debugPrintStack;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../services/firestore_service.dart';
+import '../../formatting/study_text_formatter.dart';
 import '../../services/document_processing_service.dart';
 import '../../services/firebase_upload_service.dart';
 import '../ai_config.dart';
@@ -363,7 +364,7 @@ Existing notes to preserve and improve:
 ${existingNotes.isEmpty ? 'None' : existingNotes.join('\n\n')}
 
 Task:
-Generate concise, structured university lecture notes, not a chatbot response. For topic scope, first read the whole hierarchy and create a separate, clearly titled section for the topic introduction and for EVERY listed subtopic, in the same order. Do not omit or merge subtopics. For subtopic scope, write only that subtopic's complete note under its own title. Integrate student notes accurately and improve their organization; use existing AI notes only as references to verify and update, never as text to copy blindly. Cover missing areas from accurate academic knowledge. Use Markdown headings and clean bullet lists (no decorative horizontal rules, repeated asterisks, or markdown fences). Each section should include a definition, explanation, key concepts, important points, an example, and applications where relevant. Include working/process steps where applicable and a short memory tip when useful. End each section with a compact exam revision takeaway. Do not flatten the hierarchy, invent syllabus sections, or ask for materials.''';
+Generate concise, structured university lecture notes as clean plain text, not Markdown and not a chatbot response. For topic scope, first read the whole hierarchy and create a separate, clearly titled section for the topic introduction and for EVERY listed subtopic, in the same order. Do not omit or merge subtopics. For subtopic scope, write only that subtopic's complete note under its own title. Integrate student notes accurately and improve their organization; use existing AI notes only as references to verify and update, never as text to copy blindly. Cover missing areas from accurate academic knowledge. Do not use Markdown syntax, heading hashes, emphasis markers, horizontal rules, code fences, hyphen/asterisk list markers, or underscore formatting. Use plain-text section titles and the bullet character •. Preserve a blank line between paragraphs and bullet points. Structure notes naturally around Introduction, Definition/Concept, Explanation, Key Concepts, Important Points, Examples, Advantages, Disadvantages, Applications, Memory Tip, and Summary where appropriate. Do not force irrelevant sections. Include working/process steps where applicable. End with a compact exam revision takeaway. Do not flatten the hierarchy, invent syllabus sections, or ask for materials.''';
     final response = await _completeWithFailover(
       AIRequest(messages: [
         const AIMessage(
@@ -376,36 +377,9 @@ Generate concise, structured university lecture notes, not a chatbot response. F
       temperature: 0.4,
       maxTokens: 8192,
     );
-    final content = _cleanGeneratedNotes(response.content);
+    final content = StudyTextFormatter.toPlainText(response.content);
     if (content.isEmpty) throw StateError('The AI returned empty notes.');
     return content;
-  }
-
-  String _cleanGeneratedNotes(String value) {
-    final lines = value.trim().split('\n');
-    if (lines.isNotEmpty && lines.first.trim().startsWith('```')) {
-      lines.removeAt(0);
-    }
-    if (lines.isNotEmpty && lines.last.trim() == '```') lines.removeLast();
-    final cleaned = lines
-        .where((line) {
-          final marker = line.trim();
-          if (marker.length >= 3 &&
-              marker.runes
-                  .every((rune) => rune == 45 || rune == 42 || rune == 95)) {
-            return false;
-          }
-          return marker != '**' && marker != '*' && marker != '__';
-        })
-        .map((line) {
-          final trimmed = line.trimLeft();
-          if (trimmed.startsWith('####'))
-            return line.replaceFirst('####', '###');
-          return line;
-        })
-        .join('\n')
-        .trim();
-    return cleaned;
   }
 
   Future<Map<String, dynamic>> _generateAndCache({

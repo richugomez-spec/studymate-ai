@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/ai/services/real_ai_chat_service.dart';
+import '../../../../core/formatting/study_text_formatter.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -633,7 +634,7 @@ class _RealMessageBubble extends StatelessWidget {
                     ],
                   )
                 : MarkdownBody(
-                    data: message.content,
+                    data: StudyTextFormatter.cleanForMarkdown(message.content),
                     selectable: true,
                     styleSheet: MarkdownStyleSheet(
                       p: TextStyle(

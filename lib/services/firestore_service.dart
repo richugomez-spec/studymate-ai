@@ -767,9 +767,8 @@ class FirestoreService {
     return topics;
   }
 
-  /// Loads the current subject syllabus and its manual notes for AI study
-  /// tools. Notes remain in the knowledge collection and are joined through
-  /// their subject/topic/subtopic IDs.
+  /// Loads the current subject syllabus and joins saved and imported notes by
+  /// their subject/topic/subtopic IDs for AI study tools and note generation.
   Future<Map<String, dynamic>?> loadSubjectStudyHierarchy(
       String subjectId) async {
     final uid = currentUserId;
@@ -787,6 +786,8 @@ class FirestoreService {
           .where('ownerId', isEqualTo: uid)
           .where('subjectId', isEqualTo: cleanSubjectId)
           .get(const GetOptions(source: Source.server)),
+      _subjectDocumentsCol(cleanSubjectId)
+          .get(const GetOptions(source: Source.server)),
     ]);
     final subjectSnapshot =
         snapshots[0] as DocumentSnapshot<Map<String, dynamic>>;
@@ -795,6 +796,8 @@ class FirestoreService {
     }
     final topicSnapshot = snapshots[1] as QuerySnapshot<Map<String, dynamic>>;
     final noteSnapshot = snapshots[2] as QuerySnapshot<Map<String, dynamic>>;
+    final importedSnapshot =
+        snapshots[3] as QuerySnapshot<Map<String, dynamic>>;
     final subtopicSnapshots = await Future.wait(topicSnapshot.docs.map(
       (topic) => _topicSubtopicsCol(cleanSubjectId, topic.id)
           .orderBy('order')
@@ -810,6 +813,29 @@ class FirestoreService {
                   .toString(),
             })
         .toList();
+    notes.addAll(importedSnapshot.docs.where((document) {
+      final data = document.data();
+      return (data['ownerId'] == null || data['ownerId'] == uid) &&
+          (data['notes']?.toString().trim().isNotEmpty ?? false);
+    }).map((document) {
+      final data = document.data();
+      return <String, dynamic>{
+        'id': '${document.id}_notes',
+        'sourceId': document.id,
+        'title': data['notesTitle']?.toString().trim().isNotEmpty == true
+            ? data['notesTitle']
+            : '${data['title'] ?? data['fileName'] ?? 'Imported source'} notes',
+        'content': data['notes'].toString(),
+        'subjectId': cleanSubjectId,
+        'topicId': data['topicId']?.toString() ?? '',
+        'topic': data['topic']?.toString() ?? '',
+        'subtopicId': data['subtopicId']?.toString() ?? '',
+        'subtopic': data['subtopic']?.toString() ?? '',
+        'origin': 'imported',
+        'kind': 'note',
+        'updatedAt': data['updatedAt'] ?? data['uploadedAt'],
+      };
+    }));
     notes.sort((a, b) {
       final pathA =
           '${a['topicId'] ?? ''}|${a['subtopicId'] ?? ''}|${a['title'] ?? ''}|${a['id']}';
@@ -818,12 +844,29 @@ class FirestoreService {
       return pathA.compareTo(pathB);
     });
 
-    List<Map<String, dynamic>> notesAt(String topicId, String subtopicId) =>
-        notes
-            .where((note) =>
-                (note['topicId']?.toString() ?? '') == topicId &&
-                (note['subtopicId']?.toString() ?? '') == subtopicId)
-            .toList(growable: false);
+    List<Map<String, dynamic>> notesAt(
+      String topicId,
+      String subtopicId, {
+      String topicName = '',
+      String subtopicName = '',
+    }) =>
+        notes.where((note) {
+          final noteTopicId = note['topicId']?.toString() ?? '';
+          final noteTopic = note['topic']?.toString() ?? '';
+          final noteSubtopicId = note['subtopicId']?.toString() ?? '';
+          final noteSubtopic = note['subtopic']?.toString() ?? '';
+          final topicMatches = noteTopicId == topicId ||
+              (noteTopicId.isEmpty &&
+                  topicName.isNotEmpty &&
+                  noteTopic == topicName);
+          final subtopicMatches = subtopicId.isEmpty
+              ? noteSubtopicId.isEmpty && noteSubtopic.isEmpty
+              : noteSubtopicId == subtopicId ||
+                  (noteSubtopicId.isEmpty &&
+                      subtopicName.isNotEmpty &&
+                      noteSubtopic == subtopicName);
+          return topicMatches && subtopicMatches;
+        }).toList(growable: false);
 
     final topics = <Map<String, dynamic>>[];
     for (var i = 0; i < topicSnapshot.docs.length; i++) {
@@ -833,33 +876,57 @@ class FirestoreService {
           .map((subtopic) => <String, dynamic>{
                 'id': subtopic.id,
                 ...subtopic.data(),
-                'notes': notesAt(topic.id, subtopic.id),
+                'notes': notesAt(
+                  topic.id,
+                  subtopic.id,
+                  topicName: topic.data()['name']?.toString() ?? '',
+                  subtopicName: subtopic.data()['name']?.toString() ?? '',
+                ),
               })
           .toList(growable: false);
       topics.add({
         'id': topic.id,
         ...topic.data(),
-        'notes': notesAt(topic.id, ''),
+        'notes': notesAt(
+          topic.id,
+          '',
+          topicName: topic.data()['name']?.toString() ?? '',
+        ),
         'subtopics': subtopics,
       });
     }
 
     final topicIds = topicSnapshot.docs.map((topic) => topic.id).toSet();
-    final subjectNotes = notesAt('', '');
+    final subjectNotes = notes
+        .where((note) =>
+            (note['topicId']?.toString() ?? '').isEmpty &&
+            (note['subtopicId']?.toString() ?? '').isEmpty &&
+            (note['topic']?.toString() ?? '').isEmpty &&
+            (note['subtopic']?.toString() ?? '').isEmpty)
+        .toList(growable: false);
     final unplacedNotes = notes.where((note) {
       final topicId = note['topicId']?.toString() ?? '';
+      final topicName = note['topic']?.toString() ?? '';
       final subtopicId = note['subtopicId']?.toString() ?? '';
-      return topicId.isEmpty
-          ? subtopicId.isNotEmpty
-          : !topicIds.contains(topicId) || subtopicId.isNotEmpty;
-    }).where((note) {
-      final topicId = note['topicId']?.toString() ?? '';
-      final knownTopic = topicSnapshot.docs.any((topic) => topic.id == topicId);
-      final subtopicId = note['subtopicId']?.toString() ?? '';
-      final knownSubtopic = subtopicSnapshots.asMap().entries.any((entry) =>
-          topicSnapshot.docs[entry.key].id == topicId &&
-          entry.value.docs.any((subtopic) => subtopic.id == subtopicId));
-      return !knownTopic || (subtopicId.isNotEmpty && !knownSubtopic);
+      final subtopicName = note['subtopic']?.toString() ?? '';
+      if (topicId.isEmpty && topicName.isEmpty) {
+        return subtopicId.isNotEmpty || subtopicName.isNotEmpty;
+      }
+      final knownTopic = topicId.isNotEmpty
+          ? topicIds.contains(topicId)
+          : topicSnapshot.docs
+              .any((topic) => topic.data()['name'] == topicName);
+      final knownSubtopic = subtopicSnapshots.asMap().entries.any((entry) {
+        final parent = topicSnapshot.docs[entry.key];
+        if (topicId.isNotEmpty
+            ? parent.id != topicId
+            : parent.data()['name'] != topicName) return false;
+        return entry.value.docs.any((subtopic) => subtopicId.isNotEmpty
+            ? subtopic.id == subtopicId
+            : subtopic.data()['name'] == subtopicName);
+      });
+      return !knownTopic ||
+          (subtopicId.isNotEmpty || subtopicName.isNotEmpty) && !knownSubtopic;
     }).toList(growable: false);
 
     final subtopicCount = subtopicSnapshots.fold<int>(
@@ -1364,11 +1431,17 @@ class FirestoreService {
       if (customNotes.isNotEmpty)
         items.add({
           'id': '${documentId}_notes',
-          'title': '${data['title'] ?? data['fileName']} notes',
+          'title': data['notesTitle']?.toString().trim().isNotEmpty == true
+              ? data['notesTitle']
+              : '${data['title'] ?? data['fileName']} notes',
           'sourceId': documentId,
           'content': customNotes,
           'subject': data['subject'],
+          'subjectId': data['subjectId'],
           'topic': data['topic'],
+          'topicId': data['topicId'],
+          'subtopic': data['subtopic'],
+          'subtopicId': data['subtopicId'],
           'kind': 'note',
           'updatedAt': data['uploadedAt'],
         });
@@ -1527,27 +1600,78 @@ class FirestoreService {
   Future<int> deleteKnowledgeNotesForNode({
     required String subjectId,
     required String topicId,
+    required String topicName,
     String subtopicId = '',
+    String subtopicName = '',
   }) async {
     final uid = currentUserId;
     if (uid == null) throw StateError('Sign in to delete notes.');
     final snapshot = await _knowledgeCol
         .where('ownerId', isEqualTo: uid)
         .where('subjectId', isEqualTo: subjectId)
-        .where('topicId', isEqualTo: topicId)
         .where('kind', isEqualTo: 'note')
         .get(const GetOptions(source: Source.server));
-    final targets = snapshot.docs.where((document) =>
-        (document.data()['subtopicId']?.toString() ?? '') == subtopicId);
+    final targets = snapshot.docs.where((document) {
+      final data = document.data();
+      final noteTopicId = data['topicId']?.toString() ?? '';
+      final noteSubtopicId = data['subtopicId']?.toString() ?? '';
+      final topicMatches = noteTopicId == topicId ||
+          (noteTopicId.isEmpty && data['topic']?.toString() == topicName);
+      final subtopicMatches = subtopicId.isEmpty
+          ? noteSubtopicId.isEmpty &&
+              (data['subtopic']?.toString() ?? '').isEmpty
+          : noteSubtopicId == subtopicId ||
+              (noteSubtopicId.isEmpty &&
+                  data['subtopic']?.toString() == subtopicName);
+      return topicMatches && subtopicMatches;
+    });
     final documents = targets.toList(growable: false);
-    for (var i = 0; i < documents.length; i += 450) {
+    final subject = await _subjectsCol
+        .doc(subjectId)
+        .get(const GetOptions(source: Source.server));
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('That subject is no longer available.');
+    }
+    final importedSnapshot = await _subjectDocumentsCol(subjectId)
+        .get(const GetOptions(source: Source.server));
+    final importedNotes = importedSnapshot.docs.where((document) {
+      final data = document.data();
+      final noteTopicId = data['topicId']?.toString() ?? '';
+      final noteSubtopicId = data['subtopicId']?.toString() ?? '';
+      final topicMatches = noteTopicId == topicId ||
+          (noteTopicId.isEmpty && data['topic']?.toString() == topicName);
+      final subtopicMatches = subtopicId.isEmpty
+          ? noteSubtopicId.isEmpty &&
+              (data['subtopic']?.toString() ?? '').isEmpty
+          : noteSubtopicId == subtopicId ||
+              (noteSubtopicId.isEmpty &&
+                  data['subtopic']?.toString() == subtopicName);
+      return (data['ownerId'] == null || data['ownerId'] == uid) &&
+          topicMatches &&
+          subtopicMatches &&
+          (data['notes']?.toString().trim().isNotEmpty ?? false);
+    }).toList(growable: false);
+    final total = documents.length + importedNotes.length;
+    final actions = <(DocumentReference<Map<String, dynamic>>, bool)>[
+      for (final document in documents) (document.reference, true),
+      for (final document in importedNotes) (document.reference, false),
+    ];
+    for (var i = 0; i < actions.length; i += 450) {
       final batch = _firestore.batch();
-      for (final document in documents.skip(i).take(450)) {
-        batch.delete(document.reference);
+      for (final action in actions.skip(i).take(450)) {
+        if (action.$2) {
+          batch.delete(action.$1);
+        } else {
+          batch.update(action.$1, {
+            'notes': FieldValue.delete(),
+            'notesTitle': FieldValue.delete(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
       }
       await batch.commit();
     }
-    return documents.length;
+    return total;
   }
 
   Future<void> deleteKnowledgeNote(String noteId) async {
@@ -1560,6 +1684,58 @@ class FirestoreService {
       throw StateError('That note is no longer available.');
     }
     await ref.delete();
+  }
+
+  Future<void> updateSubjectDocumentNotes({
+    required String subjectId,
+    required String documentId,
+    required String content,
+    String? title,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to update notes.');
+    final subject = await _subjectsCol
+        .doc(subjectId)
+        .get(const GetOptions(source: Source.server));
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('That subject is no longer available.');
+    }
+    final ref = _subjectDocumentRef(subjectId, documentId);
+    final snapshot = await ref.get(const GetOptions(source: Source.server));
+    final data = snapshot.data();
+    if (data == null || (data['ownerId'] != null && data['ownerId'] != uid)) {
+      throw StateError('That imported note is no longer available.');
+    }
+    await ref.update({
+      'notes': content.trim(),
+      if (title != null) 'notesTitle': title.trim(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> deleteSubjectDocumentNotes({
+    required String subjectId,
+    required String documentId,
+  }) async {
+    final uid = currentUserId;
+    if (uid == null) throw StateError('Sign in to delete notes.');
+    final subject = await _subjectsCol
+        .doc(subjectId)
+        .get(const GetOptions(source: Source.server));
+    if (subject.data()?['ownerId'] != uid) {
+      throw StateError('That subject is no longer available.');
+    }
+    final ref = _subjectDocumentRef(subjectId, documentId);
+    final snapshot = await ref.get(const GetOptions(source: Source.server));
+    final data = snapshot.data();
+    if (data == null || (data['ownerId'] != null && data['ownerId'] != uid)) {
+      throw StateError('That imported note is no longer available.');
+    }
+    await ref.update({
+      'notes': FieldValue.delete(),
+      'notesTitle': FieldValue.delete(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<String> createWorkspaceFolder(
