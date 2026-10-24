@@ -62,9 +62,14 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
 
   List<_GeneratedQuizQuestion> _questions = [];
 
+  // Reactive sync
+  Timer? _libraryChangeDebounce;
+  String? _lastLibraryVersion;
+
   @override
   void dispose() {
     _textAnswerController.dispose();
+    _libraryChangeDebounce?.cancel();
     super.dispose();
   }
 
@@ -203,6 +208,35 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
     final activeSubjectId = ref.watch(activeKnowledgeSubjectIdProvider) ??
         ref.watch(activeKnowledgeWorkspaceIdProvider);
+
+    // ── Reactive library sync ───────────────────────────────────────
+    // When Library changes, reset to config screen (safe to do even mid-session
+    // since the data the quiz was built from is now stale).
+    ref.listen<AsyncValue<String>>(
+      subjectTopicsVersionProvider(activeSubjectId ?? ''),
+      (_, next) {
+        final version = next.valueOrNull;
+        if (version == null || version.isEmpty) return;
+        if (_lastLibraryVersion == null) {
+          _lastLibraryVersion = version;
+          return;
+        }
+        if (version == _lastLibraryVersion) return;
+        _lastLibraryVersion = version;
+        _libraryChangeDebounce?.cancel();
+        _libraryChangeDebounce =
+            Timer(const Duration(milliseconds: 600), () {
+          if (mounted && !_isGenerating) {
+            setState(() {
+              _quizStarted = false;
+              _quizComplete = false;
+              _questions.clear();
+              _generationError = null;
+            });
+          }
+        });
+      },
+    );
 
     if (activeSubjectId == null) {
       return Scaffold(

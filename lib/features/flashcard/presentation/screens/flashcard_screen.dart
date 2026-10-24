@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,6 +55,10 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   int _goodCount = 0;
   int _easyCount = 0;
 
+  // Reactive sync: debounce timer for library-change triggered reload.
+  Timer? _libraryChangeDebounce;
+  String? _lastLibraryVersion;
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +68,13 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       CurvedAnimation(parent: _flipController, curve: Curves.easeInOut),
     );
     _loadCards();
+  }
+
+  @override
+  void dispose() {
+    _libraryChangeDebounce?.cancel();
+    _flipController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCards() async {
@@ -107,11 +119,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     }
   }
 
-  @override
-  void dispose() {
-    _flipController.dispose();
-    super.dispose();
-  }
+  // (dispose moved above to consolidate)
 
   void _flipCard() {
     if (_isFlipped) {
@@ -178,6 +186,40 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
   @override
   Widget build(BuildContext context) {
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
+    final activeSubjectId =
+        ref.watch(activeKnowledgeSubjectIdProvider) ?? '';
+
+    // ── Reactive library sync ─────────────────────────────────────────────
+    // Listen to Firestore topic/note changes and re-generate if the library
+    // version changes. Debounced 600 ms to avoid rapid successive reloads.
+    ref.listen<AsyncValue<String>>(
+      subjectTopicsVersionProvider(activeSubjectId),
+      (_, next) {
+        final version = next.valueOrNull;
+        if (version == null || version.isEmpty) return;
+        if (_lastLibraryVersion == null) {
+          // First emission — just record the baseline; don't reload.
+          _lastLibraryVersion = version;
+          return;
+        }
+        if (version == _lastLibraryVersion) return;
+        _lastLibraryVersion = version;
+        // Library changed — debounce then reload cards from scratch.
+        _libraryChangeDebounce?.cancel();
+        _libraryChangeDebounce =
+            Timer(const Duration(milliseconds: 600), () {
+          if (mounted) {
+            setState(() {
+              _currentIndex = 0;
+              _sessionComplete = false;
+              _hasRequestedCards = false;
+            });
+            _loadCards();
+          }
+        });
+      },
+    );
+
     if (!_hasRequestedCards) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_hasRequestedCards) _loadCards();

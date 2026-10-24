@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
+import '../../../../services/firestore_service.dart';
 
 enum SummaryMode { short, detailed, exam, formula }
 
@@ -17,12 +19,23 @@ class SummaryScreen extends ConsumerStatefulWidget {
 class _SummaryScreenState extends ConsumerState<SummaryScreen> {
   late SummaryMode _mode;
   late Future<Map<String, dynamic>> _result;
+
+  // Reactive sync fields
+  Timer? _libraryChangeDebounce;
+  String? _lastLibraryVersion;
+
   @override
   void initState() {
     super.initState();
     _mode = SummaryMode.values.firstWhere((m) => m.name == widget.initialMode,
         orElse: () => SummaryMode.short);
     _generate();
+  }
+
+  @override
+  void dispose() {
+    _libraryChangeDebounce?.cancel();
+    super.dispose();
   }
 
   void _generate({bool forceRefresh = false}) =>
@@ -47,6 +60,28 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
   @override
   Widget build(BuildContext context) {
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
+    final activeSubjectId =
+        ref.watch(activeKnowledgeSubjectIdProvider) ?? '';
+
+    // ── Reactive library sync ───────────────────────────────────────
+    ref.listen<AsyncValue<String>>(
+      subjectTopicsVersionProvider(activeSubjectId),
+      (_, next) {
+        final version = next.valueOrNull;
+        if (version == null || version.isEmpty) return;
+        if (_lastLibraryVersion == null) {
+          _lastLibraryVersion = version;
+          return;
+        }
+        if (version == _lastLibraryVersion) return;
+        _lastLibraryVersion = version;
+        _libraryChangeDebounce?.cancel();
+        _libraryChangeDebounce =
+            Timer(const Duration(milliseconds: 600), () {
+          if (mounted) setState(() => _generate(forceRefresh: true));
+        });
+      },
+    );
     return Scaffold(
       appBar: AppBar(
           title: Text(

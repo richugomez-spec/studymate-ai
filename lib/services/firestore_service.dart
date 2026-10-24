@@ -46,6 +46,18 @@ final userChatSessionsStreamProvider =
   return ref.watch(firestoreServiceProvider).streamUserChatSessions(uid);
 });
 
+/// Reactive library version for a subject.
+///
+/// Emits an opaque version token whenever topics, subtopics, or notes change
+/// under [subjectId]. Study tools watch this and re-generate when it changes.
+final subjectTopicsVersionProvider =
+    StreamProvider.family<String, String>((ref, subjectId) {
+  if (subjectId.isEmpty) return Stream.value('');
+  return ref
+      .watch(firestoreServiceProvider)
+      .streamSubjectLibraryVersion(subjectId);
+});
+
 /// Production Firestore Service Layer
 ///
 /// Encapsulates all Firestore CRUD operations and data synchronization:
@@ -599,7 +611,90 @@ class FirestoreService {
             snapshot.docs.map((doc) => {'id': doc.id, ...doc.data()}).toList());
   }
 
-  /// Get all topics with their subtopics
+  /// Streams an opaque library version token for [subjectId].
+  ///
+  /// Emits a new value whenever the subject's topics collection **or** its
+  /// manual notes (knowledge_items) change. Study tools listen to this stream
+  /// via [subjectTopicsVersionProvider] and re-generate whenever the version
+  /// changes, ensuring they never show stale cached content.
+  Stream<String> streamSubjectLibraryVersion(String subjectId) {
+    final topicsStream = _subjectTopicsCol(subjectId).snapshots().map((snap) {
+      // Build a fingerprint: "topicId:updatedAtMs,..." ordered by topicId
+      final parts = snap.docs.map((doc) {
+        final data = doc.data();
+        final ts = data['updatedAt'];
+        final ms = ts is Timestamp ? ts.millisecondsSinceEpoch : 0;
+        return '${doc.id}:$ms';
+      }).toList()
+        ..sort();
+      return 'topics:${parts.join(',')}';
+    });
+
+    final notesStream = _knowledgeCol
+        .where('subjectId', isEqualTo: subjectId)
+        .where('kind', isEqualTo: 'note')
+        .snapshots()
+        .map((snap) {
+      final parts = snap.docs.map((doc) {
+        final data = doc.data();
+        final ts = data['updatedAt'] ?? data['indexedAt'];
+        final ms = ts is Timestamp ? ts.millisecondsSinceEpoch : 0;
+        return '${doc.id}:$ms';
+      }).toList()
+        ..sort();
+      return 'notes:${parts.join(',')}';
+    });
+
+    // Merge both streams; emit a combined version token on any change.
+    // We use a StreamController to combine two streams synchronously.
+    late StreamController<String> controller;
+    String topicsToken = '';
+    String notesToken = '';
+    StreamSubscription<String>? topicsSub;
+    StreamSubscription<String>? notesSub;
+
+    void emit() {
+      if (!controller.isClosed) {
+        // Compute a compact numeric hash of the combined fingerprint so the
+        // token is short and comparison-safe.
+        final raw = '$topicsToken|$notesToken';
+        var h = 0;
+        for (final u in raw.codeUnits) {
+          h = (h * 31 + u) & 0x7fffffff;
+        }
+        controller.add(h.toRadixString(16).padLeft(8, '0'));
+      }
+    }
+
+    controller = StreamController<String>(
+      onListen: () {
+        topicsSub = topicsStream.listen(
+          (token) {
+            topicsToken = token;
+            emit();
+          },
+          onError: controller.addError,
+        );
+        notesSub = notesStream.listen(
+          (token) {
+            notesToken = token;
+            emit();
+          },
+          onError: controller.addError,
+        );
+      },
+      onCancel: () async {
+        await topicsSub?.cancel();
+        await notesSub?.cancel();
+        await controller.close();
+      },
+    );
+
+    return controller.stream;
+  }
+
+
+
   Future<List<Map<String, dynamic>>> getSubjectTopicsWithSubtopics(
       String subjectId) async {
     final uid = currentUserId;

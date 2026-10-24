@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../services/firestore_service.dart';
 
 class QuestionPaperAnalyzerScreen extends ConsumerStatefulWidget {
   final String? topicId;
@@ -24,8 +26,13 @@ class _QuestionPaperAnalyzerScreenState
   bool _isBusy = false;
   String? _error;
 
+  // Reactive sync
+  Timer? _libraryChangeDebounce;
+  String? _lastLibraryVersion;
+
   @override
   void dispose() {
+    _libraryChangeDebounce?.cancel();
     super.dispose();
   }
 
@@ -202,6 +209,33 @@ ${jsonEncode(questionBatch)}''',
   @override
   Widget build(BuildContext context) {
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
+    final activeSubjectId =
+        ref.watch(activeKnowledgeSubjectIdProvider) ?? '';
+
+    // ── Reactive library sync ───────────────────────────────────────
+    ref.listen<AsyncValue<String>>(
+      subjectTopicsVersionProvider(activeSubjectId),
+      (_, next) {
+        final version = next.valueOrNull;
+        if (version == null || version.isEmpty) return;
+        if (_lastLibraryVersion == null) {
+          _lastLibraryVersion = version;
+          return;
+        }
+        if (version == _lastLibraryVersion) return;
+        _lastLibraryVersion = version;
+        _libraryChangeDebounce?.cancel();
+        _libraryChangeDebounce =
+            Timer(const Duration(milliseconds: 600), () {
+          if (mounted && !_isBusy) {
+            setState(() {
+              _analysis = null;
+              _error = null;
+            });
+          }
+        });
+      },
+    );
     return Scaffold(
       appBar: AppBar(
         title:

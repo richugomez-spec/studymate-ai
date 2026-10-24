@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../services/firestore_service.dart';
 
 class ExamGeneratorScreen extends ConsumerStatefulWidget {
   final String? topicId;
@@ -39,6 +41,10 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
   Future<Map<String, dynamic>>? _result;
   final Set<int> _revealedAnswers = {};
 
+  // Reactive sync
+  Timer? _libraryChangeDebounce;
+  String? _lastLibraryVersion;
+
   int get _totalMarks => _sections.fold<int>(0,
       (sum, section) => sum + section.questionCount * section.marksPerQuestion);
   int get _questionCount =>
@@ -49,6 +55,7 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
     for (final section in _sections) {
       section.dispose();
     }
+    _libraryChangeDebounce?.cancel();
     super.dispose();
   }
 
@@ -107,6 +114,34 @@ Use the currently opened subject hierarchy as the syllabus, manual notes as prim
   @override
   Widget build(BuildContext context) {
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
+    final activeSubjectId =
+        ref.watch(activeKnowledgeSubjectIdProvider) ?? '';
+
+    // ── Reactive library sync ───────────────────────────────────────
+    ref.listen<AsyncValue<String>>(
+      subjectTopicsVersionProvider(activeSubjectId),
+      (_, next) {
+        final version = next.valueOrNull;
+        if (version == null || version.isEmpty) return;
+        if (_lastLibraryVersion == null) {
+          _lastLibraryVersion = version;
+          return;
+        }
+        if (version == _lastLibraryVersion) return;
+        _lastLibraryVersion = version;
+        _libraryChangeDebounce?.cancel();
+        _libraryChangeDebounce =
+            Timer(const Duration(milliseconds: 600), () {
+          if (mounted && !_isGenerating) {
+            setState(() {
+              _result = null;
+              _error = null;
+              _revealedAnswers.clear();
+            });
+          }
+        });
+      },
+    );
     return Scaffold(
       appBar: AppBar(
         title:
