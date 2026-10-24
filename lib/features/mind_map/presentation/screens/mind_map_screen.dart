@@ -1,9 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../../../core/ai/services/knowledge_engine.dart';
-import '../../../../core/animations/animations.dart';
-import '../../../../core/services/document_processing_service.dart';
+import '../../../../core/ai/services/gemini_api_key_provider.dart';
+import '../../../../core/routing/app_routes.dart';
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/notifications/app_notification.dart';
+import '../../../../services/firestore_service.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../models/graph_layout.dart';
+import '../models/graph_node.dart';
+import '../services/graph_ai_service.dart';
+import '../widgets/graph_canvas.dart';
+import '../widgets/graph_detail_panel.dart';
 
 class MindMapScreen extends ConsumerStatefulWidget {
   final String? topicId;
@@ -14,238 +25,746 @@ class MindMapScreen extends ConsumerStatefulWidget {
 }
 
 class _MindMapScreenState extends ConsumerState<MindMapScreen> {
-  late Future<Map<String, dynamic>> _result;
+  final GlobalKey<GraphCanvasState> _canvasKey = GlobalKey();
+  final TransformationController _transformController =
+      TransformationController();
+  final TextEditingController _searchController = TextEditingController();
+
+  // Graph data
+  List<GraphNode> _nodes = [];
+  List<GraphEdge> _edges = [];
+  bool _isLoading = true;
+  String? _error;
+
+  // Selection & UI state
+  GraphNode? _selectedNode;
+  bool _panelVisible = false;
+  String? _subjectName;
+  String? _topicName;
+
+  // Search
+  bool _searchFocused = false;
+
+  // Breadcrumb
+  List<String> _breadcrumb = [];
+
+  // AI state
+  bool _aiExpanding = false;
+  final Map<String, List<GraphNode>> _aiChildren = {};
+
+  late GraphAiService _aiService;
 
   @override
   void initState() {
     super.initState();
-    _generate();
+    _aiService = GraphAiService(
+      keyManager: ref.read(apiKeyManagerProvider),
+    );
+    _loadGraph();
+    _searchController.addListener(_onSearchChanged);
   }
 
-  void _generate({bool forceRefresh = false}) =>
-      _result = ref.read(knowledgeEngineProvider).generateMindMap(
-          topicId: widget.topicId,
-          subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
-              ref.read(activeKnowledgeWorkspaceIdProvider),
-          sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
-          forceRefresh: forceRefresh);
+  @override
+  void dispose() {
+    _transformController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // ── Data Loading ─────────────────────────────────────────────────────────────
+
+  Future<void> _loadGraph() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final uid = ref.read(currentUserProvider)?.id ?? '';
+      final service = ref.read(firestoreServiceProvider);
+
+      // Get all subjects for this user
+      final subjects = ref
+              .read(userSubjectsStreamProvider(uid))
+              .asData
+              ?.value ??
+          await service.streamSubjects(uid).first;
+
+      if (subjects.isEmpty) {
+        setState(() {
+          _isLoading = false;
+          _error = 'No subjects found. Create a subject in the Library first.';
+        });
+        return;
+      }
+
+      // Determine which subject to display
+      // topicId parameter may be a subjectId when coming from library
+      final targetSubjectId = widget.topicId ??
+          subjects.first['id']?.toString() ??
+          '';
+
+      // Find the matching subject
+      final subjectData = subjects.firstWhere(
+        (s) => s['id']?.toString() == targetSubjectId,
+        orElse: () => subjects.first,
+      );
+
+      final subjectId = subjectData['id']?.toString() ?? '';
+      _subjectName = subjectData['name']?.toString() ?? 'Subject';
+
+      // Load topic + subtopic hierarchy
+      final topicsWithSubtopics =
+          await service.getSubjectTopicsWithSubtopics(subjectId);
+
+      _buildGraph(
+        subjectId: subjectId,
+        subjectName: _subjectName!,
+        topics: topicsWithSubtopics,
+      );
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _error = 'Failed to load knowledge graph: $e';
+      });
+    }
+  }
+
+  void _buildGraph({
+    required String subjectId,
+    required String subjectName,
+    required List<Map<String, dynamic>> topics,
+  }) {
+    final nodes = <GraphNode>[];
+    final edges = <GraphEdge>[];
+
+    // Root subject node
+    final rootNode = GraphNode(
+      id: subjectId,
+      label: subjectName,
+      type: GraphNodeType.subject,
+    );
+    nodes.add(rootNode);
+
+    // Topic nodes
+    for (final topic in topics) {
+      final topicId = topic['id']?.toString() ?? '';
+      final topicName = topic['name']?.toString() ?? 'Topic';
+
+      final topicNode = GraphNode(
+        id: topicId,
+        label: topicName,
+        type: GraphNodeType.topic,
+        parentId: subjectId,
+        subjectId: subjectId,
+      );
+      nodes.add(topicNode);
+      edges.add(GraphEdge(fromId: subjectId, toId: topicId));
+
+      // Subtopic nodes
+      final subtopics =
+          (topic['subtopics'] as List? ?? []).cast<Map<String, dynamic>>();
+      for (final sub in subtopics) {
+        final subId = sub['id']?.toString() ?? '';
+        final subName = sub['name']?.toString() ?? 'Subtopic';
+
+        final subNode = GraphNode(
+          id: subId,
+          label: subName,
+          type: GraphNodeType.subtopic,
+          parentId: topicId,
+          topicId: topicId,
+          subjectId: subjectId,
+        );
+        nodes.add(subNode);
+        edges.add(GraphEdge(fromId: topicId, toId: subId));
+      }
+    }
+
+    // Run layout
+    final laidOut = GraphLayoutEngine.layout(nodes, edges);
+
+    setState(() {
+      _nodes = laidOut;
+      _edges = edges;
+      _isLoading = false;
+    });
+
+    // Fit to screen after first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final size = MediaQuery.of(context).size;
+        _canvasKey.currentState?.fitToScreen(size);
+      }
+    });
+  }
+
+  // ── Graph Interactions ───────────────────────────────────────────────────────
+
+  void _onNodeTap(GraphNode node) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      // Deselect all
+      _nodes = _nodes.map((n) => n.copyWith(isSelected: false)).toList();
+      // Select tapped
+      final idx = _nodes.indexWhere((n) => n.id == node.id);
+      if (idx >= 0) {
+        _nodes[idx] = _nodes[idx].copyWith(isSelected: true);
+        _selectedNode = _nodes[idx];
+      }
+      // Update breadcrumb
+      _updateBreadcrumb(node);
+      // Update topicName for detail panel
+      if (node.type == GraphNodeType.topic) {
+        _topicName = node.label;
+      } else if (node.type == GraphNodeType.subtopic) {
+        _topicName = _findParentLabel(node);
+      }
+      _panelVisible = true;
+    });
+  }
+
+  void _onNodeDoubleTap(GraphNode node) {
+    final size = MediaQuery.of(context).size;
+    _canvasKey.currentState?.centerOn(node, size);
+  }
+
+  void _onToggleExpand(String nodeId) {
+    setState(() {
+      final idx = _nodes.indexWhere((n) => n.id == nodeId);
+      if (idx < 0) return;
+      final node = _nodes[idx];
+      final newExpanded = !node.isExpanded;
+      _nodes[idx] = node.copyWith(isExpanded: newExpanded);
+
+      // Show/hide children
+      _setChildrenVisible(nodeId, newExpanded);
+    });
+    // Re-run layout
+    _relayout();
+  }
+
+  void _setChildrenVisible(String parentId, bool visible) {
+    for (var i = 0; i < _nodes.length; i++) {
+      if (_nodes[i].parentId == parentId) {
+        _nodes[i] = _nodes[i].copyWith(isVisible: visible);
+        if (!visible) {
+          // Recursively hide grandchildren
+          _setChildrenVisible(_nodes[i].id, false);
+        }
+      }
+    }
+  }
+
+  void _relayout() {
+    final laidOut = GraphLayoutEngine.layout(_nodes, _edges);
+    setState(() => _nodes = laidOut);
+  }
+
+  void _closePanel() {
+    setState(() {
+      _panelVisible = false;
+      _selectedNode = null;
+      _nodes = _nodes.map((n) => n.copyWith(isSelected: false)).toList();
+    });
+  }
+
+  // ── AI Expansion ─────────────────────────────────────────────────────────────
+
+  Future<void> _expandNodeWithAI(GraphNode node) async {
+    if (_aiExpanding) return;
+    setState(() => _aiExpanding = true);
+
+    AppNotification.showLoading(
+      context: context,
+      title: 'Expanding with AI',
+      message: 'Generating sub-concepts for "${node.label}"…',
+    );
+
+    try {
+      final result = await _aiService.expandNode(
+        nodeLabel: node.label,
+        subjectName: _subjectName,
+        topicName: _topicName,
+      );
+
+      AppNotification.dismissAll();
+
+      if (!mounted) return;
+      if (result.childLabels.isEmpty) {
+        AppNotification.showWarning(
+          context: context,
+          message: 'AI could not generate expansions for this node.',
+        );
+        return;
+      }
+
+      // Remove previous AI children for this node
+      final previousAiIds =
+          (_aiChildren[node.id] ?? []).map((n) => n.id).toSet();
+      setState(() {
+        _nodes.removeWhere((n) => previousAiIds.contains(n.id));
+        _edges.removeWhere((e) => previousAiIds.contains(e.toId));
+      });
+
+      // Add new AI nodes
+      final newNodes = result.childLabels.asMap().entries.map((entry) {
+        final aiId = 'ai_${node.id}_${entry.key}_${entry.value.hashCode}';
+        return GraphNode(
+          id: aiId,
+          label: entry.value,
+          type: GraphNodeType.aiExpanded,
+          parentId: node.id,
+          topicId: node.topicId ?? node.id,
+          subjectId: node.subjectId,
+          isAiGenerated: true,
+        );
+      }).toList();
+
+      final newEdges = newNodes
+          .map((n) => GraphEdge(fromId: node.id, toId: n.id))
+          .toList();
+
+      _aiChildren[node.id] = newNodes;
+
+      setState(() {
+        _nodes = [..._nodes, ...newNodes];
+        _edges = [..._edges, ...newEdges];
+      });
+
+      _relayout();
+
+      if (!mounted) return;
+      AppNotification.showSuccess(
+        context: context,
+        message: '${newNodes.length} AI concepts added!',
+      );
+    } catch (e) {
+      if (mounted) {
+        AppNotification.dismissAll();
+        AppNotification.showError(
+          context: context,
+          message: 'AI expansion failed. Check your API key.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _aiExpanding = false);
+    }
+  }
+
+  // ── Search ───────────────────────────────────────────────────────────────────
+
+  void _onSearchChanged() {
+    final query = _searchController.text.trim().toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _nodes = _nodes.map((n) => n.copyWith(isHighlighted: false)).toList();
+      } else {
+        _nodes = _nodes.map((n) {
+          final matches = n.label.toLowerCase().contains(query);
+          return n.copyWith(isHighlighted: matches);
+        }).toList();
+      }
+    });
+  }
+
+  void _onSearchSubmit(String value) {
+    if (value.isEmpty) return;
+    final match = _nodes.firstWhere(
+      (n) => n.label.toLowerCase().contains(value.toLowerCase()),
+      orElse: () => _nodes.first,
+    );
+    final size = MediaQuery.of(context).size;
+    _canvasKey.currentState?.centerOn(match, size);
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────────
+
+  void _updateBreadcrumb(GraphNode node) {
+    _breadcrumb = [
+      if (_subjectName != null) _subjectName!,
+      if (node.type == GraphNodeType.topic) node.label,
+      if (node.type == GraphNodeType.subtopic || node.type == GraphNodeType.aiExpanded) ...[
+        _findParentLabel(node),
+        node.label,
+      ],
+    ].whereType<String>().where((s) => s.isNotEmpty).toList();
+  }
+
+  String _findParentLabel(GraphNode node) {
+    if (node.parentId == null) return '';
+    return _nodes
+        .firstWhere(
+          (n) => n.id == node.parentId,
+          orElse: () => GraphNode(id: '', label: '', type: GraphNodeType.topic),
+        )
+        .label;
+  }
+
+  // ── Build ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
-    final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDesktop = MediaQuery.of(context).size.width > 900;
+
     return Scaffold(
-      appBar: AppBar(
-          title:
-              Text('${subjectName == null ? '' : '$subjectName · '}Mind Map'),
-          leading: BackButton(onPressed: () => Navigator.maybePop(context)),
-          actions: [
-            IconButton(
-                onPressed: () => setState(() => _generate(forceRefresh: true)),
-                icon: const Icon(Icons.refresh))
-          ]),
-      body: FutureBuilder<Map<String, dynamic>>(
-          future: _result,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const AppSkeletonList(itemCount: 5);
-            }
-            if (snapshot.hasError || snapshot.data == null) {
-              return const Center(
-                  child: Text(
-                      'We could not create this mind map. Please try again.'));
-            }
-            final data = snapshot.data!;
-            final nodes = (data['nodes'] as List? ?? const [])
-                .whereType<Map>()
-                .map(Map<String, dynamic>.from)
-                .toList();
-            final edges = (data['edges'] as List? ?? const [])
-                .whereType<Map>()
-                .map(Map<String, dynamic>.from)
-                .toList();
-            final byId = <String, Map<String, dynamic>>{};
-            for (var i = 0; i < nodes.length; i++) {
-              byId[(nodes[i]['id'] ?? '$i').toString()] = nodes[i];
-            }
-            final rawRoot = data['root'] ?? data['title'] ?? 'Study Topic';
-            final root = rawRoot is Map
-                ? Map<String, dynamic>.from(rawRoot)
-                : <String, dynamic>{'name': rawRoot.toString()};
-            final rootId = (root['id'] ?? '').toString();
-            final rootReferences = <String>{
-              if (rootId.isNotEmpty) rootId,
-              'root',
-              (root['name'] ?? root['title'] ?? '').toString(),
-            }.map((value) => value.toLowerCase()).toSet();
-            final rootChildren = <String>{};
-            final children = <String, List<String>>{};
-            final parents = <String>{};
-            for (final edge in edges) {
-              final from = (edge['from'] ?? edge['source'] ?? '').toString();
-              final to = (edge['to'] ?? edge['target'] ?? '').toString();
-              if (byId.containsKey(from) && byId.containsKey(to)) {
-                children.putIfAbsent(from, () => []).add(to);
-                parents.add(to);
-              } else if (rootReferences.contains(from.toLowerCase()) &&
-                  byId.containsKey(to)) {
-                rootChildren.add(to);
-                parents.add(to);
-              }
-            }
-            for (final entry in byId.entries) {
-              final parent = entry.value['parentId']?.toString();
-              if (parent != null && byId.containsKey(parent)) {
-                children.putIfAbsent(parent, () => []).add(entry.key);
-                parents.add(entry.key);
-              } else if (parent != null &&
-                  rootReferences.contains(parent.toLowerCase())) {
-                rootChildren.add(entry.key);
-                parents.add(entry.key);
-              }
-            }
-            final topLevel =
-                byId.keys.where((id) => !parents.contains(id)).toList();
-            if (topLevel.isEmpty) topLevel.addAll(byId.keys);
-            topLevel.removeWhere(rootChildren.contains);
-            final nestedRootChildren = (root['children'] as List? ?? const [])
-                .whereType<Map>()
-                .map(Map<String, dynamic>.from)
-                .toList();
-            return InteractiveViewer(
-              minScale: .6,
-              maxScale: 2.2,
-              constrained: false,
-              child: SizedBox(
-                width: MediaQuery.sizeOf(context).width,
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _MindRoot(title: _nodeTitle(root)),
-                        const SizedBox(height: 12),
-                        for (final id in rootChildren)
-                          _MindMapNode(
-                            data: byId[id]!,
-                            children: children,
-                            nodes: byId,
-                            path: {id},
-                            depth: 0,
-                          ),
-                        for (final child in nestedRootChildren)
-                          _MindMapNode(
-                            data: child,
-                            children: children,
-                            nodes: byId,
-                            path: const {},
-                            depth: 0,
-                          ),
-                        for (final id in topLevel)
-                          _MindMapNode(
-                            data: byId[id]!,
-                            children: children,
-                            nodes: byId,
-                            path: {id},
-                            depth: 0,
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
+      backgroundColor:
+          isDark ? AppColors.darkBackground : AppColors.lightBackground,
+      body: Column(
+        children: [
+          _buildTopBar(isDark),
+          Expanded(
+            child: _isLoading
+                ? _buildLoadingState()
+                : _error != null
+                    ? _buildErrorState()
+                    : _buildGraphArea(isDark, isDesktop),
+          ),
+        ],
+      ),
     );
   }
 
-  String _nodeTitle(Map<String, dynamic> node) =>
-      (node['name'] ?? node['title'] ?? node['label'] ?? 'Study Topic')
-          .toString();
-}
+  // ── Top Bar ──────────────────────────────────────────────────────────────────
 
-class _MindRoot extends StatelessWidget {
-  final String title;
-  const _MindRoot({required this.title});
-
-  @override
-  Widget build(BuildContext context) => Card(
-        color: Theme.of(context).colorScheme.primaryContainer,
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Text(title,
-              style: Theme.of(context).textTheme.titleLarge,
-              textAlign: TextAlign.center),
+  Widget _buildTopBar(bool isDark) {
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+          ),
         ),
+      ),
+      child: Row(
+        children: [
+          // Back button
+          IconButton(
+            icon: const Icon(Icons.arrow_back_rounded, size: 20),
+            onPressed: () => Navigator.maybePop(context),
+            tooltip: 'Back',
+          ),
+          const SizedBox(width: 4),
+
+          // Subject title / breadcrumb
+          Expanded(
+            child: _breadcrumb.isEmpty
+                ? Text(
+                    _subjectName ?? 'Knowledge Graph',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
+                      color: isDark
+                          ? AppColors.darkTextPrimary
+                          : AppColors.lightTextPrimary,
+                    ),
+                  )
+                : _buildBreadcrumbRow(isDark),
+          ),
+
+          // Search bar
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            width: _searchFocused ? 220 : 140,
+            height: 34,
+            child: TextField(
+              controller: _searchController,
+              onTap: () => setState(() => _searchFocused = true),
+              onEditingComplete: () {
+                _onSearchSubmit(_searchController.text);
+                setState(() => _searchFocused = false);
+              },
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12,
+                color: isDark
+                    ? AppColors.darkTextPrimary
+                    : AppColors.lightTextPrimary,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Search nodes…',
+                hintStyle: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  color: isDark
+                      ? AppColors.darkTextTertiary
+                      : AppColors.lightTextTertiary,
+                ),
+                prefixIcon: const Icon(Icons.search_rounded, size: 16),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide(
+                    color: isDark
+                        ? AppColors.darkBorder
+                        : AppColors.lightBorder,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: BorderSide(
+                    color: isDark
+                        ? AppColors.darkBorder
+                        : AppColors.lightBorder,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: const BorderSide(color: AppColors.brandAccent),
+                ),
+                filled: true,
+                fillColor: isDark ? AppColors.darkCard : AppColors.lightSurfaceVariant,
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // Control buttons
+          _ControlButton(
+            icon: Icons.fit_screen_rounded,
+            tooltip: 'Fit to screen',
+            isDark: isDark,
+            onTap: () {
+              final size = MediaQuery.of(context).size;
+              _canvasKey.currentState?.fitToScreen(size);
+            },
+          ),
+          _ControlButton(
+            icon: Icons.center_focus_strong_rounded,
+            tooltip: 'Reset view',
+            isDark: isDark,
+            onTap: () => _canvasKey.currentState?.resetView(),
+          ),
+          _ControlButton(
+            icon: Icons.refresh_rounded,
+            tooltip: 'Reload graph',
+            isDark: isDark,
+            onTap: _loadGraph,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 240.ms);
+  }
+
+  Widget _buildBreadcrumbRow(bool isDark) {
+    return Row(
+      children: _breadcrumb.asMap().entries.expand((entry) {
+        final isLast = entry.key == _breadcrumb.length - 1;
+        return [
+          Text(
+            entry.value,
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 12.5,
+              fontWeight: isLast ? FontWeight.w700 : FontWeight.w400,
+              color: isLast
+                  ? (isDark
+                      ? AppColors.darkTextPrimary
+                      : AppColors.lightTextPrimary)
+                  : (isDark
+                      ? AppColors.darkTextTertiary
+                      : AppColors.lightTextTertiary),
+            ),
+          ),
+          if (!isLast)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                size: 14,
+                color: isDark
+                    ? AppColors.darkTextTertiary
+                    : AppColors.lightTextTertiary,
+              ),
+            ),
+        ];
+      }).toList(),
+    );
+  }
+
+  // ── Graph Area ───────────────────────────────────────────────────────────────
+
+  void _navigateTool(String tool, String nodeId) {
+    final route = switch (tool) {
+      'flashcards' => AppRoutes.flashcards,
+      'quiz' => AppRoutes.quiz,
+      'summary' => AppRoutes.summary,
+      _ => AppRoutes.flashcards,
+    };
+    context.go(route.replaceFirst(':topicId', nodeId));
+  }
+
+  Widget _buildGraphArea(bool isDark, bool isDesktop) {
+    final canvas = GraphCanvas(
+      key: _canvasKey,
+      nodes: _nodes,
+      edges: _edges,
+      transformController: _transformController,
+      onNodeTap: _onNodeTap,
+      onNodeDoubleTap: _onNodeDoubleTap,
+      onToggleExpand: _onToggleExpand,
+    );
+
+    if (isDesktop) {
+      return Row(
+        children: [
+          Expanded(child: canvas),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            child: _panelVisible && _selectedNode != null
+                ? GraphDetailPanel(
+                    node: _selectedNode!,
+                    aiService: _aiService,
+                    subjectName: _subjectName,
+                    topicName: _topicName,
+                    onClose: _closePanel,
+                    onAiExpand: () => _expandNodeWithAI(_selectedNode!),
+                    onNavigateTool: _navigateTool,
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
       );
+    }
+
+    // Mobile: canvas full + bottom sheet
+    return Stack(
+      children: [
+        canvas,
+        if (_panelVisible && _selectedNode != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: GraphDetailPanel(
+              node: _selectedNode!,
+              aiService: _aiService,
+              subjectName: _subjectName,
+              topicName: _topicName,
+              onClose: _closePanel,
+              onAiExpand: () => _expandNodeWithAI(_selectedNode!),
+              onNavigateTool: _navigateTool,
+            ),
+          ).animate().slideY(
+                begin: 1.0,
+                end: 0.0,
+                duration: 300.ms,
+                curve: Curves.easeOutCubic,
+              ),
+      ],
+    );
+  }
+
+  // ── Loading / Error States ───────────────────────────────────────────────────
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.5,
+              color: AppColors.brandAccent,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Building Knowledge Graph…',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppColors.brandAccent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.hub_outlined, size: 56, color: AppColors.error),
+          const SizedBox(height: 16),
+          Text(
+            _error ?? 'Something went wrong',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton.icon(
+            onPressed: _loadGraph,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-class _MindMapNode extends StatelessWidget {
-  final Map<String, dynamic> data;
-  final Map<String, List<String>> children;
-  final Map<String, Map<String, dynamic>> nodes;
-  final Set<String> path;
-  final int depth;
+// ── Control Button ─────────────────────────────────────────────────────────────
 
-  const _MindMapNode({
-    required this.data,
-    required this.children,
-    required this.nodes,
-    required this.path,
-    required this.depth,
+class _ControlButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _ControlButton({
+    required this.icon,
+    required this.tooltip,
+    required this.isDark,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final id = (data['id'] ?? '').toString();
-    final title = (data['name'] ?? data['title'] ?? data['label'] ?? 'Concept')
-        .toString();
-    final detail = (data['description'] ?? data['detail'] ?? '').toString();
-    final childIds = (children[id] ?? const <String>[])
-        .where((child) => !path.contains(child))
-        .toList();
-    final nested = (data['children'] as List? ?? const [])
-        .whereType<Map>()
-        .map(Map<String, dynamic>.from)
-        .toList();
-    final hasChildren = childIds.isNotEmpty || nested.isNotEmpty;
-    return Padding(
-      padding: EdgeInsets.only(left: depth * 18.0, bottom: 6),
-      child: hasChildren
-          ? AppExpansionCard(
-              initiallyExpanded: depth == 0,
-              title: Text(
-                title,
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-              subtitle: detail.isEmpty ? null : Text(detail),
-              child: Column(
-                children: [
-                  for (final childId in childIds)
-                    _MindMapNode(
-                      data: nodes[childId]!,
-                      children: children,
-                      nodes: nodes,
-                      path: {...path, childId},
-                      depth: depth + 1,
-                    ),
-                  for (var i = 0; i < nested.length; i++)
-                    _MindMapNode(
-                      data: nested[i],
-                      children: children,
-                      nodes: nodes,
-                      path: path,
-                      depth: depth + 1,
-                    ),
-                ],
-              ),
-            )
-          : Card(
-              child: ListTile(
-                title: Text(title),
-                subtitle: detail.isEmpty ? null : Text(detail),
-              ),
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 34,
+          height: 34,
+          margin: const EdgeInsets.only(left: 4),
+          decoration: BoxDecoration(
+            color: isDark
+                ? AppColors.darkCard
+                : AppColors.lightSurfaceVariant,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
             ),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: isDark
+                ? AppColors.darkTextSecondary
+                : AppColors.lightTextSecondary,
+          ),
+        ),
+      ),
     );
   }
 }
