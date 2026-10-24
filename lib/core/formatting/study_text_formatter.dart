@@ -1,47 +1,11 @@
+import '../utils/markdown_stripper.dart';
+
 /// Converts AI or user-authored study content into clean Library text while
-/// preserving paragraphs, headings, and list structure.
+/// preserving paragraphs, headings, and list structure without Markdown symbols.
 class StudyTextFormatter {
   const StudyTextFormatter._();
 
-  static String toPlainText(String input) {
-    final lines = input.trim().split('\n');
-    final output = <String>[];
-    for (final sourceLine in lines) {
-      var line = sourceLine.trimRight();
-      final marker = line.trim();
-      if (marker.startsWith('```')) continue;
-      if (_isSeparator(marker) ||
-          marker == '**' ||
-          marker == '*' ||
-          marker == '__') {
-        continue;
-      }
-
-      line = _stripHeading(line);
-      line = line.replaceFirst(RegExp(r'^\s*>\s?'), '');
-      line = line.replaceFirst(RegExp(r'^\s*[-+*]\s+'), '• ');
-      line = line.replaceAllMapped(
-        RegExp(r'\[([^\]]+)\]\(([^)]+)\)'),
-        (match) => '${match[1]} (${match[2]})',
-      );
-      line = _stripInlineMarkup(line);
-      output.add(line.trimRight());
-    }
-
-    // Keep a blank line between bullets so each item reads like a separate
-    // handwritten revision point. Preserve paragraph breaks from the source.
-    final spaced = <String>[];
-    for (var i = 0; i < output.length; i++) {
-      final line = output[i];
-      spaced.add(line);
-      if (line.trimLeft().startsWith('• ') &&
-          i + 1 < output.length &&
-          output[i + 1].trimLeft().startsWith('• ')) {
-        spaced.add('');
-      }
-    }
-    return _normalizeBlankLines(spaced.join('\n'));
-  }
+  static String toPlainText(String input) => stripMarkdown(input);
 
   /// Removes decorative or malformed Markdown before the Coach's Markdown
   /// renderer handles intentional headings, emphasis, and lists.

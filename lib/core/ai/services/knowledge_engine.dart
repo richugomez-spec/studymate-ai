@@ -17,16 +17,31 @@ import 'gemini_api_key_provider.dart';
 import 'web_search_service.dart';
 
 const _marksBasedAnswerGuidelines = '''
-MARKS-BASED UNIVERSITY EXAM ANSWER RULES
-Write like a high-scoring KJU student. Use clear headings and subheadings, structured paragraphs, useful bullets or numbered steps, examples, practical applications, exam-relevant points, and a text diagram or flowchart when it clarifies the answer. Do not collapse a descriptive answer into a summary or one long paragraph.
+KRISTU JAYANTI UNIVERSITY (AUTONOMOUS) DESCRIPTIVE EXAMINATION ANSWER RULES:
+Generate answers according to the Kristu Jayanti University (Autonomous) descriptive examination pattern. Write with sufficient academic depth, technical terminology, proper paragraphs, definitions, examples, applications, and conclusions.
 
-For each model answer, use the question's marks:
-- 2 marks: 50–100 words. Give a definition, direct explanation, and one or two important points.
-- 5 marks: 300–500 words. Include a definition, introduction, detailed explanation, key concepts, working or process where applicable, an example, and a conclusion.
-- 10 marks: 800–1200+ words, with a minimum of 800. Give a full descriptive university answer with definition, introduction, thorough explanation of each concept, working/architecture/process where applicable, components, advantages, limitations, applications, real-world examples, a text diagram/flowchart where useful, and conclusion. Do not summarize; explain each section.
-- For other mark values, scale the depth proportionally to the nearest listed format. If marks are not provided, write a complete study answer of appropriate depth without inventing a mark value.
+Length and Structure by Marks:
+- 2 Marks (Around 150–250 words):
+  Concise explanation. Include clear academic definition, direct explanation, and core technical points.
+- 5 Marks (Around 400–700 words):
+  Must include Introduction, Definition, Explanation, Concrete Examples, Real-world Applications, and Conclusion in proper descriptive paragraphs.
+- 10 Marks (Around 900–1500 words):
+  Write the answer exactly like a university topper writing in the examination. Produce a complete descriptive answer with sufficient depth, explanations, examples, applications, and conclusion. Do not summarize. Do not provide outlines.
+  Required Structure:
+  • Introduction
+  • Formal Definition
+  • Detailed Explanation (Break into core concepts/modules, provide in-depth explanation and illustrative examples for each)
+  • Diagram (Textual / ASCII architecture diagram or flowchart if applicable)
+  • Advantages & Strengths
+  • Disadvantages / Limitations
+  • Real-World Applications & Industry Use Cases
+  • Conclusion
+  Every section must contain substantive descriptive paragraphs, not one-line bullet points. The answer should read like a student wrote it in the examination. Avoid bare numbered lists (1., 2., 3.) unless the question explicitly asks to list or enumerate points.
 
-Use the complete supplied Subject > Topic > Subtopic hierarchy and all available manual or AI-generated study notes. When notes are absent, teach accurately from the syllabus hierarchy and established academic knowledge. Make each answer self-contained enough to study and reproduce in a university exam.''';
+STRICT RESTRICTIONS:
+- Do NOT include any marking scheme or grading breakdown (e.g. '2 marks for...', '3 marks for...').
+- Do NOT include common mistakes, examiner notes, or answer hints.
+- Only return the complete final answer.''';
 
 /// The single Gemini reasoning path for all StudyMate knowledge tools.
 class KnowledgeEngine {
@@ -1577,8 +1592,6 @@ Generate concise, structured university lecture notes as clean plain text, not M
                   'prompt': '',
                   'marks': 0,
                   'modelAnswer': '',
-                  'markingScheme': [],
-                  'commonMistakes': []
                 }
               ]
             }

@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/utils/markdown_stripper.dart';
 import 'firestore_models.dart';
 
 /// Provider for FirestoreService
@@ -1502,7 +1503,7 @@ class FirestoreService {
     final ref = await _knowledgeCol.add({
       'ownerId': uid,
       'title': title,
-      'content': content,
+      'content': origin == 'ai_generated' ? stripMarkdown(content) : content,
       'subject': subject,
       'subjectId': subjectId,
       'topic': topic,
@@ -1548,7 +1549,7 @@ class FirestoreService {
     final fields = <String, dynamic>{
       'ownerId': uid,
       'title': title,
-      'content': content,
+      'content': stripMarkdown(content),
       'subject': subject,
       'subjectId': subjectId,
       'topic': topic,

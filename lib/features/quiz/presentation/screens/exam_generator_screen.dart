@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/ai/services/knowledge_engine.dart';
@@ -95,8 +96,17 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
         sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
         forceRefresh: forceRefresh,
         prompt:
-            '''Build a complete $_totalMarks-mark university examination with an estimated duration of $_durationMinutes minutes.
-Create exactly $_questionCount questions across these sections. Return JSON with title and a questions array. Each question must include section, prompt, marks, compulsory (boolean), difficulty, bloomLevel, modelAnswer, markingScheme (list), and commonMistakes (list). The configured section count, marks, compulsory/optional balance, difficulty distribution, Bloom's levels, and instructions are:
+            '''Build a complete $_totalMarks-mark university examination with an estimated duration of $_durationMinutes minutes according to the Kristu Jayanti University (Autonomous) descriptive examination pattern.
+Create exactly $_questionCount questions across these sections. Return JSON with title and a questions array. Each question must include section, prompt, marks, compulsory (boolean), difficulty, bloomLevel, and modelAnswer.
+
+FOR EACH MODEL ANSWER:
+- Produce answers strictly adhering to the Kristu Jayanti University (Autonomous) descriptive examination pattern.
+- 2 Marks (Around 150–250 words): Concise explanation with academic definition and direct explanation.
+- 5 Marks (Around 400–700 words): Must include Introduction, Definition, Explanation, Examples, Applications, and Conclusion in proper descriptive paragraphs.
+- 10 Marks (Around 900–1500 words): Write the answer exactly like a university topper writing in the examination. Produce a complete descriptive answer with sufficient depth, explanations, examples, applications, and conclusion. Do not summarize. Do not provide outlines. Structure into Introduction, Definition, Detailed Explanation (with separate concept subsections and thorough explanations/examples), Diagram (ASCII or textual if applicable), Advantages, Disadvantages, Applications, Real-world Example, and Conclusion. Every heading must contain proper descriptive paragraphs, not one-line bullets. Avoid 1., 2., 3. unless the question explicitly asks to list points.
+- NEVER include marking scheme, grading breakdown (e.g., '2 marks for...'), common mistakes, or hints. Return ONLY the complete final answer.
+
+The configured section count, marks, compulsory/optional balance, difficulty distribution, Bloom's levels, and instructions are:
 $sectionBrief
 Use the currently opened subject hierarchy as the syllabus, manual notes as primary context when available, and academic knowledge to fill gaps. Preserve the syllabus hierarchy. Do not include answers in question prompts. Do not invent syllabus topics.''',
       );
@@ -633,10 +643,8 @@ Use the currently opened subject hierarchy as the syllabus, manual notes as prim
           ),
           if (revealed) ...[
             const Divider(),
-            _answerSection(
-                'Model answer', question['modelAnswer'] ?? question['answer']),
-            _answerSection('Marking scheme', question['markingScheme']),
-            _answerSection('Common mistakes', question['commonMistakes']),
+            _modelAnswerView(
+                theme, question['modelAnswer'] ?? question['answer']),
           ],
         ]),
       ),
@@ -653,21 +661,66 @@ Use the currently opened subject hierarchy as the syllabus, manual notes as prim
             style: theme.textTheme.labelMedium?.copyWith(color: color)),
       );
 
-  Widget _answerSection(String title, dynamic value) {
+  static String _cleanModelAnswer(String raw) {
+    var text = raw.trim();
+    final splitRegex = RegExp(
+      r'\n\s*(?:#{1,6}\s*)?(?:\*\*)?(?:Marking Scheme|Grading Breakdown|Common Mistakes)(?:\*\*)?.*$',
+      caseSensitive: false,
+      dotAll: true,
+    );
+    text = text.replaceAll(splitRegex, '').trim();
+    return text;
+  }
+
+  Widget _modelAnswerView(ThemeData theme, dynamic value) {
     if (value == null) return const SizedBox.shrink();
-    final values = value is List ? value : [value];
+    final rawText = value is List ? value.join('\n\n') : value.toString();
+    final cleanText = _cleanModelAnswer(rawText);
+    if (cleanText.isEmpty) return const SizedBox.shrink();
+
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 5),
-        for (final item in values)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 3),
-            child: Text(
-                '• ${item is Map ? (item['criterion'] ?? item['point'] ?? item['text'] ?? '').toString() : item.toString()}'),
+      padding: const EdgeInsets.only(top: 10, bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.school_outlined, size: 18, color: AppColors.teal),
+              const SizedBox(width: 6),
+              Text(
+                'University Model Answer',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.teal,
+                ),
+              ),
+            ],
           ),
-      ]),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceVariant.withOpacity(0.35),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: theme.colorScheme.outlineVariant.withOpacity(0.4),
+              ),
+            ),
+            child: MarkdownBody(
+              data: cleanText,
+              selectable: true,
+              styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                h1: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                h2: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                h3: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                p: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
+                listBullet: theme.textTheme.bodyMedium,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
