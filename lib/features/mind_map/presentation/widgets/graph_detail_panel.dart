@@ -16,10 +16,10 @@ class GraphDetailPanel extends StatefulWidget {
   final void Function(String route, String nodeId)? onNavigateTool;
 
   const GraphDetailPanel({
-    super.key,
     required this.node,
     required this.aiService,
     required this.onClose,
+    super.key,
     this.subjectName,
     this.topicName,
     this.onAiExpand,
@@ -520,7 +520,7 @@ class _SectionContent extends StatelessWidget {
       children: [
         Text(
           title,
-          style: TextStyle(
+          style: const TextStyle(
             fontFamily: 'Inter',
             fontSize: 12,
             fontWeight: FontWeight.w700,
@@ -578,7 +578,7 @@ class _LoadingPlaceholder extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 8),
-        Row(
+        const Row(
           children: [
             SizedBox(
               width: 16,
@@ -588,7 +588,7 @@ class _LoadingPlaceholder extends StatelessWidget {
                 color: AppColors.brandAccent,
               ),
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: 10),
             Text(
               'AI is generating explanation…',
               style: TextStyle(
@@ -633,9 +633,9 @@ class _ErrorView extends StatelessWidget {
         const Icon(Icons.error_outline_rounded,
             color: AppColors.error, size: 32),
         const SizedBox(height: 8),
-        Text(
+        const Text(
           'Could not load explanation',
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'Inter',
             fontSize: 13,
             fontWeight: FontWeight.w600,

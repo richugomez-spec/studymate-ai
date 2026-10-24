@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/ai/services/gemini_api_key_provider.dart';
 import '../../../../core/routing/app_routes.dart';
+import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/notifications/app_notification.dart';
 import '../../../../services/firestore_service.dart';
@@ -34,6 +35,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
   List<GraphNode> _nodes = [];
   List<GraphEdge> _edges = [];
   bool _isLoading = true;
+  bool _emptyTopics = false;
   String? _error;
 
   // Selection & UI state
@@ -65,6 +67,14 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
   }
 
   @override
+  void didUpdateWidget(MindMapScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.topicId != widget.topicId) {
+      _loadGraph();
+    }
+  }
+
+  @override
   void dispose() {
     _transformController.dispose();
     _searchController.dispose();
@@ -76,21 +86,23 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
   Future<void> _loadGraph() async {
     setState(() {
       _isLoading = true;
+      _emptyTopics = false;
       _error = null;
     });
 
     try {
-      final uid = ref.read(currentUserProvider)?.id ?? '';
       final service = ref.read(firestoreServiceProvider);
+      final uid =
+          ref.read(currentUserProvider)?.id ?? service.currentUserId ?? '';
 
       // Get all subjects for this user
-      final subjects = ref
-              .read(userSubjectsStreamProvider(uid))
-              .asData
-              ?.value ??
-          await service.streamSubjects(uid).first;
+      var fetchedSubjects = ref.read(userSubjectsStreamProvider(uid)).asData?.value;
+      if (fetchedSubjects == null || fetchedSubjects.isEmpty) {
+        fetchedSubjects = await service.streamSubjects(uid).first;
+      }
 
-      if (subjects.isEmpty) {
+      final subjectList = fetchedSubjects;
+      if (subjectList.isEmpty) {
         setState(() {
           _isLoading = false;
           _error = 'No subjects found. Create a subject in the Library first.';
@@ -98,24 +110,79 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         return;
       }
 
-      // Determine which subject to display
-      // topicId parameter may be a subjectId when coming from library
-      final targetSubjectId = widget.topicId ??
-          subjects.first['id']?.toString() ??
-          '';
+      final activeSubjectId = ref.read(activeKnowledgeSubjectIdProvider);
 
-      // Find the matching subject
-      final subjectData = subjects.firstWhere(
-        (s) => s['id']?.toString() == targetSubjectId,
-        orElse: () => subjects.first,
-      );
+      // Determine which subject to display
+      Map<String, dynamic> subjectData;
+      if (widget.topicId != null &&
+          widget.topicId != 'current' &&
+          widget.topicId != ':topicId' &&
+          widget.topicId!.isNotEmpty) {
+        subjectData = subjectList.firstWhere(
+          (s) => s['id']?.toString() == widget.topicId,
+          orElse: () => subjectList.firstWhere(
+            (s) => s['id']?.toString() == activeSubjectId,
+            orElse: () => subjectList.first,
+          ),
+        );
+      } else if (activeSubjectId != null && activeSubjectId.isNotEmpty) {
+        subjectData = subjectList.firstWhere(
+          (s) => s['id']?.toString() == activeSubjectId,
+          orElse: () => subjectList.first,
+        );
+      } else {
+        subjectData = subjectList.first;
+      }
 
       final subjectId = subjectData['id']?.toString() ?? '';
       _subjectName = subjectData['name']?.toString() ?? 'Subject';
 
-      // Load topic + subtopic hierarchy
-      final topicsWithSubtopics =
-          await service.getSubjectTopicsWithSubtopics(subjectId);
+      // Keep active subject synchronized across providers
+      ref.read(activeKnowledgeSubjectIdProvider.notifier).state = subjectId;
+      ref.read(activeKnowledgeSubjectNameProvider.notifier).state = _subjectName;
+
+      // Load topic + subtopic hierarchy from Firestore
+      List<Map<String, dynamic>> topicsWithSubtopics = [];
+      try {
+        topicsWithSubtopics =
+            await service.getSubjectTopicsWithSubtopics(subjectId);
+      } catch (err) {
+        debugPrint(
+            'getSubjectTopicsWithSubtopics error ($err), falling back to loadSubjectStudyHierarchy');
+        final hierarchy = await service.loadSubjectStudyHierarchy(subjectId);
+        if (hierarchy != null && hierarchy['topics'] is List) {
+          topicsWithSubtopics =
+              List<Map<String, dynamic>>.from(hierarchy['topics'] as List);
+        }
+      }
+
+      if (topicsWithSubtopics.isEmpty) {
+        final hierarchy = await service.loadSubjectStudyHierarchy(subjectId);
+        if (hierarchy != null && hierarchy['topics'] is List) {
+          final hTopics =
+              List<Map<String, dynamic>>.from(hierarchy['topics'] as List);
+          if (hTopics.isNotEmpty) {
+            topicsWithSubtopics = hTopics;
+          }
+        }
+      }
+
+      if (topicsWithSubtopics.isEmpty) {
+        debugPrint('Loaded Subject: $_subjectName');
+        debugPrint('Topics: 0');
+        debugPrint('Subtopics: 0');
+        debugPrint('Nodes Built: 0');
+        debugPrint('Edges Built: 0');
+        if (mounted) {
+          setState(() {
+            _nodes = [];
+            _edges = [];
+            _emptyTopics = true;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
 
       _buildGraph(
         subjectId: subjectId,
@@ -123,10 +190,12 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         topics: topicsWithSubtopics,
       );
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _error = 'Failed to load knowledge graph: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = 'Failed to load knowledge graph: $e';
+        });
+      }
     }
   }
 
@@ -146,6 +215,8 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     );
     nodes.add(rootNode);
 
+    int subtopicCount = 0;
+
     // Topic nodes
     for (final topic in topics) {
       final topicId = topic['id']?.toString() ?? '';
@@ -164,6 +235,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       // Subtopic nodes
       final subtopics =
           (topic['subtopics'] as List? ?? []).cast<Map<String, dynamic>>();
+      subtopicCount += subtopics.length;
       for (final sub in subtopics) {
         final subId = sub['id']?.toString() ?? '';
         final subName = sub['name']?.toString() ?? 'Subtopic';
@@ -181,12 +253,20 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       }
     }
 
+    // Temporary debug logs for Step 7
+    debugPrint('Loaded Subject: $subjectName');
+    debugPrint('Topics: ${topics.length}');
+    debugPrint('Subtopics: $subtopicCount');
+    debugPrint('Nodes Built: ${nodes.length}');
+    debugPrint('Edges Built: ${edges.length}');
+
     // Run layout
     final laidOut = GraphLayoutEngine.layout(nodes, edges);
 
     setState(() {
       _nodes = laidOut;
       _edges = edges;
+      _emptyTopics = false;
       _isLoading = false;
     });
 
@@ -419,7 +499,9 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
                 ? _buildLoadingState()
                 : _error != null
                     ? _buildErrorState()
-                    : _buildGraphArea(isDark, isDesktop),
+                    : _emptyTopics || _nodes.isEmpty
+                        ? _buildEmptyTopicsState(isDark)
+                        : _buildGraphArea(isDark, isDesktop),
           ),
         ],
       ),
@@ -445,7 +527,13 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
           // Back button
           IconButton(
             icon: const Icon(Icons.arrow_back_rounded, size: 20),
-            onPressed: () => Navigator.maybePop(context),
+            onPressed: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go(AppRoutes.library);
+              }
+            },
             tooltip: 'Back',
           ),
           const SizedBox(width: 4),
@@ -667,7 +755,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
   // ── Loading / Error States ───────────────────────────────────────────────────
 
   Widget _buildLoadingState() {
-    return Center(
+    return const Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -679,7 +767,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
               color: AppColors.brandAccent,
             ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           Text(
             'Building Knowledge Graph…',
             style: TextStyle(
@@ -714,6 +802,72 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
             onPressed: _loadGraph,
             icon: const Icon(Icons.refresh_rounded),
             label: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyTopicsState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: isDark ? AppColors.darkCard : AppColors.lightSurface,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+              ),
+            ),
+            child: const Icon(
+              Icons.hub_outlined,
+              size: 48,
+              color: AppColors.brandAccent,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'No Topics Found',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: isDark
+                  ? AppColors.darkTextPrimary
+                  : AppColors.lightTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              'Add topics to begin building your knowledge graph.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 14,
+                color: isDark
+                    ? AppColors.darkTextSecondary
+                    : AppColors.lightTextSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: () => context.go(AppRoutes.library),
+            icon: const Icon(Icons.menu_book_rounded, size: 18),
+            label: const Text('Open Library'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.brandAccent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
           ),
         ],
       ),

@@ -11,7 +11,7 @@ class GraphLayoutEngine {
   static const double _aiExpandedOffset = 120.0;
 
   /// Compute positions for all visible nodes using a radial layout.
-  /// Returns a new list of nodes with updated [position] fields.
+  /// Returns a new list of nodes with updated node positions.
   static List<GraphNode> layout(
     List<GraphNode> nodes,
     List<GraphEdge> edges,

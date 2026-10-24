@@ -20,12 +20,12 @@ class GraphCanvas extends StatefulWidget {
   final TransformationController? transformController;
 
   const GraphCanvas({
-    super.key,
     required this.nodes,
     required this.edges,
     required this.onNodeTap,
     required this.onNodeDoubleTap,
     required this.onToggleExpand,
+    super.key,
     this.transformController,
   });
 

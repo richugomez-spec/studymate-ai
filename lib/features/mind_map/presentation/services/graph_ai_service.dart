@@ -187,7 +187,7 @@ Rules:
       }
       // Simple field extraction using regex
       String extract(String key) {
-        final pattern = RegExp('"$key"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)\"',
+        final pattern = RegExp('"$key"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"',
             dotAll: true);
         return pattern.firstMatch(cleaned)?.group(1)?.replaceAll(r'\"', '"').replaceAll(r'\n', '\n') ?? '';
       }

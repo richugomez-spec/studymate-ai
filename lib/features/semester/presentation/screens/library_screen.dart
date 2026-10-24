@@ -412,7 +412,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       _showError('Open a subject to use its study tools.');
       return;
     }
-    context.push(route.replaceFirst(':topicId', 'current'));
+    context.push(route.replaceFirst(':topicId', subjectId));
   }
 
   @override

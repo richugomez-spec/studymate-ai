@@ -34,7 +34,7 @@ class StudyToolsScreen extends ConsumerWidget {
         context.go(AppRoutes.library);
       } else {
         context.push(
-            '${routeTemplate.replaceFirst(':topicId', 'current')}${query ?? ''}');
+            '${routeTemplate.replaceFirst(':topicId', activeSubjectId)}${query ?? ''}');
       }
     }
 

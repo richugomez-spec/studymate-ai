@@ -14,10 +14,10 @@ class GraphNodeWidget extends StatefulWidget {
   final VoidCallback? onToggleExpand;
 
   const GraphNodeWidget({
-    super.key,
     required this.node,
     required this.onTap,
     required this.onDoubleTap,
+    super.key,
     this.onToggleExpand,
   });
 
@@ -244,7 +244,6 @@ class _TopicNodeWidget extends StatelessWidget {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             node.label,
@@ -359,7 +358,6 @@ class _AiNodeWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: AppColors.teal.withOpacity(hovered ? 0.70 : 0.45),
-          width: 1.0,
         ),
         boxShadow: [
           if (hovered)
