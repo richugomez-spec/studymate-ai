@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
 
-/// Node type in the knowledge graph hierarchy
+/// Node type in the knowledge tree hierarchy
 enum GraphNodeType { subject, topic, subtopic, aiExpanded }
 
-/// Represents a single node in the interactive knowledge graph.
+/// Represents a single node in the interactive knowledge tree.
 class GraphNode {
   final String id;
   final String label;
   final GraphNodeType type;
   final String? parentId;
-  final String? topicId;       // for subtopics: the parent topic id
-  final String? subjectId;     // for topics/subtopics: subject id
+  final String? topicId; // for subtopics: parent topic id
+  final String? subjectId; // subject id
   final String? description;
-  final bool isAiGenerated;    // true = temporary AI-expanded node
+  final List<Map<String, dynamic>> notes; // real student notes from Firestore
+  final int childCount; // number of direct children
+  final bool isAiGenerated; // true = temporary AI-expanded node
 
-  // Layout state (set by layout algorithm)
+  // Layout & UI state
   Offset position;
   bool isExpanded;
   bool isSelected;
@@ -29,6 +31,8 @@ class GraphNode {
     this.topicId,
     this.subjectId,
     this.description,
+    this.notes = const [],
+    this.childCount = 0,
     this.isAiGenerated = false,
     this.position = Offset.zero,
     this.isExpanded = true,
@@ -37,17 +41,45 @@ class GraphNode {
     this.isVisible = true,
   });
 
-  /// Node radius used for hit-testing and layout spacing
+  /// Node width based on type
+  double get width {
+    switch (type) {
+      case GraphNodeType.subject:
+        return 120.0;
+      case GraphNodeType.topic:
+        return 180.0;
+      case GraphNodeType.subtopic:
+        return 160.0;
+      case GraphNodeType.aiExpanded:
+        return 145.0;
+    }
+  }
+
+  /// Node height based on type
+  double get height {
+    switch (type) {
+      case GraphNodeType.subject:
+        return 120.0;
+      case GraphNodeType.topic:
+        return 56.0;
+      case GraphNodeType.subtopic:
+        return 48.0;
+      case GraphNodeType.aiExpanded:
+        return 44.0;
+    }
+  }
+
+  /// Node radius used for collision boundaries and hit testing
   double get radius {
     switch (type) {
       case GraphNodeType.subject:
-        return 52.0;
+        return 60.0;
       case GraphNodeType.topic:
-        return 36.0;
+        return 40.0;
       case GraphNodeType.subtopic:
-        return 24.0;
+        return 28.0;
       case GraphNodeType.aiExpanded:
-        return 22.0;
+        return 24.0;
     }
   }
 
@@ -57,6 +89,8 @@ class GraphNode {
     bool? isSelected,
     bool? isHighlighted,
     bool? isVisible,
+    int? childCount,
+    List<Map<String, dynamic>>? notes,
   }) {
     return GraphNode(
       id: id,
@@ -66,6 +100,8 @@ class GraphNode {
       topicId: topicId,
       subjectId: subjectId,
       description: description,
+      notes: notes ?? this.notes,
+      childCount: childCount ?? this.childCount,
       isAiGenerated: isAiGenerated,
       position: position ?? this.position,
       isExpanded: isExpanded ?? this.isExpanded,
@@ -76,10 +112,15 @@ class GraphNode {
   }
 }
 
-/// Represents an edge (connection) between two nodes.
+/// Represents an edge (connection) between two nodes in the tree.
 class GraphEdge {
   final String fromId;
   final String toId;
+  final bool isDashed;
 
-  const GraphEdge({required this.fromId, required this.toId});
+  const GraphEdge({
+    required this.fromId,
+    required this.toId,
+    this.isDashed = false,
+  });
 }

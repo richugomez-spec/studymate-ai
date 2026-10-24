@@ -1,134 +1,147 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-
-import '../../../../core/theme/app_colors.dart';
 import '../models/graph_node.dart';
 
-/// Custom painter that renders all graph edges as smooth cubic bezier curves.
+/// Smooth animated Bézier curve edge painter for the knowledge tree.
+/// Renders NotebookLM-style cubic curves, dashed edges for AI nodes,
+/// branch glowing, and animated edge drawing.
 class GraphEdgePainter extends CustomPainter {
   final List<GraphNode> nodes;
   final List<GraphEdge> edges;
+  final double animationProgress; // 0.0 -> 1.0 for edge drawing animation
   final bool isDark;
 
-  const GraphEdgePainter({
+  static const Color _edgeColor = Color(0xFF5EA9FF);
+  static const Color _edgeGlowColor = Color(0xFF3B82F6);
+  static const Color _aiEdgeColor = Color(0xFF14B8A6);
+
+  GraphEdgePainter({
     required this.nodes,
     required this.edges,
-    required this.isDark,
+    this.animationProgress = 1.0,
+    this.isDark = true,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (nodes.isEmpty || edges.isEmpty) return;
+
     final nodeMap = {for (final n in nodes) n.id: n};
 
     for (final edge in edges) {
       final from = nodeMap[edge.fromId];
       final to = nodeMap[edge.toId];
+
       if (from == null || to == null) continue;
       if (!from.isVisible || !to.isVisible) continue;
 
-      // Determine if the parent is collapsed
-      final parent = nodeMap[to.parentId];
-      if (parent != null && !parent.isExpanded) continue;
+      // Vertical tree connection:
+      // Exit from bottom center of parent, enter at top center of child
+      final start = Offset(from.position.dx, from.position.dy + from.height / 2.0);
+      final end = Offset(to.position.dx, to.position.dy - to.height / 2.0);
 
-      _drawEdge(canvas, from, to);
+      // Construct cubic Bézier curve
+      final deltaY = (end.dy - start.dy).abs();
+      final cp1 = Offset(start.dx, start.dy + deltaY * 0.50);
+      final cp2 = Offset(end.dx, end.dy - deltaY * 0.50);
+
+      final fullPath = Path()
+        ..moveTo(start.dx, start.dy)
+        ..cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, end.dx, end.dy);
+
+      // Handle animated edge drawing (0.0 to 1.0)
+      final Path path;
+      if (animationProgress < 1.0) {
+        path = _extractSubPath(fullPath, animationProgress);
+      } else {
+        path = fullPath;
+      }
+
+      final isAiEdge = edge.isDashed || to.type == GraphNodeType.aiExpanded;
+      final isSelectedBranch = from.isSelected || to.isSelected;
+      final isHighlighted = from.isHighlighted && to.isHighlighted;
+
+      final baseColor = isAiEdge ? _aiEdgeColor : _edgeColor;
+
+      // Glow pass for selected or highlighted branches
+      if (isSelectedBranch || isHighlighted) {
+        final glowPaint = Paint()
+          ..color = (isAiEdge ? _aiEdgeColor : _edgeGlowColor).withOpacity(0.55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 5.0
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+
+        if (isAiEdge) {
+          _drawDashedPath(canvas, path, glowPaint, dashLength: 6, dashSpace: 4);
+        } else {
+          canvas.drawPath(path, glowPaint);
+        }
+      }
+
+      // Base edge paint
+      final edgeOpacity = isSelectedBranch
+          ? 0.95
+          : isHighlighted
+              ? 0.85
+              : isDark
+                  ? 0.50
+                  : 0.40;
+
+      final strokeWidth = isSelectedBranch ? 2.5 : 1.8;
+
+      final mainPaint = Paint()
+        ..color = baseColor.withOpacity(edgeOpacity)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round;
+
+      if (isAiEdge) {
+        _drawDashedPath(canvas, path, mainPaint, dashLength: 6, dashSpace: 4);
+      } else {
+        canvas.drawPath(path, mainPaint);
+      }
+
+      // Small subtle connector dot at child entry point
+      if (animationProgress > 0.85) {
+        final dotPaint = Paint()
+          ..color = baseColor.withOpacity(isSelectedBranch ? 1.0 : 0.70)
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(end, isSelectedBranch ? 3.5 : 2.5, dotPaint);
+      }
     }
   }
 
-  void _drawEdge(Canvas canvas, GraphNode from, GraphNode to) {
-    final Color edgeColor;
-    final double strokeWidth;
-
-    switch (to.type) {
-      case GraphNodeType.subject:
-        return;
-      case GraphNodeType.topic:
-        edgeColor = isDark
-            ? AppColors.brandAccent.withOpacity(0.55)
-            : AppColors.brandAccent.withOpacity(0.40);
-        strokeWidth = 2.0;
-        break;
-      case GraphNodeType.subtopic:
-        edgeColor = isDark
-            ? AppColors.darkBorder.withOpacity(0.80)
-            : AppColors.lightBorder.withOpacity(0.95);
-        strokeWidth = 1.4;
-        break;
-      case GraphNodeType.aiExpanded:
-        edgeColor = isDark
-            ? AppColors.teal.withOpacity(0.50)
-            : AppColors.teal.withOpacity(0.40);
-        strokeWidth = 1.2;
-        break;
+  Path _extractSubPath(Path source, double progress) {
+    final dest = Path();
+    for (final metric in source.computeMetrics()) {
+      final extractLength = metric.length * progress.clamp(0.0, 1.0);
+      dest.addPath(metric.extractPath(0.0, extractLength), Offset.zero);
     }
-
-    final paint = Paint()
-      ..color = to.isHighlighted
-          ? AppColors.brandAccent.withOpacity(0.85)
-          : (to.isSelected ? AppColors.brandAccent : edgeColor)
-      ..strokeWidth =
-          to.isSelected || to.isHighlighted ? strokeWidth + 0.8 : strokeWidth
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    // Draw smooth cubic bezier
-    final p0 = from.position;
-    final p3 = to.position;
-    final dx = (p3.dx - p0.dx) * 0.45;
-    final dy = (p3.dy - p0.dy) * 0.08; // slight vertical curve
-    final p1 = Offset(p0.dx + dx, p0.dy + dy);
-    final p2 = Offset(p3.dx - dx, p3.dy - dy);
-
-    final path = Path()
-      ..moveTo(p0.dx, p0.dy)
-      ..cubicTo(p1.dx, p1.dy, p2.dx, p2.dy, p3.dx, p3.dy);
-
-    // Draw dashed line for AI-expanded edges
-    if (to.isAiGenerated) {
-      _drawDashedPath(canvas, path, paint);
-    } else {
-      canvas.drawPath(path, paint);
-    }
-
-    // Draw animated dot at midpoint for selected edges
-    if (to.isSelected || from.isSelected) {
-      final midPaint = Paint()
-        ..color = AppColors.brandAccent
-        ..style = PaintingStyle.fill;
-      final mid = _cubicPoint(p0, p1, p2, p3, 0.5);
-      canvas.drawCircle(mid, 3.5, midPaint);
-    }
+    return dest;
   }
 
-  Offset _cubicPoint(Offset p0, Offset p1, Offset p2, Offset p3, double t) {
-    final mt = 1.0 - t;
-    return Offset(
-      mt * mt * mt * p0.dx +
-          3 * mt * mt * t * p1.dx +
-          3 * mt * t * t * p2.dx +
-          t * t * t * p3.dx,
-      mt * mt * mt * p0.dy +
-          3 * mt * mt * t * p1.dy +
-          3 * mt * t * t * p2.dy +
-          t * t * t * p3.dy,
-    );
-  }
-
-  void _drawDashedPath(Canvas canvas, Path path, Paint paint) {
-    const dashLength = 6.0;
-    const gapLength = 4.0;
-    final metrics = path.computeMetrics();
-    for (final metric in metrics) {
+  void _drawDashedPath(
+    Canvas canvas,
+    Path path,
+    Paint paint, {
+    required double dashLength,
+    required double dashSpace,
+  }) {
+    for (final metric in path.computeMetrics()) {
       double distance = 0.0;
       while (distance < metric.length) {
-        final end = math.min(distance + dashLength, metric.length);
-        canvas.drawPath(metric.extractPath(distance, end), paint);
-        distance += dashLength + gapLength;
+        final end = (distance + dashLength).clamp(0.0, metric.length);
+        final segment = metric.extractPath(distance, end);
+        canvas.drawPath(segment, paint);
+        distance += dashLength + dashSpace;
       }
     }
   }
 
   @override
-  bool shouldRepaint(GraphEdgePainter oldDelegate) =>
-      oldDelegate.nodes != nodes || oldDelegate.edges != edges || oldDelegate.isDark != isDark;
+  bool shouldRepaint(covariant GraphEdgePainter oldDelegate) {
+    return oldDelegate.animationProgress != animationProgress ||
+        oldDelegate.nodes != nodes ||
+        oldDelegate.edges != edges ||
+        oldDelegate.isDark != isDark;
+  }
 }

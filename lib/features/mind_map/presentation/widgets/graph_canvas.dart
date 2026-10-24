@@ -1,16 +1,15 @@
 import 'dart:math' as math;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import '../../../../core/theme/app_colors.dart';
 import '../models/graph_layout.dart';
 import '../models/graph_node.dart';
 import 'graph_edge_painter.dart';
 import 'graph_node_widget.dart';
 
-/// The interactive canvas that renders and manages the knowledge graph.
-/// Supports pan, zoom (mouse wheel + pinch), fit-to-screen, and node dragging.
+/// The interactive knowledge tree canvas.
+/// Supports smooth pan, mouse wheel zoom, pinch zoom, animated edge drawing,
+/// double-tap node centering, and camera transitions.
 class GraphCanvas extends StatefulWidget {
   final List<GraphNode> nodes;
   final List<GraphEdge> edges;
@@ -36,22 +35,41 @@ class GraphCanvas extends StatefulWidget {
 class GraphCanvasState extends State<GraphCanvas>
     with TickerProviderStateMixin {
   late TransformationController _transformController;
-  late AnimationController _animController;
+  late AnimationController _cameraController;
+  late AnimationController _edgeDrawController;
   Animation<Matrix4>? _matrixAnimation;
 
-  static const double _minScale = 0.25;
-  static const double _maxScale = 3.0;
-  static const double _padding = 120.0;
+  static const double _minScale = 0.20;
+  static const double _maxScale = 2.8;
+  static const double _canvasSize = 6000.0;
+  static const double _canvasCenter = _canvasSize / 2.0;
 
   @override
   void initState() {
     super.initState();
     _transformController =
         widget.transformController ?? TransformationController();
-    _animController = AnimationController(
+
+    _cameraController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 550),
     );
+
+    // Animated edge drawing controller
+    _edgeDrawController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    )..forward();
+  }
+
+  @override
+  void didUpdateWidget(GraphCanvas oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Trigger animated edge drawing if nodes count or edges change
+    if (oldWidget.nodes.length != widget.nodes.length ||
+        oldWidget.edges.length != widget.edges.length) {
+      _edgeDrawController.forward(from: 0.0);
+    }
   }
 
   @override
@@ -59,24 +77,31 @@ class GraphCanvasState extends State<GraphCanvas>
     if (widget.transformController == null) {
       _transformController.dispose();
     }
-    _animController.dispose();
+    _cameraController.dispose();
+    _edgeDrawController.dispose();
     super.dispose();
   }
 
-  /// Animate camera to center + fit all nodes in view.
+  /// Animate camera to frame all visible nodes comfortably on screen.
   void fitToScreen(Size viewSize) {
     if (widget.nodes.isEmpty) return;
     final bounds = GraphLayoutEngine.computeBounds(widget.nodes);
     if (bounds.isEmpty) return;
 
-    final scaleX = (viewSize.width - _padding * 2) / bounds.width;
-    final scaleY = (viewSize.height - _padding * 2) / bounds.height;
-    final scale = math.min(scaleX, scaleY).clamp(_minScale, _maxScale);
+    const padding = 100.0;
+    final availableW = math.max(100.0, viewSize.width - padding * 2);
+    final availableH = math.max(100.0, viewSize.height - padding * 2);
 
-    final scaledW = bounds.width * scale;
-    final scaledH = bounds.height * scale;
-    final tx = (viewSize.width - scaledW) / 2 - bounds.left * scale;
-    final ty = (viewSize.height - scaledH) / 2 - bounds.top * scale;
+    final scaleX = availableW / bounds.width;
+    final scaleY = availableH / bounds.height;
+    final scale = math.min(scaleX, scaleY).clamp(_minScale, 1.25);
+
+    final boundsCenter = bounds.center;
+    final canvasTargetX = _canvasCenter + boundsCenter.dx;
+    final canvasTargetY = _canvasCenter + boundsCenter.dy;
+
+    final tx = viewSize.width / 2.0 - canvasTargetX * scale;
+    final ty = viewSize.height / 2.0 - canvasTargetY * scale;
 
     final target = Matrix4.identity()
       ..translate(tx, ty)
@@ -85,14 +110,16 @@ class GraphCanvasState extends State<GraphCanvas>
     _animateToMatrix(target);
   }
 
-  /// Center and zoom to a specific node.
+  /// Animate camera to center on a specific node.
   void centerOn(GraphNode node, Size viewSize) {
     final currentScale = _transformController.value.getMaxScaleOnAxis();
-    final targetScale = math.max(currentScale, 1.2).clamp(_minScale, _maxScale);
-    final tx =
-        viewSize.width / 2 - node.position.dx * targetScale;
-    final ty =
-        viewSize.height / 2 - node.position.dy * targetScale;
+    final targetScale = math.max(currentScale, 1.15).clamp(_minScale, _maxScale);
+
+    final canvasTargetX = _canvasCenter + node.position.dx;
+    final canvasTargetY = _canvasCenter + node.position.dy;
+
+    final tx = viewSize.width / 2.0 - canvasTargetX * targetScale;
+    final ty = viewSize.height / 2.0 - canvasTargetY * targetScale;
 
     final target = Matrix4.identity()
       ..translate(tx, ty)
@@ -101,19 +128,55 @@ class GraphCanvasState extends State<GraphCanvas>
     _animateToMatrix(target);
   }
 
-  void resetView() {
-    _animateToMatrix(Matrix4.identity());
+  void resetView(Size viewSize) {
+    fitToScreen(viewSize);
+  }
+
+  void zoomIn(Size viewSize) {
+    final current = _transformController.value.getMaxScaleOnAxis();
+    final targetScale = (current * 1.25).clamp(_minScale, _maxScale);
+    _zoomToScale(targetScale, viewSize);
+  }
+
+  void zoomOut(Size viewSize) {
+    final current = _transformController.value.getMaxScaleOnAxis();
+    final targetScale = (current * 0.80).clamp(_minScale, _maxScale);
+    _zoomToScale(targetScale, viewSize);
+  }
+
+  void _zoomToScale(double targetScale, Size viewSize) {
+    final currentMatrix = _transformController.value;
+    final currentScale = currentMatrix.getMaxScaleOnAxis();
+    if (currentScale <= 0) return;
+
+    final cx = viewSize.width / 2.0;
+    final cy = viewSize.height / 2.0;
+
+    final currentTx = currentMatrix.storage[12];
+    final currentTy = currentMatrix.storage[13];
+
+    final canvasX = (cx - currentTx) / currentScale;
+    final canvasY = (cy - currentTy) / currentScale;
+
+    final newTx = cx - canvasX * targetScale;
+    final newTy = cy - canvasY * targetScale;
+
+    final target = Matrix4.identity()
+      ..translate(newTx, newTy)
+      ..scale(targetScale);
+
+    _animateToMatrix(target);
   }
 
   void _animateToMatrix(Matrix4 target) {
     final current = _transformController.value.clone();
     _matrixAnimation = Matrix4Tween(begin: current, end: target).animate(
-      CurvedAnimation(parent: _animController, curve: Curves.easeInOutCubic),
+      CurvedAnimation(parent: _cameraController, curve: Curves.easeOutCubic),
     );
-    _animController.forward(from: 0).then((_) {
+    _cameraController.forward(from: 0).then((_) {
       _transformController.value = target;
     });
-    _animController.addListener(() {
+    _cameraController.addListener(() {
       if (_matrixAnimation != null) {
         _transformController.value = _matrixAnimation!.value;
       }
@@ -127,6 +190,7 @@ class GraphCanvasState extends State<GraphCanvas>
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewSize = Size(constraints.maxWidth, constraints.maxHeight);
+
         return Listener(
           onPointerSignal: (event) {
             if (event is PointerScrollEvent) {
@@ -140,49 +204,55 @@ class GraphCanvasState extends State<GraphCanvas>
             constrained: false,
             boundaryMargin: const EdgeInsets.all(double.infinity),
             child: SizedBox(
-              width: 3000,
-              height: 3000,
+              width: _canvasSize,
+              height: _canvasSize,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  // ── Background grid dots ──────────────────────────────────
+                  // ── Dotted grid background pattern ──────────────────────────
                   Positioned.fill(
                     child: CustomPaint(
-                      painter: _GridPainter(isDark: isDark),
+                      painter: _GridPatternPainter(isDark: isDark),
                     ),
                   ),
 
-                  // ── Canvas origin (offset to center) ──────────────────────
+                  // ── Tree Canvas Origin (Centered at _canvasCenter) ───────────
                   Transform.translate(
-                    offset: const Offset(1500, 1500),
+                    offset: const Offset(_canvasCenter, _canvasCenter),
                     child: Stack(
                       clipBehavior: Clip.none,
                       children: [
-                        // Edges layer
-                        CustomPaint(
-                          painter: GraphEdgePainter(
-                            nodes: widget.nodes,
-                            edges: widget.edges,
-                            isDark: isDark,
-                          ),
-                          child: const SizedBox(
-                            width: 0,
-                            height: 0,
-                          ),
+                        // Layer 1: Bézier Curves Edge Painter with animated draw
+                        AnimatedBuilder(
+                          animation: _edgeDrawController,
+                          builder: (context, _) {
+                            return CustomPaint(
+                              painter: GraphEdgePainter(
+                                nodes: widget.nodes,
+                                edges: widget.edges,
+                                animationProgress: _edgeDrawController.value,
+                                isDark: isDark,
+                              ),
+                              child: const SizedBox(width: 0, height: 0),
+                            );
+                          },
                         ),
-                        // Nodes layer
-                        ...widget.nodes
-                            .where((n) => n.isVisible)
-                            .map((node) => _PositionedNode(
-                                  node: node,
-                                  onTap: () => widget.onNodeTap(node),
-                                  onDoubleTap: () =>
-                                      widget.onNodeDoubleTap(node),
-                                  onToggleExpand: node.type ==
-                                          GraphNodeType.topic
-                                      ? () => widget.onToggleExpand(node.id)
-                                      : null,
-                                )),
+
+                        // Layer 2: Node Widgets (Top-Left aligned to center on position)
+                        for (final node in widget.nodes)
+                          if (node.isVisible)
+                            Positioned(
+                              left: node.position.dx - node.width / 2.0,
+                              top: node.position.dy - node.height / 2.0,
+                              child: GraphNodeWidget(
+                                node: node,
+                                onTap: () => widget.onNodeTap(node),
+                                onDoubleTap: () => widget.onNodeDoubleTap(node),
+                                onToggleExpand: node.type == GraphNodeType.topic
+                                    ? () => widget.onToggleExpand(node.id)
+                                    : null,
+                              ),
+                            ),
                       ],
                     ),
                   ),
@@ -196,106 +266,54 @@ class GraphCanvasState extends State<GraphCanvas>
   }
 
   void _handleMouseScroll(PointerScrollEvent event, Size viewSize) {
-    final scale = _transformController.value.getMaxScaleOnAxis();
-    final delta = event.scrollDelta.dy > 0 ? 0.9 : 1.1;
-    final newScale = (scale * delta).clamp(_minScale, _maxScale);
-    final focalPoint = event.localPosition;
+    final currentScale = _transformController.value.getMaxScaleOnAxis();
+    final zoomFactor = event.scrollDelta.dy > 0 ? 0.90 : 1.10;
+    final newScale = (currentScale * zoomFactor).clamp(_minScale, _maxScale);
 
-    // Scale around focal point
-    final translation = _transformController.value.getTranslation();
-    final focalInScene = Offset(
-      (focalPoint.dx - translation.x) / scale,
-      (focalPoint.dy - translation.y) / scale,
-    );
+    final focalX = event.localPosition.dx;
+    final focalY = event.localPosition.dy;
 
-    final newTx = focalPoint.dx - focalInScene.dx * newScale;
-    final newTy = focalPoint.dy - focalInScene.dy * newScale;
+    final currentTx = _transformController.value.storage[12];
+    final currentTy = _transformController.value.storage[13];
 
-    _transformController.value = Matrix4.identity()
-      ..translate(newTx, newTy)
-      ..scale(newScale);
+    final canvasX = (focalX - currentTx) / currentScale;
+    final canvasY = (focalY - currentTy) / currentScale;
+
+    final newTx = focalX - canvasX * newScale;
+    final newTy = focalY - canvasY * newScale;
+
+    setState(() {
+      _transformController.value = Matrix4.identity()
+        ..translate(newTx, newTy)
+        ..scale(newScale);
+    });
   }
 }
 
-/// Widget that positions a node absolutely on the canvas.
-class _PositionedNode extends StatelessWidget {
-  final GraphNode node;
-  final VoidCallback onTap;
-  final VoidCallback onDoubleTap;
-  final VoidCallback? onToggleExpand;
-
-  const _PositionedNode({
-    required this.node,
-    required this.onTap,
-    required this.onDoubleTap,
-    this.onToggleExpand,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // We center the widget on node.position
-    return Positioned(
-      left: node.position.dx - _estimatedHalfWidth(node),
-      top: node.position.dy - _estimatedHalfHeight(node),
-      child: GraphNodeWidget(
-        key: ValueKey(node.id),
-        node: node,
-        onTap: onTap,
-        onDoubleTap: onDoubleTap,
-        onToggleExpand: onToggleExpand,
-      ),
-    );
-  }
-
-  double _estimatedHalfWidth(GraphNode n) {
-    switch (n.type) {
-      case GraphNodeType.subject:
-        return n.radius;
-      case GraphNodeType.topic:
-        return 65;
-      case GraphNodeType.subtopic:
-        return 55;
-      case GraphNodeType.aiExpanded:
-        return 52;
-    }
-  }
-
-  double _estimatedHalfHeight(GraphNode n) {
-    switch (n.type) {
-      case GraphNodeType.subject:
-        return n.radius;
-      case GraphNodeType.topic:
-        return 30;
-      case GraphNodeType.subtopic:
-        return 22;
-      case GraphNodeType.aiExpanded:
-        return 20;
-    }
-  }
-}
-
-/// Subtle background dot grid
-class _GridPainter extends CustomPainter {
+/// Dotted grid background painter for the knowledge tree canvas.
+class _GridPatternPainter extends CustomPainter {
   final bool isDark;
-  const _GridPainter({required this.isDark});
+  const _GridPatternPainter({required this.isDark});
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    final dotPaint = Paint()
       ..color = isDark
-          ? AppColors.darkBorderSubtle.withOpacity(0.35)
-          : AppColors.lightBorder.withOpacity(0.55)
-      ..strokeWidth = 1.5
+          ? const Color(0xFF1E3A5F).withOpacity(0.35)
+          : const Color(0xFF94A3B8).withOpacity(0.20)
       ..style = PaintingStyle.fill;
 
-    const spacing = 36.0;
+    const spacing = 32.0;
+    const radius = 1.2;
+
     for (double x = 0; x < size.width; x += spacing) {
       for (double y = 0; y < size.height; y += spacing) {
-        canvas.drawCircle(Offset(x, y), 1.0, paint);
+        canvas.drawCircle(Offset(x, y), radius, dotPaint);
       }
     }
   }
 
   @override
-  bool shouldRepaint(_GridPainter old) => old.isDark != isDark;
+  bool shouldRepaint(covariant _GridPatternPainter oldDelegate) =>
+      oldDelegate.isDark != isDark;
 }

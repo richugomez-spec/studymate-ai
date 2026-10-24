@@ -17,6 +17,14 @@ import '../services/graph_ai_service.dart';
 import '../widgets/graph_canvas.dart';
 import '../widgets/graph_detail_panel.dart';
 
+/// The Knowledge Tree Mind Map screen inspired by Google NotebookLM.
+/// Features:
+/// - Buchheim-Walker hierarchical tree layout
+/// - Smooth animated cubic Bézier curve connections
+/// - Collapsible topics with smooth branch reflow
+/// - Student notes from Firestore & AI-assisted exploration
+/// - Node search with animated camera focus
+/// - Full mouse wheel zoom, pinch, pan, fit-to-screen
 class MindMapScreen extends ConsumerStatefulWidget {
   final String? topicId;
   const MindMapScreen({super.key, this.topicId});
@@ -31,30 +39,35 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       TransformationController();
   final TextEditingController _searchController = TextEditingController();
 
-  // Graph data
+  // Knowledge Tree Data
   List<GraphNode> _nodes = [];
   List<GraphEdge> _edges = [];
   bool _isLoading = true;
   bool _emptyTopics = false;
   String? _error;
 
-  // Selection & UI state
+  // Selected node & side panel
   GraphNode? _selectedNode;
   bool _panelVisible = false;
   String? _subjectName;
   String? _topicName;
 
-  // Search
+  // Search state
   bool _searchFocused = false;
 
-  // Breadcrumb
+  // Breadcrumbs
   List<String> _breadcrumb = [];
 
-  // AI state
+  // Temporary AI expanded children
   bool _aiExpanding = false;
   final Map<String, List<GraphNode>> _aiChildren = {};
 
   late GraphAiService _aiService;
+
+  // Application theme constants
+  static const Color _canvasBackground = Color(0xFF08192D);
+  static const Color _topBarBackground = Color(0xFF08192D);
+  static const Color _subtleBorder = Color(0xFF1E3A5F);
 
   @override
   void initState() {
@@ -81,7 +94,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     super.dispose();
   }
 
-  // ── Data Loading ─────────────────────────────────────────────────────────────
+  // ── Data Loading from Firestore ──────────────────────────────────────────────
 
   Future<void> _loadGraph() async {
     setState(() {
@@ -96,7 +109,8 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
           ref.read(currentUserProvider)?.id ?? service.currentUserId ?? '';
 
       // Get all subjects for this user
-      var fetchedSubjects = ref.read(userSubjectsStreamProvider(uid)).asData?.value;
+      var fetchedSubjects =
+          ref.read(userSubjectsStreamProvider(uid)).asData?.value;
       if (fetchedSubjects == null || fetchedSubjects.isEmpty) {
         fetchedSubjects = await service.streamSubjects(uid).first;
       }
@@ -112,7 +126,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
 
       final activeSubjectId = ref.read(activeKnowledgeSubjectIdProvider);
 
-      // Determine which subject to display
+      // Resolve which subject to open
       Map<String, dynamic> subjectData;
       if (widget.topicId != null &&
           widget.topicId != 'current' &&
@@ -137,37 +151,28 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       final subjectId = subjectData['id']?.toString() ?? '';
       _subjectName = subjectData['name']?.toString() ?? 'Subject';
 
-      // Keep active subject synchronized across providers
+      // Keep active subject synchronized
       ref.read(activeKnowledgeSubjectIdProvider.notifier).state = subjectId;
-      ref.read(activeKnowledgeSubjectNameProvider.notifier).state = _subjectName;
+      ref.read(activeKnowledgeSubjectNameProvider.notifier).state =
+          _subjectName;
 
-      // Load topic + subtopic hierarchy from Firestore
+      // Load hierarchy with full notes from Firestore
       List<Map<String, dynamic>> topicsWithSubtopics = [];
       try {
-        topicsWithSubtopics =
-            await service.getSubjectTopicsWithSubtopics(subjectId);
-      } catch (err) {
-        debugPrint(
-            'getSubjectTopicsWithSubtopics error ($err), falling back to loadSubjectStudyHierarchy');
         final hierarchy = await service.loadSubjectStudyHierarchy(subjectId);
         if (hierarchy != null && hierarchy['topics'] is List) {
           topicsWithSubtopics =
               List<Map<String, dynamic>>.from(hierarchy['topics'] as List);
         }
+      } catch (err) {
+        debugPrint(
+            'loadSubjectStudyHierarchy error ($err), falling back to getSubjectTopicsWithSubtopics');
+        topicsWithSubtopics =
+            await service.getSubjectTopicsWithSubtopics(subjectId);
       }
 
       if (topicsWithSubtopics.isEmpty) {
-        final hierarchy = await service.loadSubjectStudyHierarchy(subjectId);
-        if (hierarchy != null && hierarchy['topics'] is List) {
-          final hTopics =
-              List<Map<String, dynamic>>.from(hierarchy['topics'] as List);
-          if (hTopics.isNotEmpty) {
-            topicsWithSubtopics = hTopics;
-          }
-        }
-      }
-
-      if (topicsWithSubtopics.isEmpty) {
+        // Step 7 debug logs for empty state
         debugPrint('Loaded Subject: $_subjectName');
         debugPrint('Topics: 0');
         debugPrint('Subtopics: 0');
@@ -207,20 +212,27 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     final nodes = <GraphNode>[];
     final edges = <GraphEdge>[];
 
-    // Root subject node
+    // Root node (Subject)
     final rootNode = GraphNode(
       id: subjectId,
       label: subjectName,
       type: GraphNodeType.subject,
+      childCount: topics.length,
     );
     nodes.add(rootNode);
 
     int subtopicCount = 0;
 
-    // Topic nodes
+    // Level 1: Topic nodes
     for (final topic in topics) {
       final topicId = topic['id']?.toString() ?? '';
       final topicName = topic['name']?.toString() ?? 'Topic';
+      final topicNotes =
+          (topic['notes'] as List? ?? []).cast<Map<String, dynamic>>();
+
+      final subtopics =
+          (topic['subtopics'] as List? ?? []).cast<Map<String, dynamic>>();
+      subtopicCount += subtopics.length;
 
       final topicNode = GraphNode(
         id: topicId,
@@ -228,17 +240,18 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         type: GraphNodeType.topic,
         parentId: subjectId,
         subjectId: subjectId,
+        notes: topicNotes,
+        childCount: subtopics.length,
       );
       nodes.add(topicNode);
       edges.add(GraphEdge(fromId: subjectId, toId: topicId));
 
-      // Subtopic nodes
-      final subtopics =
-          (topic['subtopics'] as List? ?? []).cast<Map<String, dynamic>>();
-      subtopicCount += subtopics.length;
+      // Level 2: Subtopic nodes
       for (final sub in subtopics) {
         final subId = sub['id']?.toString() ?? '';
         final subName = sub['name']?.toString() ?? 'Subtopic';
+        final subNotes =
+            (sub['notes'] as List? ?? []).cast<Map<String, dynamic>>();
 
         final subNode = GraphNode(
           id: subId,
@@ -247,20 +260,21 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
           parentId: topicId,
           topicId: topicId,
           subjectId: subjectId,
+          notes: subNotes,
         );
         nodes.add(subNode);
         edges.add(GraphEdge(fromId: topicId, toId: subId));
       }
     }
 
-    // Temporary debug logs for Step 7
+    // Step 7: Required debug logs
     debugPrint('Loaded Subject: $subjectName');
     debugPrint('Topics: ${topics.length}');
     debugPrint('Subtopics: $subtopicCount');
     debugPrint('Nodes Built: ${nodes.length}');
     debugPrint('Edges Built: ${edges.length}');
 
-    // Run layout
+    // Run Buchheim-Walker Tidier Tree Layout algorithm
     final laidOut = GraphLayoutEngine.layout(nodes, edges);
 
     setState(() {
@@ -270,7 +284,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       _isLoading = false;
     });
 
-    // Fit to screen after first frame
+    // Auto-fit camera to view the full knowledge tree comfortably
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         final size = MediaQuery.of(context).size;
@@ -286,15 +300,13 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     setState(() {
       // Deselect all
       _nodes = _nodes.map((n) => n.copyWith(isSelected: false)).toList();
-      // Select tapped
+      // Select tapped node
       final idx = _nodes.indexWhere((n) => n.id == node.id);
       if (idx >= 0) {
         _nodes[idx] = _nodes[idx].copyWith(isSelected: true);
         _selectedNode = _nodes[idx];
       }
-      // Update breadcrumb
       _updateBreadcrumb(node);
-      // Update topicName for detail panel
       if (node.type == GraphNodeType.topic) {
         _topicName = node.label;
       } else if (node.type == GraphNodeType.subtopic) {
@@ -310,6 +322,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
   }
 
   void _onToggleExpand(String nodeId) {
+    HapticFeedback.lightImpact();
     setState(() {
       final idx = _nodes.indexWhere((n) => n.id == nodeId);
       if (idx < 0) return;
@@ -317,10 +330,10 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       final newExpanded = !node.isExpanded;
       _nodes[idx] = node.copyWith(isExpanded: newExpanded);
 
-      // Show/hide children
+      // Hide or show direct children and grandchildren
       _setChildrenVisible(nodeId, newExpanded);
     });
-    // Re-run layout
+    // Re-run Buchheim-Walker layout to smoothly recalculate horizontal spacing
     _relayout();
   }
 
@@ -329,7 +342,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       if (_nodes[i].parentId == parentId) {
         _nodes[i] = _nodes[i].copyWith(isVisible: visible);
         if (!visible) {
-          // Recursively hide grandchildren
+          // Recursively hide lower descendants
           _setChildrenVisible(_nodes[i].id, false);
         }
       }
@@ -349,7 +362,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     });
   }
 
-  // ── AI Expansion ─────────────────────────────────────────────────────────────
+  // ── AI Expansion (Generates Temporary Branch Nodes) ──────────────────────────
 
   Future<void> _expandNodeWithAI(GraphNode node) async {
     if (_aiExpanding) return;
@@ -358,7 +371,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     AppNotification.showLoading(
       context: context,
       title: 'Expanding with AI',
-      message: 'Generating sub-concepts for "${node.label}"…',
+      message: 'Generating related concepts for "${node.label}"…',
     );
 
     try {
@@ -382,12 +395,10 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       // Remove previous AI children for this node
       final previousAiIds =
           (_aiChildren[node.id] ?? []).map((n) => n.id).toSet();
-      setState(() {
-        _nodes.removeWhere((n) => previousAiIds.contains(n.id));
-        _edges.removeWhere((e) => previousAiIds.contains(e.toId));
-      });
+      _nodes.removeWhere((n) => previousAiIds.contains(n.id));
+      _edges.removeWhere((e) => previousAiIds.contains(e.toId));
 
-      // Add new AI nodes
+      // Add new AI branch nodes
       final newNodes = result.childLabels.asMap().entries.map((entry) {
         final aiId = 'ai_${node.id}_${entry.key}_${entry.value.hashCode}';
         return GraphNode(
@@ -402,7 +413,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       }).toList();
 
       final newEdges = newNodes
-          .map((n) => GraphEdge(fromId: node.id, toId: n.id))
+          .map((n) => GraphEdge(fromId: node.id, toId: n.id, isDashed: true))
           .toList();
 
       _aiChildren[node.id] = newNodes;
@@ -417,14 +428,18 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       if (!mounted) return;
       AppNotification.showSuccess(
         context: context,
-        message: '${newNodes.length} AI concepts added!',
+        message: '${newNodes.length} AI concepts generated!',
       );
+
+      // Smooth camera transition to the expanded node
+      final size = MediaQuery.of(context).size;
+      _canvasKey.currentState?.centerOn(node, size);
     } catch (e) {
       if (mounted) {
         AppNotification.dismissAll();
         AppNotification.showError(
           context: context,
-          message: 'AI expansion failed. Check your API key.',
+          message: 'AI expansion failed. Please check your API key.',
         );
       }
     } finally {
@@ -432,7 +447,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     }
   }
 
-  // ── Search ───────────────────────────────────────────────────────────────────
+  // ── Search & Camera Navigation ───────────────────────────────────────────────
 
   void _onSearchChanged() {
     final query = _searchController.text.trim().toLowerCase();
@@ -449,9 +464,9 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
   }
 
   void _onSearchSubmit(String value) {
-    if (value.isEmpty) return;
+    if (value.trim().isEmpty) return;
     final match = _nodes.firstWhere(
-      (n) => n.label.toLowerCase().contains(value.toLowerCase()),
+      (n) => n.label.toLowerCase().contains(value.trim().toLowerCase()),
       orElse: () => _nodes.first,
     );
     final size = MediaQuery.of(context).size;
@@ -464,11 +479,12 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     _breadcrumb = [
       if (_subjectName != null) _subjectName!,
       if (node.type == GraphNodeType.topic) node.label,
-      if (node.type == GraphNodeType.subtopic || node.type == GraphNodeType.aiExpanded) ...[
+      if (node.type == GraphNodeType.subtopic ||
+          node.type == GraphNodeType.aiExpanded) ...[
         _findParentLabel(node),
         node.label,
       ],
-    ].whereType<String>().where((s) => s.isNotEmpty).toList();
+    ].where((s) => s.isNotEmpty).toList();
   }
 
   String _findParentLabel(GraphNode node) {
@@ -481,205 +497,6 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         .label;
   }
 
-  // ── Build ────────────────────────────────────────────────────────────────────
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isDesktop = MediaQuery.of(context).size.width > 900;
-
-    return Scaffold(
-      backgroundColor:
-          isDark ? AppColors.darkBackground : AppColors.lightBackground,
-      body: Column(
-        children: [
-          _buildTopBar(isDark),
-          Expanded(
-            child: _isLoading
-                ? _buildLoadingState()
-                : _error != null
-                    ? _buildErrorState()
-                    : _emptyTopics || _nodes.isEmpty
-                        ? _buildEmptyTopicsState(isDark)
-                        : _buildGraphArea(isDark, isDesktop),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Top Bar ──────────────────────────────────────────────────────────────────
-
-  Widget _buildTopBar(bool isDark) {
-    return Container(
-      height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
-        border: Border(
-          bottom: BorderSide(
-            color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          // Back button
-          IconButton(
-            icon: const Icon(Icons.arrow_back_rounded, size: 20),
-            onPressed: () {
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go(AppRoutes.library);
-              }
-            },
-            tooltip: 'Back',
-          ),
-          const SizedBox(width: 4),
-
-          // Subject title / breadcrumb
-          Expanded(
-            child: _breadcrumb.isEmpty
-                ? Text(
-                    _subjectName ?? 'Knowledge Graph',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.3,
-                      color: isDark
-                          ? AppColors.darkTextPrimary
-                          : AppColors.lightTextPrimary,
-                    ),
-                  )
-                : _buildBreadcrumbRow(isDark),
-          ),
-
-          // Search bar
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            width: _searchFocused ? 220 : 140,
-            height: 34,
-            child: TextField(
-              controller: _searchController,
-              onTap: () => setState(() => _searchFocused = true),
-              onEditingComplete: () {
-                _onSearchSubmit(_searchController.text);
-                setState(() => _searchFocused = false);
-              },
-              style: TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 12,
-                color: isDark
-                    ? AppColors.darkTextPrimary
-                    : AppColors.lightTextPrimary,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search nodes…',
-                hintStyle: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 12,
-                  color: isDark
-                      ? AppColors.darkTextTertiary
-                      : AppColors.lightTextTertiary,
-                ),
-                prefixIcon: const Icon(Icons.search_rounded, size: 16),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide(
-                    color: isDark
-                        ? AppColors.darkBorder
-                        : AppColors.lightBorder,
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: BorderSide(
-                    color: isDark
-                        ? AppColors.darkBorder
-                        : AppColors.lightBorder,
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                  borderSide: const BorderSide(color: AppColors.brandAccent),
-                ),
-                filled: true,
-                fillColor: isDark ? AppColors.darkCard : AppColors.lightSurfaceVariant,
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 8),
-
-          // Control buttons
-          _ControlButton(
-            icon: Icons.fit_screen_rounded,
-            tooltip: 'Fit to screen',
-            isDark: isDark,
-            onTap: () {
-              final size = MediaQuery.of(context).size;
-              _canvasKey.currentState?.fitToScreen(size);
-            },
-          ),
-          _ControlButton(
-            icon: Icons.center_focus_strong_rounded,
-            tooltip: 'Reset view',
-            isDark: isDark,
-            onTap: () => _canvasKey.currentState?.resetView(),
-          ),
-          _ControlButton(
-            icon: Icons.refresh_rounded,
-            tooltip: 'Reload graph',
-            isDark: isDark,
-            onTap: _loadGraph,
-          ),
-        ],
-      ),
-    ).animate().fadeIn(duration: 240.ms);
-  }
-
-  Widget _buildBreadcrumbRow(bool isDark) {
-    return Row(
-      children: _breadcrumb.asMap().entries.expand((entry) {
-        final isLast = entry.key == _breadcrumb.length - 1;
-        return [
-          Text(
-            entry.value,
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 12.5,
-              fontWeight: isLast ? FontWeight.w700 : FontWeight.w400,
-              color: isLast
-                  ? (isDark
-                      ? AppColors.darkTextPrimary
-                      : AppColors.lightTextPrimary)
-                  : (isDark
-                      ? AppColors.darkTextTertiary
-                      : AppColors.lightTextTertiary),
-            ),
-          ),
-          if (!isLast)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Icon(
-                Icons.chevron_right_rounded,
-                size: 14,
-                color: isDark
-                    ? AppColors.darkTextTertiary
-                    : AppColors.lightTextTertiary,
-              ),
-            ),
-        ];
-      }).toList(),
-    );
-  }
-
-  // ── Graph Area ───────────────────────────────────────────────────────────────
-
   void _navigateTool(String tool, String nodeId) {
     final route = switch (tool) {
       'flashcards' => AppRoutes.flashcards,
@@ -690,7 +507,194 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     context.go(route.replaceFirst(':topicId', nodeId));
   }
 
-  Widget _buildGraphArea(bool isDark, bool isDesktop) {
+  // ── Build Widget Tree ────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width > 900;
+
+    return Scaffold(
+      backgroundColor: _canvasBackground,
+      body: Column(
+        children: [
+          _buildTopBar(),
+          Expanded(
+            child: _isLoading
+                ? _buildLoadingState()
+                : _error != null
+                    ? _buildErrorState()
+                    : _emptyTopics || _nodes.isEmpty
+                        ? _buildEmptyTopicsState()
+                        : _buildGraphArea(isDesktop),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Top Bar with Breadcrumb, Search, and Controls ────────────────────────────
+
+  Widget _buildTopBar() {
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: const BoxDecoration(
+        color: _topBarBackground,
+        border: Border(
+          bottom: BorderSide(color: _subtleBorder),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Back button
+          IconButton(
+            icon: const Icon(Icons.arrow_back_rounded,
+                size: 20, color: Colors.white),
+            onPressed: () {
+              if (context.canPop()) {
+                context.pop();
+              } else {
+                context.go(AppRoutes.library);
+              }
+            },
+            tooltip: 'Back to Library',
+          ),
+          const SizedBox(width: 6),
+
+          // Title & Breadcrumbs
+          Expanded(
+            child: _breadcrumb.isEmpty
+                ? Text(
+                    _subjectName ?? 'Knowledge Tree',
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
+                      color: Colors.white,
+                    ),
+                  )
+                : _buildBreadcrumbRow(),
+          ),
+
+          // Search Bar
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            width: _searchFocused ? 240 : 160,
+            height: 36,
+            child: TextField(
+              controller: _searchController,
+              onTap: () => setState(() => _searchFocused = true),
+              onEditingComplete: () {
+                _onSearchSubmit(_searchController.text);
+                setState(() => _searchFocused = false);
+              },
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 12.5,
+                color: Colors.white,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Search concepts…',
+                hintStyle: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 12,
+                  color: Color(0xFF64748B),
+                ),
+                prefixIcon: const Icon(Icons.search_rounded,
+                    size: 16, color: Color(0xFF94A3B8)),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: const BorderSide(color: _subtleBorder),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: const BorderSide(color: _subtleBorder),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+                ),
+                filled: true,
+                fillColor: const Color(0xFF102743).withOpacity(0.85),
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // Control Buttons
+          _ControlButton(
+            icon: Icons.fit_screen_rounded,
+            tooltip: 'Fit to screen',
+            onTap: () {
+              final size = MediaQuery.of(context).size;
+              _canvasKey.currentState?.fitToScreen(size);
+            },
+          ),
+          _ControlButton(
+            icon: Icons.add_rounded,
+            tooltip: 'Zoom In',
+            onTap: () {
+              final size = MediaQuery.of(context).size;
+              _canvasKey.currentState?.zoomIn(size);
+            },
+          ),
+          _ControlButton(
+            icon: Icons.remove_rounded,
+            tooltip: 'Zoom Out',
+            onTap: () {
+              final size = MediaQuery.of(context).size;
+              _canvasKey.currentState?.zoomOut(size);
+            },
+          ),
+          _ControlButton(
+            icon: Icons.refresh_rounded,
+            tooltip: 'Reload tree',
+            onTap: _loadGraph,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 200.ms);
+  }
+
+  Widget _buildBreadcrumbRow() {
+    return Row(
+      children: _breadcrumb.asMap().entries.expand((entry) {
+        final isLast = entry.key == _breadcrumb.length - 1;
+        return [
+          Flexible(
+            child: Text(
+              entry.value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13,
+                fontWeight: isLast ? FontWeight.w700 : FontWeight.w400,
+                color: isLast ? Colors.white : const Color(0xFF94A3B8),
+              ),
+            ),
+          ),
+          if (!isLast)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                size: 14,
+                color: Color(0xFF64748B),
+              ),
+            ),
+        ];
+      }).toList(),
+    );
+  }
+
+  // ── Main Graph Area ──────────────────────────────────────────────────────────
+
+  Widget _buildGraphArea(bool isDesktop) {
     final canvas = GraphCanvas(
       key: _canvasKey,
       nodes: _nodes,
@@ -706,7 +710,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         children: [
           Expanded(child: canvas),
           AnimatedSize(
-            duration: const Duration(milliseconds: 300),
+            duration: const Duration(milliseconds: 280),
             curve: Curves.easeOutCubic,
             child: _panelVisible && _selectedNode != null
                 ? GraphDetailPanel(
@@ -724,7 +728,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       );
     }
 
-    // Mobile: canvas full + bottom sheet
+    // Mobile / Tablet Bottom Sheet Overlay
     return Stack(
       children: [
         canvas,
@@ -745,14 +749,14 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
           ).animate().slideY(
                 begin: 1.0,
                 end: 0.0,
-                duration: 300.ms,
+                duration: 280.ms,
                 curve: Curves.easeOutCubic,
               ),
       ],
     );
   }
 
-  // ── Loading / Error States ───────────────────────────────────────────────────
+  // ── States: Loading, Error, Empty ────────────────────────────────────────────
 
   Widget _buildLoadingState() {
     return const Center(
@@ -760,21 +764,21 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SizedBox(
-            width: 48,
-            height: 48,
+            width: 46,
+            height: 46,
             child: CircularProgressIndicator(
               strokeWidth: 2.5,
-              color: AppColors.brandAccent,
+              color: Color(0xFF3B82F6),
             ),
           ),
-          SizedBox(height: 16),
+          SizedBox(height: 18),
           Text(
-            'Building Knowledge Graph…',
+            'Building Knowledge Tree…',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: AppColors.brandAccent,
+              color: Color(0xFF60A5FA),
             ),
           ),
         ],
@@ -787,71 +791,75 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.hub_outlined, size: 56, color: AppColors.error),
+          const Icon(Icons.hub_outlined, size: 52, color: AppColors.error),
           const SizedBox(height: 16),
-          Text(
-            _error ?? 'Something went wrong',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 14,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              _error ?? 'Something went wrong',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 14,
+                color: Colors.white70,
+              ),
             ),
           ),
           const SizedBox(height: 20),
           ElevatedButton.icon(
             onPressed: _loadGraph,
-            icon: const Icon(Icons.refresh_rounded),
+            icon: const Icon(Icons.refresh_rounded, size: 16),
             label: const Text('Retry'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyTopicsState(bool isDark) {
+  Widget _buildEmptyTopicsState() {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(
-              color: isDark ? AppColors.darkCard : AppColors.lightSurface,
+              color: const Color(0xFF102743),
               shape: BoxShape.circle,
               border: Border.all(
-                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                color: const Color(0xFF1E3A5F),
               ),
             ),
             child: const Icon(
-              Icons.hub_outlined,
+              Icons.account_tree_outlined,
               size: 48,
-              color: AppColors.brandAccent,
+              color: Color(0xFF38BDF8),
             ),
           ),
           const SizedBox(height: 20),
-          Text(
+          const Text(
             'No Topics Found',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 20,
               fontWeight: FontWeight.w700,
-              color: isDark
-                  ? AppColors.darkTextPrimary
-                  : AppColors.lightTextPrimary,
+              color: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24),
             child: Text(
               'Add topics to begin building your knowledge graph.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 14,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
+                color: Color(0xFF94A3B8),
               ),
             ),
           ),
@@ -861,7 +869,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
             icon: const Icon(Icons.menu_book_rounded, size: 18),
             label: const Text('Open Library'),
             style: FilledButton.styleFrom(
-              backgroundColor: AppColors.brandAccent,
+              backgroundColor: const Color(0xFF2563EB),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               shape: RoundedRectangleBorder(
@@ -880,13 +888,11 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
 class _ControlButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
-  final bool isDark;
   final VoidCallback onTap;
 
   const _ControlButton({
     required this.icon,
     required this.tooltip,
-    required this.isDark,
     required this.onTap,
   });
 
@@ -902,21 +908,11 @@ class _ControlButton extends StatelessWidget {
           height: 34,
           margin: const EdgeInsets.only(left: 4),
           decoration: BoxDecoration(
-            color: isDark
-                ? AppColors.darkCard
-                : AppColors.lightSurfaceVariant,
+            color: const Color(0xFF102743).withOpacity(0.85),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-            ),
+            border: Border.all(color: const Color(0xFF1E3A5F)),
           ),
-          child: Icon(
-            icon,
-            size: 16,
-            color: isDark
-                ? AppColors.darkTextSecondary
-                : AppColors.lightTextSecondary,
-          ),
+          child: Icon(icon, size: 18, color: const Color(0xFFCBD5E1)),
         ),
       ),
     );

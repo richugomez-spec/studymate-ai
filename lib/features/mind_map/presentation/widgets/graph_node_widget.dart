@@ -1,12 +1,10 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-
-import '../../../../core/theme/app_colors.dart';
 import '../models/graph_node.dart';
 
-/// A single interactive node widget rendered on the graph canvas.
+/// Interactive node widget rendering NotebookLM-style knowledge tree nodes.
+/// Supports 4 node types: Subject (circle), Topic (rectangle + chevron),
+/// Subtopic (dark blue card), and AI Expanded (teal badge).
 class GraphNodeWidget extends StatefulWidget {
   final GraphNode node;
   final VoidCallback onTap;
@@ -25,376 +23,372 @@ class GraphNodeWidget extends StatefulWidget {
   State<GraphNodeWidget> createState() => _GraphNodeWidgetState();
 }
 
-class _GraphNodeWidgetState extends State<GraphNodeWidget>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnim;
+class _GraphNodeWidgetState extends State<GraphNodeWidget> {
   bool _hovered = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    );
-    _pulseAnim = Tween<double>(begin: 1.0, end: 1.12).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-    if (widget.node.isSelected) {
-      _pulseController.repeat(reverse: true);
-    }
-  }
-
-  @override
-  void didUpdateWidget(GraphNodeWidget old) {
-    super.didUpdateWidget(old);
-    if (widget.node.isSelected && !_pulseController.isAnimating) {
-      _pulseController.repeat(reverse: true);
-    } else if (!widget.node.isSelected && _pulseController.isAnimating) {
-      _pulseController.stop();
-      _pulseController.reset();
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
+  // Exact theme colors
+  static const Color _subjectGradientStart = Color(0xFF3B82F6);
+  static const Color _subjectGradientEnd = Color(0xFF2563EB);
+  static const Color _topicColor = Color(0xFF2F6FDD);
+  static const Color _subtopicColor = Color(0xFF183B63);
+  static const Color _aiNodeColor = Color(0xFF0D9488);
+  static const Color _selectedHaloColor = Color(0xFF60A5FA);
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final node = widget.node;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return AnimatedBuilder(
-      animation: _pulseAnim,
-      builder: (context, child) {
-        final scale = node.isSelected ? _pulseAnim.value : (_hovered ? 1.06 : 1.0);
-        return Transform.scale(
-          scale: scale,
-          child: child,
-        );
-      },
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: GestureDetector(
-          onTap: widget.onTap,
-          onDoubleTap: widget.onDoubleTap,
-          child: _buildNodeBody(isDark, node),
+    final Widget childWidget = switch (node.type) {
+      GraphNodeType.subject => _buildSubjectNode(node, isDark),
+      GraphNodeType.topic => _buildTopicNode(node, isDark),
+      GraphNodeType.subtopic => _buildSubtopicNode(node, isDark),
+      GraphNodeType.aiExpanded => _buildAiNode(node, isDark),
+    };
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onDoubleTap: widget.onDoubleTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedScale(
+          scale: _hovered ? 1.04 : (node.isSelected ? 1.02 : 1.0),
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          child: childWidget,
         ),
       ),
-    ).animate().fadeIn(duration: 280.ms).scale(
-          begin: const Offset(0.6, 0.6),
-          end: const Offset(1.0, 1.0),
-          duration: 320.ms,
-          curve: Curves.easeOutBack,
-        );
+    );
   }
 
-  Widget _buildNodeBody(bool isDark, GraphNode node) {
-    switch (node.type) {
-      case GraphNodeType.subject:
-        return _SubjectNodeWidget(
-          node: node,
-          isDark: isDark,
-          hovered: _hovered,
-        );
-      case GraphNodeType.topic:
-        return _TopicNodeWidget(
-          node: node,
-          isDark: isDark,
-          hovered: _hovered,
-          onToggleExpand: widget.onToggleExpand,
-        );
-      case GraphNodeType.subtopic:
-        return _SubtopicNodeWidget(
-          node: node,
-          isDark: isDark,
-          hovered: _hovered,
-        );
-      case GraphNodeType.aiExpanded:
-        return _AiNodeWidget(
-          node: node,
-          isDark: isDark,
-          hovered: _hovered,
-        );
-    }
-  }
-}
+  // ── 1. Subject Node (Large Circular Gradient) ────────────────────────────────
 
-// ── Subject Node ──────────────────────────────────────────────────────────────
-class _SubjectNodeWidget extends StatelessWidget {
-  final GraphNode node;
-  final bool isDark;
-  final bool hovered;
+  Widget _buildSubjectNode(GraphNode node, bool isDark) {
+    final isSelected = node.isSelected;
+    final isHighlighted = node.isHighlighted;
 
-  const _SubjectNodeWidget({
-    required this.node,
-    required this.isDark,
-    required this.hovered,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final r = node.radius;
     return Container(
-      width: r * 2,
-      height: r * 2,
+      width: node.width,
+      height: node.height,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF367FE3), Color(0xFF56C7F2)],
+          colors: [_subjectGradientStart, _subjectGradientEnd],
+        ),
+        border: Border.all(
+          color: isSelected
+              ? _selectedHaloColor
+              : isHighlighted
+                  ? Colors.amberAccent
+                  : Colors.white.withOpacity(0.35),
+          width: isSelected ? 3.0 : 2.0,
         ),
         boxShadow: [
+          // Soft blue ambient glow
           BoxShadow(
-            color: AppColors.brandAccent.withOpacity(hovered ? 0.55 : 0.35),
-            blurRadius: hovered ? 30 : 20,
-            spreadRadius: hovered ? 4 : 2,
+            color: _subjectGradientStart.withOpacity(_hovered ? 0.65 : 0.40),
+            blurRadius: _hovered ? 28 : 18,
+            spreadRadius: _hovered ? 4 : 2,
           ),
-          if (node.isSelected)
-            BoxShadow(
-              color: AppColors.brandAccent.withOpacity(0.60),
-              blurRadius: 40,
-              spreadRadius: 6,
+          if (isSelected)
+            const BoxShadow(
+              color: _selectedHaloColor,
+              blurRadius: 20,
+              spreadRadius: 3,
             ),
         ],
-        border: node.isSelected
-            ? Border.all(color: Colors.white.withOpacity(0.75), width: 2.5)
-            : null,
       ),
-      child: ClipOval(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Text(
-                node.label,
-                textAlign: TextAlign.center,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.3,
-                  fontFamily: 'Inter',
-                ),
+      padding: const EdgeInsets.all(14),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.hub_rounded,
+              size: 26,
+              color: Colors.white,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              node.label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: -0.2,
+                height: 1.15,
               ),
             ),
-          ),
+          ],
         ),
       ),
-    );
+    )
+        .animate()
+        .fadeIn(duration: 350.ms)
+        .scale(begin: const Offset(0.85, 0.85), curve: Curves.easeOutBack);
   }
-}
 
-// ── Topic Node ────────────────────────────────────────────────────────────────
-class _TopicNodeWidget extends StatelessWidget {
-  final GraphNode node;
-  final bool isDark;
-  final bool hovered;
-  final VoidCallback? onToggleExpand;
+  // ── 2. Topic Node (Rounded Rectangle with Chevron) ───────────────────────────
 
-  const _TopicNodeWidget({
-    required this.node,
-    required this.isDark,
-    required this.hovered,
-    this.onToggleExpand,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = isDark
-        ? (hovered ? const Color(0xFF1A3A6E) : const Color(0xFF132A4E))
-        : (hovered ? const Color(0xFFDDEAFF) : const Color(0xFFEDF4FF));
-
-    final border = node.isSelected
-        ? AppColors.brandAccent
-        : (isDark
-            ? AppColors.brandAccent.withOpacity(0.45)
-            : AppColors.brandAccent.withOpacity(0.30));
+  Widget _buildTopicNode(GraphNode node, bool isDark) {
+    final isSelected = node.isSelected;
+    final isHighlighted = node.isHighlighted;
+    final isExpanded = node.isExpanded;
+    final hasChildren = node.childCount > 0;
 
     return Container(
-      constraints: const BoxConstraints(minWidth: 90, maxWidth: 130),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      width: node.width,
+      height: node.height,
       decoration: BoxDecoration(
-        color: bg,
+        color: _topicColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: border, width: node.isSelected ? 1.8 : 1.2),
+        border: Border.all(
+          color: isSelected
+              ? _selectedHaloColor
+              : isHighlighted
+                  ? Colors.amberAccent
+                  : Colors.white.withOpacity(0.25),
+          width: isSelected ? 2.5 : 1.2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.brandAccent.withOpacity(hovered ? 0.25 : 0.10),
-            blurRadius: hovered ? 18 : 8,
+            color: _topicColor.withOpacity(_hovered ? 0.55 : 0.25),
+            blurRadius: _hovered ? 16 : 8,
             offset: const Offset(0, 3),
           ),
-          if (node.isSelected)
-            BoxShadow(
-              color: AppColors.brandAccent.withOpacity(0.30),
-              blurRadius: 24,
+          if (isSelected)
+            const BoxShadow(
+              color: _selectedHaloColor,
+              blurRadius: 14,
               spreadRadius: 2,
             ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            node.label,
-            textAlign: TextAlign.center,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
-              letterSpacing: -0.2,
-              fontFamily: 'Inter',
-            ),
-          ),
-          const SizedBox(height: 4),
-          GestureDetector(
-            onTap: onToggleExpand,
-            child: AnimatedRotation(
-              turns: node.isExpanded ? 0.0 : -0.25,
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              child: Icon(
-                Icons.keyboard_arrow_down_rounded,
-                size: 14,
-                color: isDark
-                    ? AppColors.darkTextTertiary
-                    : AppColors.lightTextTertiary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Subtopic Node ─────────────────────────────────────────────────────────────
-class _SubtopicNodeWidget extends StatelessWidget {
-  final GraphNode node;
-  final bool isDark;
-  final bool hovered;
-
-  const _SubtopicNodeWidget({
-    required this.node,
-    required this.isDark,
-    required this.hovered,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = isDark
-        ? (hovered ? AppColors.darkSurfaceContainerHigh : AppColors.darkCard)
-        : (hovered ? AppColors.lightSurfaceVariant : AppColors.lightSurface);
-
-    final border = node.isSelected
-        ? AppColors.brandAccent
-        : (isDark ? AppColors.darkBorder : AppColors.lightBorder);
-
-    return Container(
-      constraints: const BoxConstraints(minWidth: 70, maxWidth: 110),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: border, width: node.isSelected ? 1.6 : 1.0),
-        boxShadow: [
-          if (hovered || node.isSelected)
-            BoxShadow(
-              color: AppColors.brandAccent.withOpacity(0.18),
-              blurRadius: 14,
-              offset: const Offset(0, 3),
-            ),
-        ],
-      ),
-      child: Text(
-        node.label,
-        textAlign: TextAlign.center,
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-          fontSize: 10,
-          fontWeight: FontWeight.w500,
-          fontFamily: 'Inter',
-        ),
-      ),
-    );
-  }
-}
-
-// ── AI Expanded Node ──────────────────────────────────────────────────────────
-class _AiNodeWidget extends StatelessWidget {
-  final GraphNode node;
-  final bool isDark;
-  final bool hovered;
-
-  const _AiNodeWidget({
-    required this.node,
-    required this.isDark,
-    required this.hovered,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 65, maxWidth: 105),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark
-            ? AppColors.teal.withOpacity(0.10)
-            : AppColors.teal.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: AppColors.teal.withOpacity(hovered ? 0.70 : 0.45),
-        ),
-        boxShadow: [
-          if (hovered)
-            BoxShadow(
-              color: AppColors.teal.withOpacity(0.20),
-              blurRadius: 12,
-            ),
-        ],
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.auto_awesome_rounded,
-            size: 9,
-            color: AppColors.teal.withOpacity(0.80),
+          // Left icon or dot
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.18),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.folder_outlined,
+              size: 13,
+              color: Colors.white,
+            ),
           ),
-          const SizedBox(width: 4),
-          Flexible(
+          const SizedBox(width: 8),
+
+          // Label
+          Expanded(
             child: Text(
               node.label,
-              textAlign: TextAlign.center,
-              maxLines: 3,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isDark
-                    ? AppColors.teal.withOpacity(0.90)
-                    : const Color(0xFF1E7A6E),
-                fontSize: 9.5,
-                fontWeight: FontWeight.w500,
+              style: const TextStyle(
                 fontFamily: 'Inter',
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                letterSpacing: -0.1,
+                height: 1.2,
+              ),
+            ),
+          ),
+
+          // Expand / Collapse Chevron button
+          if (widget.onToggleExpand != null && hasChildren) ...[
+            const SizedBox(width: 4),
+            InkWell(
+              onTap: widget.onToggleExpand,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: AnimatedRotation(
+                  turns: isExpanded ? 0.0 : -0.25, // 0 = down, -0.25 = right
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  child: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 18,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(duration: 250.ms)
+        .slideY(begin: 0.1, end: 0.0, curve: Curves.easeOutCubic);
+  }
+
+  // ── 3. Subtopic Node (Dark Blue Card with Notes Indicator) ────────────────────
+
+  Widget _buildSubtopicNode(GraphNode node, bool isDark) {
+    final isSelected = node.isSelected;
+    final isHighlighted = node.isHighlighted;
+    final hasNotes = node.notes.isNotEmpty;
+
+    return Container(
+      width: node.width,
+      height: node.height,
+      decoration: BoxDecoration(
+        color: _subtopicColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isSelected
+              ? _selectedHaloColor
+              : isHighlighted
+                  ? Colors.amberAccent
+                  : const Color(0xFF2F6FDD).withOpacity(0.45),
+          width: isSelected ? 2.2 : 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(_hovered ? 0.35 : 0.18),
+            blurRadius: _hovered ? 12 : 6,
+            offset: const Offset(0, 2),
+          ),
+          if (isSelected)
+            const BoxShadow(
+              color: _selectedHaloColor,
+              blurRadius: 12,
+              spreadRadius: 1,
+            ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      child: Row(
+        children: [
+          // Dot indicator
+          Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+              color: Color(0xFF5EA9FF),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+
+          // Label
+          Expanded(
+            child: Text(
+              node.label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFFE2E8F0),
+                letterSpacing: -0.1,
+                height: 1.2,
+              ),
+            ),
+          ),
+
+          // Notes badge if student notes exist in Firestore
+          if (hasNotes) ...[
+            const SizedBox(width: 4),
+            Tooltip(
+              message: '${node.notes.length} saved note(s)',
+              child: const Icon(
+                Icons.sticky_note_2_rounded,
+                size: 13,
+                color: Color(0xFF38BDF8),
+              ),
+            ),
+          ],
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(duration: 220.ms)
+        .slideY(begin: 0.15, end: 0.0, curve: Curves.easeOutCubic);
+  }
+
+  // ── 4. AI Expanded Node (Temporary Teal Card) ────────────────────────────────
+
+  Widget _buildAiNode(GraphNode node, bool isDark) {
+    final isSelected = node.isSelected;
+
+    return Container(
+      width: node.width,
+      height: node.height,
+      decoration: BoxDecoration(
+        color: _aiNodeColor.withOpacity(0.90),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isSelected ? Colors.white : const Color(0xFF5EEAD4),
+          width: isSelected ? 2.0 : 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _aiNodeColor.withOpacity(_hovered ? 0.60 : 0.30),
+            blurRadius: _hovered ? 14 : 8,
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.auto_awesome_rounded,
+            size: 13,
+            color: Colors.white,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              node.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.22),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text(
+              'AI',
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
               ),
             ),
           ),
         ],
       ),
-    );
+    )
+        .animate()
+        .fadeIn(duration: 250.ms)
+        .scale(begin: const Offset(0.7, 0.7), curve: Curves.easeOutBack);
   }
 }
