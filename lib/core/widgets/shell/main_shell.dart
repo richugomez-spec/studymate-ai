@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/animations/animations.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/routing/app_routes.dart';
 import '../../../features/auth/presentation/providers/auth_provider.dart';
@@ -365,21 +366,24 @@ class _StudyMateSidebar extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Container(
-                        width: 26,
-                        height: 26,
-                        decoration: const BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: Text(
-                            name[0].toUpperCase(),
-                            style: const TextStyle(
-                              fontFamily: 'JetBrains Mono',
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                      AppHero(
+                        tag: AppHeroTags.userAvatar(user?.id),
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          decoration: const BoxDecoration(
+                            gradient: AppColors.primaryGradient,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              name[0].toUpperCase(),
+                              style: const TextStyle(
+                                fontFamily: 'JetBrains Mono',
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),

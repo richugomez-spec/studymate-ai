@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/animations/animations.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -200,21 +201,21 @@ class StudyToolsScreen extends ConsumerWidget {
                 // Tools List
                 ...tools.map((tool) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: InkWell(
+                      child: AppHoverCard(
                         onTap: tool.onTap,
                         borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerLow,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.darkBorder),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
+                        backgroundColor: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerLow,
+                        borderColor: AppColors.darkBorder,
+                        hoverBorderColor: tool.color.withOpacity(0.55),
+                        glowColor: tool.color,
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            AppHero(
+                              tag: AppHeroTags.studyTool(tool.title),
+                              child: Container(
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
@@ -224,59 +225,59 @@ class StudyToolsScreen extends ConsumerWidget {
                                 child: Icon(tool.icon,
                                     color: tool.color, size: 22),
                               ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          tool.title,
-                                          style: const TextStyle(
-                                              fontFamily: 'Inter',
-                                              fontSize: 15,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        tool.title,
+                                        style: const TextStyle(
+                                            fontFamily: 'Inter',
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: tool.color.withOpacity(0.15),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          tool.badge,
+                                          style: TextStyle(
+                                              fontFamily: 'JetBrains Mono',
+                                              fontSize: 9.5,
                                               fontWeight: FontWeight.w700,
-                                              color: Colors.white),
+                                              color: tool.color),
                                         ),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: tool.color.withOpacity(0.15),
-                                            borderRadius:
-                                                BorderRadius.circular(4),
-                                          ),
-                                          child: Text(
-                                            tool.badge,
-                                            style: TextStyle(
-                                                fontFamily: 'JetBrains Mono',
-                                                fontSize: 9.5,
-                                                fontWeight: FontWeight.w700,
-                                                color: tool.color),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      tool.subtitle,
-                                      style: TextStyle(
-                                          fontFamily: 'Inter',
-                                          fontSize: 12.5,
-                                          color: Colors.white.withOpacity(0.65),
-                                          height: 1.35),
-                                    ),
-                                  ],
-                                ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    tool.subtitle,
+                                    style: TextStyle(
+                                        fontFamily: 'Inter',
+                                        fontSize: 12.5,
+                                        color: Colors.white.withOpacity(0.65),
+                                        height: 1.35),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 10),
-                              Icon(Icons.arrow_forward_ios_rounded,
-                                  size: 14,
-                                  color: Colors.white.withOpacity(0.3)),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 10),
+                            Icon(Icons.arrow_forward_ios_rounded,
+                                size: 14,
+                                color: Colors.white.withOpacity(0.3)),
+                          ],
                         ),
                       ),
                     )),

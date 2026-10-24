@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/animations/animations.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/notifications/app_notification.dart';
 import '../../../../services/firestore_service.dart';
@@ -316,10 +317,13 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
                     ],
                   ),
                 ),
-                FilledButton.icon(
-                  onPressed: _isLoading ? null : _addTopic,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add Topic'),
+                AppPressable(
+                  onTap: _isLoading ? null : _addTopic,
+                  child: FilledButton.icon(
+                    onPressed: _isLoading ? null : _addTopic,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add Topic'),
+                  ),
                 ),
                 IconButton(
                   tooltip: 'Back to subjects',
@@ -335,8 +339,14 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
           // Content
           if (_isLoading)
             const Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(child: CircularProgressIndicator()),
+              padding: EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  AppSkeletonTopicCard(),
+                  SizedBox(height: 12),
+                  AppSkeletonTopicCard(),
+                ],
+              ),
             )
           else
             Flexible(
@@ -387,15 +397,13 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
             [];
     final isExpanded = _expandedTopics[topicId] ?? false;
 
-    return Card(
+    return AppHoverCard(
       margin: const EdgeInsets.only(bottom: 12),
-      color: AppColors.darkBackground,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: AppColors.electricVioletLight.withOpacity(0.2),
-        ),
-      ),
+      backgroundColor: AppColors.darkBackground,
+      borderRadius: BorderRadius.circular(12),
+      borderColor: AppColors.electricVioletLight.withOpacity(0.25),
+      hoverBorderColor: AppColors.electricVioletLight.withOpacity(0.55),
+      glowColor: AppColors.electricViolet,
       child: Column(
         children: [
           InkWell(
@@ -409,11 +417,14 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_down
-                        : Icons.keyboard_arrow_right,
-                    color: AppColors.electricVioletLight,
+                  AnimatedRotation(
+                    turns: isExpanded ? 0.25 : 0.0,
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    child: const Icon(
+                      Icons.keyboard_arrow_right,
+                      color: AppColors.electricVioletLight,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -468,62 +479,88 @@ class _TopicBuilderState extends ConsumerState<TopicBuilder> {
               ),
             ),
           ),
-          if (isExpanded) ...[
-            const Divider(height: 1, color: AppColors.darkBorderSubtle),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (subtopics.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(
-                        'No subtopics yet',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 14,
+          AppSmoothExpansion(
+            isExpanded: isExpanded,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Divider(height: 1, color: AppColors.darkBorderSubtle),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (subtopics.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(
+                            'No subtopics yet',
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontSize: 14,
+                            ),
+                          ),
+                        )
+                      else
+                        ...subtopics.map((subtopic) =>
+                            _buildSubtopicItem(topicId, topicName, subtopic)),
+                      const SizedBox(height: 8),
+                      AppPressable(
+                        onTap: () => _addSubtopic(topicId),
+                        child: OutlinedButton.icon(
+                          onPressed: () => _addSubtopic(topicId),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add Subtopic'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.teal,
+                            side: BorderSide(
+                                color: AppColors.teal.withOpacity(0.5)),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                          ),
                         ),
                       ),
-                    )
-                  else
-                    ...subtopics.map((subtopic) =>
-                        _buildSubtopicItem(topicId, topicName, subtopic)),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _addSubtopic(topicId),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: const Text('Add Subtopic'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.teal,
-                      side: BorderSide(color: AppColors.teal.withOpacity(0.5)),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                    ),
+                      const SizedBox(height: 8),
+                      AppPressable(
+                        onTap: () => widget.onAddNote(
+                          topicId: topicId,
+                          topic: topicName,
+                        ),
+                        child: TextButton.icon(
+                          onPressed: () => widget.onAddNote(
+                            topicId: topicId,
+                            topic: topicName,
+                          ),
+                          icon: const Icon(Icons.note_add_outlined, size: 18),
+                          label: const Text('Add Topic Note'),
+                        ),
+                      ),
+                      AppPressable(
+                        onTap: () => widget.onGenerateAiNotes(
+                          topicId: topicId,
+                          topic: topicName,
+                          subtopicId: '',
+                          subtopic: '',
+                        ),
+                        child: OutlinedButton.icon(
+                          onPressed: () => widget.onGenerateAiNotes(
+                            topicId: topicId,
+                            topic: topicName,
+                            subtopicId: '',
+                            subtopic: '',
+                          ),
+                          icon: const Icon(Icons.auto_awesome, size: 18),
+                          label: const Text('\u2728 Generate AI Notes'),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  TextButton.icon(
-                    onPressed: () => widget.onAddNote(
-                      topicId: topicId,
-                      topic: topicName,
-                    ),
-                    icon: const Icon(Icons.note_add_outlined, size: 18),
-                    label: const Text('Add Topic Note'),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () => widget.onGenerateAiNotes(
-                      topicId: topicId,
-                      topic: topicName,
-                      subtopicId: '',
-                      subtopic: '',
-                    ),
-                    icon: const Icon(Icons.auto_awesome, size: 18),
-                    label: const Text('\u2728 Generate AI Notes'),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );

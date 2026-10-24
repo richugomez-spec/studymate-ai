@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/ai/services/knowledge_engine.dart';
+import '../../../../core/animations/animations.dart';
 import '../../../../core/services/document_processing_service.dart';
 
 class MindMapScreen extends ConsumerStatefulWidget {
@@ -46,7 +47,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
           future: _result,
           builder: (context, snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: Text('Thinking...'));
+              return const AppSkeletonList(itemCount: 5);
             }
             if (snapshot.hasError || snapshot.data == null) {
               return const Center(
@@ -210,12 +211,15 @@ class _MindMapNode extends StatelessWidget {
     final hasChildren = childIds.isNotEmpty || nested.isNotEmpty;
     return Padding(
       padding: EdgeInsets.only(left: depth * 18.0, bottom: 6),
-      child: Card(
-        child: hasChildren
-            ? ExpansionTile(
-                initiallyExpanded: depth == 0,
-                title: Text(title),
-                subtitle: detail.isEmpty ? null : Text(detail),
+      child: hasChildren
+          ? AppExpansionCard(
+              initiallyExpanded: depth == 0,
+              title: Text(
+                title,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: detail.isEmpty ? null : Text(detail),
+              child: Column(
                 children: [
                   for (final childId in childIds)
                     _MindMapNode(
@@ -234,12 +238,14 @@ class _MindMapNode extends StatelessWidget {
                       depth: depth + 1,
                     ),
                 ],
-              )
-            : ListTile(
+              ),
+            )
+          : Card(
+              child: ListTile(
                 title: Text(title),
                 subtitle: detail.isEmpty ? null : Text(detail),
               ),
-      ),
+            ),
     );
   }
 }

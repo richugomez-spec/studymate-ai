@@ -95,10 +95,11 @@ abstract final class AppTheme {
       canvasColor: canvas,
       textTheme: textTheme,
       visualDensity: VisualDensity.standard,
-      splashColor: accent.withOpacity(.12),
-      highlightColor: accent.withOpacity(.07),
-      hoverColor: accent.withOpacity(isDark ? .12 : .07),
-      focusColor: accent.withOpacity(.15),
+      splashFactory: InkSparkle.splashFactory,
+      splashColor: accent.withOpacity(.08),
+      highlightColor: accent.withOpacity(.03),
+      hoverColor: accent.withOpacity(isDark ? .08 : .04),
+      focusColor: accent.withOpacity(.12),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: {
           TargetPlatform.android: _WorkspacePageTransitions(),

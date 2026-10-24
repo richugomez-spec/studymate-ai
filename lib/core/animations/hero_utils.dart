@@ -9,7 +9,7 @@ class AppHero extends StatelessWidget {
   final Widget child;
   final CreateRectTween? createRectTween;
   final HeroFlightShuttleBuilder? flightShuttleBuilder;
-  final TransitionBuilder? placeholderBuilder;
+  final HeroPlaceholderBuilder? placeholderBuilder;
 
   const AppHero({
     required this.tag,

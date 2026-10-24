@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/animations/animations.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/routing/app_routes.dart';
 import '../../../../core/widgets/notifications/app_notification.dart';
@@ -478,6 +479,293 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  void _showAnimationsShowcase(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        final theme = Theme.of(sheetCtx);
+        final isDark = theme.brightness == Brightness.dark;
+
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(sheetCtx).size.height * 0.88,
+              ),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.darkSurface : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border.all(
+                  color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Handle bar
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: (isDark ? Colors.white : Colors.black).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    Row(
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: AppColors.teal.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.animation_rounded,
+                            color: AppColors.teal,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Tasteful Micro-Interactions',
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: isDark
+                                      ? AppColors.darkTextPrimary
+                                      : AppColors.lightTextPrimary,
+                                ),
+                              ),
+                              Text(
+                                'Responsive, polished feedback without excessive motion',
+                                style: TextStyle(
+                                  fontFamily: 'Inter',
+                                  fontSize: 12,
+                                  color: isDark
+                                      ? AppColors.darkTextSecondary
+                                      : AppColors.lightTextSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () => Navigator.pop(sheetCtx),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Section 1: Hover & Elevation Card
+                    _SectionLabel(label: '1. HOVER & ELEVATION CARD'),
+                    const SizedBox(height: 8),
+                    AppHoverCard(
+                      borderRadius: BorderRadius.circular(14),
+                      borderColor: isDark ? AppColors.darkBorder : AppColors.lightBorder,
+                      hoverBorderColor: AppColors.electricViolet,
+                      glowColor: AppColors.electricViolet,
+                      padding: const EdgeInsets.all(16),
+                      onTap: () {
+                        AppNotification.showSuccess(
+                          context: context,
+                          title: 'Card Interaction',
+                          message: 'Hover lift and elevation spring detected!',
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: AppColors.electricViolet.withOpacity(0.14),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.touch_app_rounded,
+                              color: AppColors.electricViolet,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Hover Me (Desktop) / Tap Me (Mobile)',
+                                  style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: isDark ? Colors.white : AppColors.lightTextPrimary,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Lifts -3px, expands outer glow shadow, and scales down on press.',
+                                  style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 12,
+                                    color: isDark
+                                        ? AppColors.darkTextSecondary
+                                        : AppColors.lightTextSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Section 2: Tactile Button Press & Ripple
+                    _SectionLabel(label: '2. BUTTON PRESS & INK SPARKLE'),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: AppInteractiveButton(
+                            icon: const Icon(Icons.flash_on_rounded, size: 18, color: Colors.white),
+                            backgroundColor: AppColors.brandAccent,
+                            onPressed: () {
+                              AppNotification.showInfo(
+                                context: context,
+                                message: 'Tactile press scale (0.965) triggered.',
+                              );
+                            },
+                            child: const Text('Primary Pressable'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: AppPressable(
+                            onTap: () {
+                              AppNotification.showSuccess(
+                                context: context,
+                                message: 'Secondary button pressed with haptics.',
+                              );
+                            },
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                AppNotification.showSuccess(
+                                  context: context,
+                                  message: 'Secondary button pressed with haptics.',
+                                );
+                              },
+                              icon: const Icon(Icons.replay_rounded, size: 18),
+                              label: const Text('Spring Scale'),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Section 3: Smooth Accordion Expansion
+                    _SectionLabel(label: '3. SMOOTH ACCORDION EXPANSION'),
+                    const SizedBox(height: 8),
+                    AppExpansionCard(
+                      leading: const Icon(Icons.auto_stories_rounded, color: AppColors.teal),
+                      title: const Text(
+                        'Quantum Computing Essentials',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      ),
+                      subtitle: const Text(
+                        'Tap to trigger animated height & rotating chevron',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Smooth animated height interpolation using easeOutCubic curve. Content cross-fades without clipping or abrupt layout jumping.',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              height: 1.4,
+                              color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            children: [
+                              Chip(label: const Text('Qubits')),
+                              Chip(label: const Text('Superposition')),
+                              Chip(label: const Text('Entanglement')),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Section 4: Loading Shimmer & Skeletons
+                    _SectionLabel(label: '4. LOADING SHIMMER & SKELETONS'),
+                    const SizedBox(height: 8),
+                    const AppSkeletonTopicCard(),
+                    const SizedBox(height: 18),
+
+                    // Section 5: Page Transitions Preview
+                    _SectionLabel(label: '5. PAGE TRANSITIONS (LIVE TEST)'),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              Navigator.pop(sheetCtx);
+                              context.go(AppRoutes.library);
+                            },
+                            child: const Text('Fade Through (Tab)'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              Navigator.pop(sheetCtx);
+                              context.push(AppRoutes.achievements);
+                            },
+                            child: const Text('Scale (Modal/Tool)'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeNotifierProvider);
@@ -610,6 +898,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => _showNotificationShowcase(context),
             ),
+            _SettingsTile(
+              icon: Icons.animation_rounded,
+              iconColor: AppColors.teal,
+              title: 'Animations & Micro-interactions',
+              subtitle: 'Test Fade Through, Slide, Scale, Shimmer, & Tactile feedback',
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _showAnimationsShowcase(context),
+            ),
           ],
 
           const SizedBox(height: 32),
@@ -713,24 +1009,27 @@ class _ProfileCard extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 26,
-            backgroundColor: AppColors.electricViolet.withOpacity(0.2),
-            backgroundImage:
-                (user?.photoUrl != null && user!.photoUrl!.isNotEmpty)
-                    ? NetworkImage(user.photoUrl!)
-                    : null,
-            child: (user?.photoUrl == null || user!.photoUrl!.isEmpty)
-                ? Text(
-                    initial,
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  )
-                : null,
+          AppHero(
+            tag: AppHeroTags.userAvatar(user?.id),
+            child: CircleAvatar(
+              radius: 26,
+              backgroundColor: AppColors.electricViolet.withOpacity(0.2),
+              backgroundImage:
+                  (user?.photoUrl != null && user!.photoUrl!.isNotEmpty)
+                      ? NetworkImage(user.photoUrl!)
+                      : null,
+              child: (user?.photoUrl == null || user!.photoUrl!.isEmpty)
+                  ? Text(
+                      initial,
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    )
+                  : null,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -824,68 +1123,66 @@ class _SettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return AppHoverCard(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      borderRadius: BorderRadius.circular(8),
+      liftDistance: 2.0,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+      borderColor: Theme.of(context).colorScheme.outlineVariant,
+      hoverBorderColor: iconColor.withOpacity(0.50),
+      glowColor: iconColor,
       onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(8),
-          border:
-              Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: iconColor.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Icon(icon, size: 16, color: iconColor),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(6),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Theme.of(context).colorScheme.onSurface,
-                    ),
+            child: Icon(icon, size: 16, color: iconColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (trailing != null) ...[
-              const SizedBox(width: 8),
-              DefaultTextStyle(
-                style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant),
-                child: IconTheme(
-                  data: IconThemeData(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      size: 18),
-                  child: trailing!,
                 ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: 8),
+            DefaultTextStyle(
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+              child: IconTheme(
+                data: IconThemeData(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    size: 18),
+                child: trailing!,
               ),
-            ],
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
