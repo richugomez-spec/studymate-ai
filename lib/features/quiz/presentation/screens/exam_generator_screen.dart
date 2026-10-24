@@ -44,6 +44,7 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
   // Reactive sync
   Timer? _libraryChangeDebounce;
   String? _lastLibraryVersion;
+  bool _refreshAfterGeneration = false;
 
   int get _totalMarks => _sections.fold<int>(0,
       (sum, section) => sum + section.questionCount * section.marksPerQuestion);
@@ -72,7 +73,7 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
     section.dispose();
   }
 
-  void _generate() {
+  void _generate({bool forceRefresh = false}) {
     final sectionBrief = _sections.map((section) {
       final blooms = section.bloomLevels.toList()..sort();
       return '''${section.name}:
@@ -92,6 +93,7 @@ class _ExamGeneratorScreenState extends ConsumerState<ExamGeneratorScreen> {
         topicId: widget.topicId,
         subjectId: subjectId,
         sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
+        forceRefresh: forceRefresh,
         prompt:
             '''Build a complete $_totalMarks-mark university examination with an estimated duration of $_durationMinutes minutes.
 Create exactly $_questionCount questions across these sections. Return JSON with title and a questions array. Each question must include section, prompt, marks, compulsory (boolean), difficulty, bloomLevel, modelAnswer, markingScheme (list), and commonMistakes (list). The configured section count, marks, compulsory/optional balance, difficulty distribution, Bloom's levels, and instructions are:
@@ -100,7 +102,13 @@ Use the currently opened subject hierarchy as the syllabus, manual notes as prim
       );
     });
     _result!.then((_) {
-      if (mounted) setState(() => _isGenerating = false);
+      if (mounted) {
+        setState(() => _isGenerating = false);
+        if (_refreshAfterGeneration) {
+          _refreshAfterGeneration = false;
+          _generate(forceRefresh: true);
+        }
+      }
     }).catchError((Object error) {
       if (mounted) {
         setState(() {
@@ -113,9 +121,11 @@ Use the currently opened subject hierarchy as the syllabus, manual notes as prim
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(activeKnowledgeSubjectNameSyncProvider);
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
-    final activeSubjectId =
-        ref.watch(activeKnowledgeSubjectIdProvider) ?? '';
+    final activeSubjectId = ref.watch(activeKnowledgeSubjectIdProvider) ??
+        ref.watch(activeKnowledgeWorkspaceIdProvider) ??
+        '';
 
     // ── Reactive library sync ───────────────────────────────────────
     ref.listen<AsyncValue<String>>(
@@ -130,14 +140,12 @@ Use the currently opened subject hierarchy as the syllabus, manual notes as prim
         if (version == _lastLibraryVersion) return;
         _lastLibraryVersion = version;
         _libraryChangeDebounce?.cancel();
-        _libraryChangeDebounce =
-            Timer(const Duration(milliseconds: 600), () {
-          if (mounted && !_isGenerating) {
-            setState(() {
-              _result = null;
-              _error = null;
-              _revealedAnswers.clear();
-            });
+        _libraryChangeDebounce = Timer(const Duration(milliseconds: 600), () {
+          if (!mounted) return;
+          if (_isGenerating) {
+            _refreshAfterGeneration = true;
+          } else if (_result != null) {
+            _generate(forceRefresh: true);
           }
         });
       },
@@ -514,14 +522,20 @@ Use the currently opened subject hierarchy as the syllabus, manual notes as prim
       FutureBuilder<Map<String, dynamic>>(
         future: _result,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
+          if (snapshot.connectionState != ConnectionState.done &&
+              !snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (snapshot.hasError || snapshot.data == null) {
+          if ((snapshot.hasError || snapshot.data == null) &&
+              !snapshot.hasData) {
             return Center(
                 child: _errorBanner(_error ?? 'Exam generation failed.'));
           }
-          final data = snapshot.data!;
+          final data = snapshot.data;
+          if (data == null) {
+            return Center(
+                child: _errorBanner(_error ?? 'Exam generation failed.'));
+          }
           final questions = (data['questions'] as List? ?? const [])
               .whereType<Map>()
               .map(Map<String, dynamic>.from)
@@ -537,6 +551,13 @@ Use the currently opened subject hierarchy as the syllabus, manual notes as prim
                     'No questions were returned. Edit the blueprint and try again.'));
           }
           return ListView(padding: const EdgeInsets.all(24), children: [
+            if (_isGenerating) ...[
+              const LinearProgressIndicator(minHeight: 2),
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text('Updating study tools...'),
+              ),
+            ],
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),

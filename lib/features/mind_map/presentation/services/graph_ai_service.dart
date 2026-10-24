@@ -13,6 +13,9 @@ class NodeExplanation {
   final String keyConcepts;
   final String detailedExplanation;
   final String examples;
+  final String realWorldExample;
+  final String whyMatters;
+  final String relatedConcepts;
   final String formulas;
   final String interviewQuestions;
   final String examQuestions;
@@ -24,6 +27,9 @@ class NodeExplanation {
     this.keyConcepts = '',
     this.detailedExplanation = '',
     this.examples = '',
+    this.realWorldExample = '',
+    this.whyMatters = '',
+    this.relatedConcepts = '',
     this.formulas = '',
     this.interviewQuestions = '',
     this.examQuestions = '',
@@ -50,21 +56,24 @@ class GraphAiService {
 
   GraphAiService({required this.keyManager});
 
-  /// Generate a structured explanation for a topic or subtopic node.
-  /// Uses notes if available; otherwise generates fresh content.
+  /// Generate a structured, teacher-style explanation for any graph node.
+  /// Uses student notes as the primary source when available.
   Future<NodeExplanation> explainNode({
     required String nodeLabel,
     required GraphNodeType nodeType,
     String? notes,
+    String? summary,
     String? subjectName,
     String? topicName,
   }) async {
     final hasNotes = notes != null && notes.trim().isNotEmpty;
-    final contextHierarchy = [
-      if (subjectName != null) subjectName,
-      if (topicName != null && topicName != nodeLabel) topicName,
-      nodeLabel,
-    ].join(' → ');
+    final contextHierarchy = nodeType == GraphNodeType.subject
+        ? nodeLabel
+        : [
+            if (subjectName != null) subjectName,
+            if (topicName != null && topicName != nodeLabel) topicName,
+            nodeLabel,
+          ].join(' → ');
 
     final notesSection = hasNotes
         ? '''
@@ -74,23 +83,37 @@ $notes
 """
 Use these notes as the PRIMARY source. Improve, expand, and structure them.
 '''
-        : '''
-The student has no notes yet. Generate complete, high-quality content from scratch.
+        : summary != null && summary.trim().isNotEmpty
+            ? '''
+There are no student notes. Use this existing topic or study summary as the
+primary source, clarify it, and expand where useful:
+"""
+$summary
+"""
+'''
+            : '''
+The student has no notes or existing summary. Teach the concept from your
+academic knowledge. Do not fabricate student notes.
 ''';
 
     final prompt = '''
-You are a university professor and expert educator.
+You are a patient university teacher. Explain the idea naturally in connected,
+clear paragraphs rather than producing a wall of bullets.
 
 Topic context: $contextHierarchy
+Hierarchy level: ${nodeType.name}
 
 $notesSection
 
 Return a structured explanation in EXACTLY this JSON format (no markdown, pure JSON):
 {
   "overview": "2-3 sentence overview",
-  "keyConcepts": "bullet list of 4-6 key concepts as text with newlines",
-  "detailedExplanation": "comprehensive explanation paragraphs",
+  "keyConcepts": "4-6 key concepts, each briefly explained",
+  "detailedExplanation": "teacher-style explanation in clear paragraphs",
   "examples": "2-3 concrete, practical examples",
+  "realWorldExample": "one relatable real-world example",
+  "whyMatters": "why learning this concept matters",
+  "relatedConcepts": "closely related ideas and how they connect",
   "formulas": "important formulas or equations if applicable, else empty string",
   "interviewQuestions": "3-5 common interview questions with brief answers",
   "examQuestions": "3-5 common exam questions with brief answers",
@@ -99,32 +122,21 @@ Return a structured explanation in EXACTLY this JSON format (no markdown, pure J
 }
 ''';
 
-    try {
-      final response = await keyManager.run((apiKey, model) async {
-        final provider = GeminiProvider(AIConfig(
-          providerType: AIProviderType.gemini,
-          apiKey: apiKey,
-          model: model,
-          maxTokens: 1200,
-          temperature: 0.3,
-        ));
-        final result = await provider.complete(AIRequest(messages: [
-          AIMessage(role: AIRole.user, content: prompt),
-        ]));
-        return result.content;
-      });
+    final response = await keyManager.run((apiKey, model) async {
+      final provider = GeminiProvider(AIConfig(
+        providerType: AIProviderType.gemini,
+        apiKey: apiKey,
+        model: model,
+        maxTokens: 2000,
+        temperature: 0.3,
+      ));
+      final result = await provider.complete(AIRequest(messages: [
+        AIMessage(role: AIRole.user, content: prompt),
+      ]));
+      return result.content;
+    });
 
-      return _parseExplanation(response);
-    } catch (e) {
-      return NodeExplanation(
-        overview: 'AI explanation for "$nodeLabel".',
-        keyConcepts:
-            'Connect to AI to get detailed key concepts for this topic.',
-        detailedExplanation:
-            'Unable to generate explanation right now. Please check your API key or internet connection.',
-        summary: nodeLabel,
-      );
-    }
+    return _parseExplanation(response);
   }
 
   /// Generate AI-expanded child nodes for a given node.
@@ -187,9 +199,14 @@ Rules:
       }
       // Simple field extraction using regex
       String extract(String key) {
-        final pattern = RegExp('"$key"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"',
-            dotAll: true);
-        return pattern.firstMatch(cleaned)?.group(1)?.replaceAll(r'\"', '"').replaceAll(r'\n', '\n') ?? '';
+        final pattern =
+            RegExp('"$key"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"', dotAll: true);
+        return pattern
+                .firstMatch(cleaned)
+                ?.group(1)
+                ?.replaceAll(r'\"', '"')
+                .replaceAll(r'\n', '\n') ??
+            '';
       }
 
       return NodeExplanation(
@@ -197,6 +214,9 @@ Rules:
         keyConcepts: extract('keyConcepts'),
         detailedExplanation: extract('detailedExplanation'),
         examples: extract('examples'),
+        realWorldExample: extract('realWorldExample'),
+        whyMatters: extract('whyMatters'),
+        relatedConcepts: extract('relatedConcepts'),
         formulas: extract('formulas'),
         interviewQuestions: extract('interviewQuestions'),
         examQuestions: extract('examQuestions'),
@@ -204,7 +224,8 @@ Rules:
         summary: extract('summary'),
       );
     } catch (_) {
-      return NodeExplanation(overview: raw.length > 500 ? raw.substring(0, 500) : raw);
+      return NodeExplanation(
+          overview: raw.length > 500 ? raw.substring(0, 500) : raw);
     }
   }
 
@@ -218,7 +239,8 @@ Rules:
       }
       final match = RegExp(r'\[([^\]]+)\]', dotAll: true).firstMatch(cleaned);
       if (match == null) return const AiExpansionResult(childLabels: []);
-      final items = match.group(1)!
+      final items = match
+          .group(1)!
           .split(',')
           .map((s) => s.trim().replaceAll('"', '').replaceAll("'", ''))
           .where((s) => s.isNotEmpty)

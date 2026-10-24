@@ -48,14 +48,21 @@ final userChatSessionsStreamProvider =
 
 /// Reactive library version for a subject.
 ///
-/// Emits an opaque version token whenever topics, subtopics, or notes change
-/// under [subjectId]. Study tools watch this and re-generate when it changes.
+/// Emits an opaque version token whenever the subject or its topics,
+/// subtopics, or manual notes change. Study tools refresh the active subject
+/// when this value changes.
 final subjectTopicsVersionProvider =
     StreamProvider.family<String, String>((ref, subjectId) {
   if (subjectId.isEmpty) return Stream.value('');
   return ref
       .watch(firestoreServiceProvider)
       .streamSubjectLibraryVersion(subjectId);
+});
+
+final subjectNameStreamProvider =
+    StreamProvider.family<String?, String>((ref, subjectId) {
+  if (subjectId.isEmpty) return Stream.value(null);
+  return ref.watch(firestoreServiceProvider).streamSubjectName(subjectId);
 });
 
 /// Production Firestore Service Layer
@@ -185,6 +192,11 @@ class FirestoreService {
       _subjectsCol.where('ownerId', isEqualTo: ownerId).snapshots().map(
             (snapshot) =>
                 snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList(),
+          );
+
+  Stream<String?> streamSubjectName(String subjectId) =>
+      _subjectsCol.doc(subjectId).snapshots().map(
+            (snapshot) => snapshot.data()?['name']?.toString(),
           );
 
   Stream<List<FirestoreChatSessionModel>> streamUserChatSessions(
@@ -613,87 +625,115 @@ class FirestoreService {
 
   /// Streams an opaque library version token for [subjectId].
   ///
-  /// Emits a new value whenever the subject's topics collection **or** its
-  /// manual notes (knowledge_items) change. Study tools listen to this stream
-  /// via [subjectTopicsVersionProvider] and re-generate whenever the version
-  /// changes, ensuring they never show stale cached content.
+  /// Emits a new value whenever the subject, topics, subtopics, or manual
+  /// notes change. Subtopic listeners are refreshed when the topic collection
+  /// changes so newly added topics are observed as well.
   Stream<String> streamSubjectLibraryVersion(String subjectId) {
-    final topicsStream = _subjectTopicsCol(subjectId).snapshots().map((snap) {
-      // Build a fingerprint: "topicId:updatedAtMs,..." ordered by topicId
-      final parts = snap.docs.map((doc) {
-        final data = doc.data();
-        final ts = data['updatedAt'];
-        final ms = ts is Timestamp ? ts.millisecondsSinceEpoch : 0;
-        return '${doc.id}:$ms';
-      }).toList()
-        ..sort();
-      return 'topics:${parts.join(',')}';
-    });
-
-    final notesStream = _knowledgeCol
-        .where('subjectId', isEqualTo: subjectId)
-        .where('kind', isEqualTo: 'note')
-        .snapshots()
-        .map((snap) {
-      final parts = snap.docs.map((doc) {
-        final data = doc.data();
-        final ts = data['updatedAt'] ?? data['indexedAt'];
-        final ms = ts is Timestamp ? ts.millisecondsSinceEpoch : 0;
-        return '${doc.id}:$ms';
-      }).toList()
-        ..sort();
-      return 'notes:${parts.join(',')}';
-    });
-
-    // Merge both streams; emit a combined version token on any change.
-    // We use a StreamController to combine two streams synchronously.
     late StreamController<String> controller;
-    String topicsToken = '';
-    String notesToken = '';
-    StreamSubscription<String>? topicsSub;
-    StreamSubscription<String>? notesSub;
+    final subscriptions = <StreamSubscription<dynamic>>[];
+    final subtopicSubscriptions =
+        <String, StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>{};
+    final subtopicTokens = <String, String>{};
+    var subjectToken = '';
+    var topicsToken = '';
+    var notesToken = '';
+    var topicSnapshotReceived = false;
+
+    String fingerprint(Iterable<String> values) {
+      final raw = values.toList()..sort();
+      return raw.join('|');
+    }
 
     void emit() {
-      if (!controller.isClosed) {
-        // Compute a compact numeric hash of the combined fingerprint so the
-        // token is short and comparison-safe.
-        final raw = '$topicsToken|$notesToken';
-        var h = 0;
-        for (final u in raw.codeUnits) {
-          h = (h * 31 + u) & 0x7fffffff;
-        }
-        controller.add(h.toRadixString(16).padLeft(8, '0'));
+      if (controller.isClosed) return;
+      final raw =
+          '$subjectToken|$topicsToken|${fingerprint(subtopicTokens.entries.map((entry) => '${entry.key}:${entry.value}'))}|$notesToken';
+      var firstHash = 0;
+      var secondHash = 5381;
+      for (final unit in raw.codeUnits) {
+        firstHash = ((firstHash << 5) - firstHash + unit) & 0x7fffffff;
+        secondHash = ((secondHash << 7) - secondHash + unit) & 0x7fffffff;
       }
+      controller.add(
+          '${firstHash.toRadixString(16).padLeft(8, '0')}${secondHash.toRadixString(16).padLeft(8, '0')}');
+    }
+
+    Future<void> updateSubtopicListeners(
+        QuerySnapshot<Map<String, dynamic>> snapshot) async {
+      final topicIds = snapshot.docs.map((doc) => doc.id).toSet();
+      for (final topicId in subtopicSubscriptions.keys.toList()) {
+        if (!topicIds.contains(topicId)) {
+          await subtopicSubscriptions.remove(topicId)?.cancel();
+          subtopicTokens.remove(topicId);
+        }
+      }
+      for (final topic in snapshot.docs) {
+        if (subtopicSubscriptions.containsKey(topic.id)) continue;
+        subtopicSubscriptions[topic.id] =
+            _topicSubtopicsCol(subjectId, topic.id).snapshots().listen(
+          (subtopics) {
+            subtopicTokens[topic.id] = fingerprint(subtopics.docs.map((doc) {
+              final data = doc.data();
+              return '${doc.id}:${data['name']}:${data['order']}:${data['summary']}:${data['studySummary']}:${data['description']}:${data['updatedAt']}';
+            }));
+            emit();
+          },
+          onError: controller.addError,
+        );
+      }
+      if (topicSnapshotReceived) emit();
     }
 
     controller = StreamController<String>(
       onListen: () {
-        topicsSub = topicsStream.listen(
-          (token) {
-            topicsToken = token;
+        subscriptions.add(_subjectsCol.doc(subjectId).snapshots().listen(
+          (snapshot) {
+            final data = snapshot.data();
+            subjectToken = data == null
+                ? 'subject:deleted'
+                : 'subject:${snapshot.id}:${data['name']}:${data['summary']}:${data['studySummary']}:${data['description']}:${data['updatedAt']}';
             emit();
           },
           onError: controller.addError,
-        );
-        notesSub = notesStream.listen(
-          (token) {
-            notesToken = token;
+        ));
+        subscriptions.add(_subjectTopicsCol(subjectId).snapshots().listen(
+          (snapshot) async {
+            topicsToken = fingerprint(snapshot.docs.map((doc) {
+              final data = doc.data();
+              return '${doc.id}:${data['name']}:${data['order']}:${data['summary']}:${data['studySummary']}:${data['description']}:${data['updatedAt']}';
+            }));
+            topicSnapshotReceived = true;
+            await updateSubtopicListeners(snapshot);
             emit();
           },
           onError: controller.addError,
-        );
+        ));
+        subscriptions.add(_knowledgeCol
+            .where('subjectId', isEqualTo: subjectId)
+            .where('kind', isEqualTo: 'note')
+            .snapshots()
+            .listen(
+          (snapshot) {
+            notesToken = fingerprint(snapshot.docs.map((doc) {
+              final data = doc.data();
+              return '${doc.id}:${data['title']}:${data['content'] ?? data['notes']}:${data['topicId']}:${data['subtopicId']}:${data['updatedAt']}';
+            }));
+            emit();
+          },
+          onError: controller.addError,
+        ));
       },
       onCancel: () async {
-        await topicsSub?.cancel();
-        await notesSub?.cancel();
+        await Future.wait(
+            subscriptions.map((subscription) => subscription.cancel()));
+        await Future.wait(subtopicSubscriptions.values
+            .map((subscription) => subscription.cancel()));
         await controller.close();
       },
     );
 
     return controller.stream;
   }
-
-
 
   Future<List<Map<String, dynamic>>> getSubjectTopicsWithSubtopics(
       String subjectId) async {

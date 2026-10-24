@@ -20,6 +20,7 @@ class KnowledgeEngine {
   KnowledgeEngine(this._ref);
   final Ref _ref;
   static final Map<String, Future<Map<String, dynamic>>> _inFlight = {};
+  static final Map<String, int> _cacheEpochs = {};
 
   static const int _operationIdRandomMax = 0x7fffffff;
 
@@ -80,7 +81,8 @@ class KnowledgeEngine {
   }
 
   static void invalidateSubjectContext(String? subjectId, {String? ownerId}) {
-    // Study hierarchy is read fresh from Firestore for every generation.
+    // Generation cache keys include the complete, freshly loaded hierarchy
+    // signature, so a changed subject cannot resolve to its previous entry.
   }
 
   Future<String?> _resolveActiveSubjectId(
@@ -151,18 +153,20 @@ class KnowledgeEngine {
 
     final subject = hierarchy['subject'] as Map<String, dynamic>? ?? const {};
     signatureParts.add(
-        'subject|${subject['id']}|${subject['name']}|${subject['updatedAt']}');
+        'subject|${subject['id']}|${subject['name']}|${subject['summary']}|${subject['studySummary']}|${subject['description']}|${subject['updatedAt']}');
     append('Subject: ${subject['name']?.toString() ?? 'Selected subject'}');
     append('Topic: (subject-level notes)');
     append('Subtopic: (none)');
     appendNotes(maps(hierarchy['subjectNotes']), '  ');
     for (final topic in maps(hierarchy['topics'])) {
-      signatureParts.add('topic|${topic['id']}|${topic['name']}');
+      signatureParts.add(
+          'topic|${topic['id']}|${topic['name']}|${topic['order']}|${topic['summary']}|${topic['studySummary']}|${topic['description']}|${topic['updatedAt']}');
       append('Topic: ${topic['name']?.toString() ?? 'Untitled topic'}');
       append('Subtopic: (topic-level)');
       appendNotes(maps(topic['notes']), '  ');
       for (final subtopic in maps(topic['subtopics'])) {
-        signatureParts.add('subtopic|${subtopic['id']}|${subtopic['name']}');
+        signatureParts.add(
+            'subtopic|${topic['id']}|${subtopic['id']}|${subtopic['name']}|${subtopic['order']}|${subtopic['summary']}|${subtopic['studySummary']}|${subtopic['description']}|${subtopic['updatedAt']}');
         append('Topic: ${topic['name']?.toString() ?? 'Untitled topic'}');
         append(
             'Subtopic: ${subtopic['name']?.toString() ?? 'Untitled subtopic'}');
@@ -238,10 +242,15 @@ class KnowledgeEngine {
     }
 
     final pending = _inFlight[cacheKey];
-    if (pending != null) return pending;
+    if (pending != null && !forceRefresh) return pending;
+    final cacheEpoch = forceRefresh
+        ? (_cacheEpochs[cacheKey] ?? 0) + 1
+        : _cacheEpochs[cacheKey] ?? 0;
+    if (forceRefresh) _cacheEpochs[cacheKey] = cacheEpoch;
     final generation = _generateAndCache(
       firestore: firestore,
       cacheKey: cacheKey,
+      cacheEpoch: cacheEpoch,
       task: task,
       prompt: prompt,
       options: options,
@@ -351,6 +360,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
   Future<Map<String, dynamic>> _generateAndCache({
     required FirestoreService firestore,
     required String cacheKey,
+    required int cacheEpoch,
     required String task,
     required String prompt,
     required Map<String, dynamic> options,
@@ -383,7 +393,9 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
             'kind': 'note',
           }),
     ];
-    await firestore.cacheGeneration(cacheKey, result, scopeId: scopeId);
+    if ((_cacheEpochs[cacheKey] ?? 0) == cacheEpoch) {
+      await firestore.cacheGeneration(cacheKey, result, scopeId: scopeId);
+    }
     await _updateSourceCounts(firestore, task, topicId, subjectId, result);
     return result;
   }
@@ -1340,17 +1352,69 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
       });
 
   String _stableKey(String value) {
-    var hash = 0;
+    var firstHash = 0;
+    var secondHash = 5381;
     for (final unit in value.codeUnits) {
-      hash = (hash * 31 + unit) & 0x7fffffff;
+      firstHash = ((firstHash << 5) - firstHash + unit) & 0x7fffffff;
+      secondHash = ((secondHash << 7) - secondHash + unit) & 0x7fffffff;
     }
-    return hash.toRadixString(16).padLeft(8, '0');
+    return '${firstHash.toRadixString(16).padLeft(8, '0')}${secondHash.toRadixString(16).padLeft(8, '0')}';
+  }
+
+  Future<String?> getCachedStudySummary(String subjectId) async {
+    final firestore = _ref.read(firestoreServiceProvider);
+    final loaded = await _loadHierarchyContext(firestore, subjectId);
+    const options = {
+      'shape': {
+        'overview': '',
+        'key_takeaways': [],
+        'key_concepts': [],
+        'important_points': [],
+        'examples': [],
+        'exam_tips': [],
+        'formulas': [],
+        'variable_meanings': []
+      }
+    };
+    const prompts = [
+      'Create concise study notes. Return JSON with exactly these keys: overview (string), key_takeaways (list).',
+      'Create a detailed summary. Return JSON with exactly these keys: overview (string), key_concepts (list), important_points (list), examples (list), exam_tips (list). Use concise, useful study content in every section.',
+      'Create exam revision notes. Return JSON with exactly these keys: overview (string), important_points (list), exam_tips (list).',
+      'Generate a formula sheet. Return JSON with exactly these keys: formulas (list), variable_meanings (list), examples (list).',
+    ];
+    for (final prompt in prompts) {
+      final cacheKey = _stableKey(
+        '${firestore.currentUserId ?? 'guest'}|summary|$subjectId|${prompt.trim()}|${jsonEncode(options)}|${loaded['signature']}',
+      );
+      final cached = await firestore.getGenerationCache(cacheKey);
+      if (cached == null) continue;
+      final values = [
+        cached['overview'],
+        cached['summary'],
+        cached['key_takeaways'],
+        cached['key_concepts'],
+        cached['important_points'],
+        cached['exam_tips'],
+        cached['formulas'],
+        cached['variable_meanings'],
+        cached['examples'],
+      ];
+      final text = values
+          .expand((value) => value is List ? value : [value])
+          .where((value) => value != null)
+          .map((value) => value.toString().trim())
+          .where((value) => value.isNotEmpty)
+          .join('\n\n');
+      if (text.isNotEmpty) return text;
+    }
+    return null;
   }
 
   Future<Map<String, dynamic>> generateFlashcards(
           {String? topicId,
           String? subjectId,
           List<String> sourceIds = const [],
+          bool forceRefresh = false,
           String prompt = 'Create useful active recall flashcards.'}) =>
       generate(
           task: 'flashcards',
@@ -1358,6 +1422,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
           topicId: topicId,
           subjectId: subjectId,
           sourceIds: sourceIds,
+          forceRefresh: forceRefresh,
           options: {
             'shape': {
               'cards': [
@@ -1369,6 +1434,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
           {String? topicId,
           String? subjectId,
           List<String> sourceIds = const [],
+          bool forceRefresh = false,
           String prompt =
               'Create a varied practice quiz with answers, explanations, confidence guidance, and weak-topic labels.'}) =>
       generate(
@@ -1377,6 +1443,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
           topicId: topicId,
           subjectId: subjectId,
           sourceIds: sourceIds,
+          forceRefresh: forceRefresh,
           options: {
             'shape': {
               'questions': [
@@ -1455,6 +1522,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
           {String? topicId,
           String? subjectId,
           List<String> sourceIds = const [],
+          bool forceRefresh = false,
           String prompt = 'Create a balanced mock exam with an answer key.'}) =>
       generate(
           task: 'exam',
@@ -1462,6 +1530,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
           topicId: topicId,
           subjectId: subjectId,
           sourceIds: sourceIds,
+          forceRefresh: forceRefresh,
           options: {
             'shape': {
               'title': '',
@@ -1480,6 +1549,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
           {String? topicId,
           String? subjectId,
           List<String> sourceIds = const [],
+          bool forceRefresh = false,
           String prompt =
               'Analyze the selected subject hierarchy as the syllabus. Use available manual notes as primary context and academic knowledge to identify important units and predict useful questions. Do not claim historical frequency without evidence.'}) =>
       generate(
@@ -1488,6 +1558,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
           topicId: topicId,
           subjectId: subjectId,
           sourceIds: sourceIds,
+          forceRefresh: forceRefresh,
           options: {
             'shape': {
               'frequently_repeated_questions': [],

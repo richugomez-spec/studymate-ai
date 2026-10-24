@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import '../../services/firestore_service.dart';
 import '../storage/hive_storage.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 
@@ -241,6 +242,20 @@ final activeKnowledgeWorkspaceIdProvider =
 final activeKnowledgeSubjectIdProvider = StateProvider<String?>((ref) => null);
 final activeKnowledgeSubjectNameProvider =
     StateProvider<String?>((ref) => null);
+
+final activeKnowledgeSubjectNameSyncProvider = Provider<void>((ref) {
+  final subjectId = ref.watch(activeKnowledgeSubjectIdProvider);
+  if (subjectId == null || subjectId.isEmpty) return;
+  ref.listen<AsyncValue<String?>>(
+    subjectNameStreamProvider(subjectId),
+    (_, next) {
+      if (!next.hasValue) return;
+      final name = next.valueOrNull;
+      ref.read(activeKnowledgeSubjectNameProvider.notifier).state =
+          name?.isNotEmpty == true ? name : null;
+    },
+  );
+});
 
 /// Service responsible for real file parsing, text extraction,
 /// and AI micro-concept synthesis.

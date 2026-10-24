@@ -49,6 +49,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   QuizType _quizType = QuizType.mcq;
   bool _quizStarted = false;
   bool _isGenerating = false;
+  bool _refreshFailed = false;
   String? _generationError;
 
   // Active quiz state
@@ -65,6 +66,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
   // Reactive sync
   Timer? _libraryChangeDebounce;
   String? _lastLibraryVersion;
+  bool _refreshAfterGeneration = false;
 
   @override
   void dispose() {
@@ -73,17 +75,22 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     super.dispose();
   }
 
-  Future<void> _generateQuiz() async {
+  Future<void> _generateQuiz({bool forceRefresh = false}) async {
     if (_isGenerating) return;
-    setState(() => _isGenerating = true);
-    _questions.clear();
-    _generationError = null;
+    setState(() {
+      _isGenerating = true;
+      _quizComplete = false;
+      _refreshFailed = false;
+      _generationError = null;
+    });
     try {
+      final nextQuestions = <_GeneratedQuizQuestion>[];
       final result = await ref.read(knowledgeEngineProvider).generateQuiz(
             topicId: widget.topicId ?? 'current',
             subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
                 ref.read(activeKnowledgeWorkspaceIdProvider),
             sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
+            forceRefresh: forceRefresh,
             prompt:
                 'Create exactly $_questionCount ${_difficulty.name} ${_quizType.name} practice questions. Return a JSON questions list. Each question must include non-empty question, options, answer, answerIndex, explanation, and conceptTitle. For non-multiple-choice formats, still provide valid options where appropriate.',
           );
@@ -109,7 +116,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                   : fallbackIndex < 0
                       ? 0
                       : fallbackIndex;
-          _questions.add(_GeneratedQuizQuestion(
+          nextQuestions.add(_GeneratedQuizQuestion(
             question: question,
             options: options,
             correctIndex: answerIndex,
@@ -122,12 +129,16 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       }
 
       if (!mounted) return;
-      if (_questions.isEmpty) {
-        setState(() => _generationError =
-            'We could not prepare a quiz from this topic. Please try again.');
+      if (nextQuestions.isEmpty) {
+        setState(() {
+          _generationError =
+              'We could not prepare a quiz from this topic. Please try again.';
+          _refreshFailed = _questions.isNotEmpty;
+        });
         return;
       }
       setState(() {
+        _questions = nextQuestions;
         _quizStarted = true;
         _currentIndex = 0;
         _selectedAnswer = null;
@@ -139,11 +150,20 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
     } catch (_) {
       debugPrint('Quiz generation did not complete after failover.');
       if (mounted) {
-        setState(() => _generationError =
-            'We could not prepare a quiz right now. Please try again.');
+        setState(() {
+          _generationError =
+              'We could not prepare a quiz right now. Please try again.';
+          _refreshFailed = _questions.isNotEmpty;
+        });
       }
     } finally {
-      if (mounted) setState(() => _isGenerating = false);
+      if (mounted) {
+        setState(() => _isGenerating = false);
+        if (_refreshAfterGeneration && _quizStarted) {
+          _refreshAfterGeneration = false;
+          _generateQuiz(forceRefresh: true);
+        }
+      }
     }
   }
 
@@ -205,13 +225,14 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(activeKnowledgeSubjectNameSyncProvider);
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
     final activeSubjectId = ref.watch(activeKnowledgeSubjectIdProvider) ??
         ref.watch(activeKnowledgeWorkspaceIdProvider);
 
     // ── Reactive library sync ───────────────────────────────────────
-    // When Library changes, reset to config screen (safe to do even mid-session
-    // since the data the quiz was built from is now stale).
+    // Refresh an active quiz from the updated hierarchy without discarding the
+    // current questions until their replacements are ready.
     ref.listen<AsyncValue<String>>(
       subjectTopicsVersionProvider(activeSubjectId ?? ''),
       (_, next) {
@@ -224,15 +245,12 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
         if (version == _lastLibraryVersion) return;
         _lastLibraryVersion = version;
         _libraryChangeDebounce?.cancel();
-        _libraryChangeDebounce =
-            Timer(const Duration(milliseconds: 600), () {
-          if (mounted && !_isGenerating) {
-            setState(() {
-              _quizStarted = false;
-              _quizComplete = false;
-              _questions.clear();
-              _generationError = null;
-            });
+        _libraryChangeDebounce = Timer(const Duration(milliseconds: 600), () {
+          if (!mounted) return;
+          if (_isGenerating) {
+            _refreshAfterGeneration = true;
+          } else if (_quizStarted) {
+            _generateQuiz(forceRefresh: true);
           }
         });
       },
@@ -620,6 +638,21 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       ),
       body: Column(
         children: [
+          if (_isGenerating) ...[
+            const LinearProgressIndicator(minHeight: 2),
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('Updating study tools...'),
+            ),
+          ],
+          if (_refreshFailed)
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                'Could not refresh the quiz. Showing previous questions: ${_generationError ?? 'Please try again.'}',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
           LinearProgressIndicator(
               value: progress,
               backgroundColor: Colors.white.withOpacity(0.06),

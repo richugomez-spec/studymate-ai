@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -43,6 +45,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
   List<GraphNode> _nodes = [];
   List<GraphEdge> _edges = [];
   bool _isLoading = true;
+  bool _syncing = false;
   bool _emptyTopics = false;
   String? _error;
 
@@ -51,6 +54,10 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
   bool _panelVisible = false;
   String? _subjectName;
   String? _topicName;
+  List<Map<String, dynamic>> _subjectNotes = [];
+  Timer? _libraryChangeDebounce;
+  String? _lastLibraryVersion;
+  int _graphRequestId = 0;
 
   // Search state
   bool _searchFocused = false;
@@ -89,6 +96,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
 
   @override
   void dispose() {
+    _libraryChangeDebounce?.cancel();
     _transformController.dispose();
     _searchController.dispose();
     super.dispose();
@@ -96,11 +104,14 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
 
   // ── Data Loading from Firestore ──────────────────────────────────────────────
 
-  Future<void> _loadGraph() async {
+  Future<void> _loadGraph({bool backgroundRefresh = false}) async {
+    final requestId = ++_graphRequestId;
     setState(() {
-      _isLoading = true;
+      _isLoading = !backgroundRefresh;
+      _syncing = backgroundRefresh;
       _emptyTopics = false;
       _error = null;
+      _subjectNotes = [];
     });
 
     try {
@@ -114,13 +125,21 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       if (fetchedSubjects == null || fetchedSubjects.isEmpty) {
         fetchedSubjects = await service.streamSubjects(uid).first;
       }
+      if (!mounted || requestId != _graphRequestId) return;
 
       final subjectList = fetchedSubjects;
       if (subjectList.isEmpty) {
-        setState(() {
-          _isLoading = false;
-          _error = 'No subjects found. Create a subject in the Library first.';
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _syncing = false;
+            _selectedNode = null;
+            _panelVisible = false;
+            _breadcrumb = [];
+            _error =
+                'No subjects found. Create a subject in the Library first.';
+          });
+        }
         return;
       }
 
@@ -158,11 +177,23 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
 
       // Load hierarchy with full notes from Firestore
       List<Map<String, dynamic>> topicsWithSubtopics = [];
+      String? subjectSummary;
       try {
         final hierarchy = await service.loadSubjectStudyHierarchy(subjectId);
         if (hierarchy != null && hierarchy['topics'] is List) {
           topicsWithSubtopics =
               List<Map<String, dynamic>>.from(hierarchy['topics'] as List);
+          _subjectNotes = (hierarchy['subjectNotes'] as List? ?? [])
+              .cast<Map<String, dynamic>>();
+          final currentSubject =
+              hierarchy['subject'] as Map<String, dynamic>? ?? const {};
+          _subjectName = currentSubject['name']?.toString() ?? _subjectName;
+          subjectSummary = (currentSubject['summary'] ??
+                  currentSubject['studySummary'] ??
+                  currentSubject['description'])
+              ?.toString();
+          ref.read(activeKnowledgeSubjectNameProvider.notifier).state =
+              _subjectName;
         }
       } catch (err) {
         debugPrint(
@@ -170,6 +201,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         topicsWithSubtopics =
             await service.getSubjectTopicsWithSubtopics(subjectId);
       }
+      if (!mounted || requestId != _graphRequestId) return;
 
       if (topicsWithSubtopics.isEmpty) {
         // Step 7 debug logs for empty state
@@ -184,6 +216,11 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
             _edges = [];
             _emptyTopics = true;
             _isLoading = false;
+            _syncing = false;
+            _selectedNode = null;
+            _panelVisible = false;
+            _breadcrumb = [];
+            _topicName = null;
           });
         }
         return;
@@ -193,11 +230,15 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         subjectId: subjectId,
         subjectName: _subjectName!,
         topics: topicsWithSubtopics,
+        subjectNotes: _subjectNotes,
+        subjectSummary: subjectSummary,
+        backgroundRefresh: backgroundRefresh,
       );
     } catch (e) {
-      if (mounted) {
+      if (mounted && requestId == _graphRequestId) {
         setState(() {
           _isLoading = false;
+          _syncing = false;
           _error = 'Failed to load knowledge graph: $e';
         });
       }
@@ -208,6 +249,9 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     required String subjectId,
     required String subjectName,
     required List<Map<String, dynamic>> topics,
+    List<Map<String, dynamic>> subjectNotes = const [],
+    String? subjectSummary,
+    bool backgroundRefresh = false,
   }) {
     final nodes = <GraphNode>[];
     final edges = <GraphEdge>[];
@@ -217,6 +261,8 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       id: subjectId,
       label: subjectName,
       type: GraphNodeType.subject,
+      notes: subjectNotes,
+      description: subjectSummary,
       childCount: topics.length,
     );
     nodes.add(rootNode);
@@ -241,6 +287,9 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         parentId: subjectId,
         subjectId: subjectId,
         notes: topicNotes,
+        description:
+            (topic['summary'] ?? topic['studySummary'] ?? topic['description'])
+                ?.toString(),
         childCount: subtopics.length,
       );
       nodes.add(topicNode);
@@ -261,6 +310,9 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
           topicId: topicId,
           subjectId: subjectId,
           notes: subNotes,
+          description:
+              (sub['summary'] ?? sub['studySummary'] ?? sub['description'])
+                  ?.toString(),
         );
         nodes.add(subNode);
         edges.add(GraphEdge(fromId: topicId, toId: subId));
@@ -282,15 +334,34 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       _edges = edges;
       _emptyTopics = false;
       _isLoading = false;
+      _syncing = false;
+      final refreshedSelection = laidOut.where(
+        (node) => node.id == _selectedNode?.id,
+      );
+      if (refreshedSelection.isNotEmpty) {
+        _selectedNode = refreshedSelection.first;
+        _topicName = switch (_selectedNode!.type) {
+          GraphNodeType.subject => null,
+          GraphNodeType.topic => _selectedNode!.label,
+          GraphNodeType.subtopic => _findParentLabel(_selectedNode!),
+          GraphNodeType.aiExpanded => _findTopicLabel(_selectedNode!),
+        };
+        _updateBreadcrumb(_selectedNode!);
+      } else if (_selectedNode != null) {
+        _selectedNode = null;
+        _panelVisible = false;
+      }
     });
 
     // Auto-fit camera to view the full knowledge tree comfortably
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        final size = MediaQuery.of(context).size;
-        _canvasKey.currentState?.fitToScreen(size);
-      }
-    });
+    if (!backgroundRefresh) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          final size = MediaQuery.of(context).size;
+          _canvasKey.currentState?.fitToScreen(size);
+        }
+      });
+    }
   }
 
   // ── Graph Interactions ───────────────────────────────────────────────────────
@@ -307,11 +378,12 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         _selectedNode = _nodes[idx];
       }
       _updateBreadcrumb(node);
-      if (node.type == GraphNodeType.topic) {
-        _topicName = node.label;
-      } else if (node.type == GraphNodeType.subtopic) {
-        _topicName = _findParentLabel(node);
-      }
+      _topicName = switch (node.type) {
+        GraphNodeType.subject => null,
+        GraphNodeType.topic => node.label,
+        GraphNodeType.subtopic => _findParentLabel(node),
+        GraphNodeType.aiExpanded => _findTopicLabel(node),
+      };
       _panelVisible = true;
     });
   }
@@ -359,6 +431,22 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       _panelVisible = false;
       _selectedNode = null;
       _nodes = _nodes.map((n) => n.copyWith(isSelected: false)).toList();
+    });
+  }
+
+  void _onLibraryVersionChanged(
+      AsyncValue<String>? previous, AsyncValue<String> next) {
+    final version = next.valueOrNull;
+    if (version == null || version.isEmpty) return;
+    if (_lastLibraryVersion == null) {
+      _lastLibraryVersion = version;
+      return;
+    }
+    if (version == _lastLibraryVersion) return;
+    _lastLibraryVersion = version;
+    _libraryChangeDebounce?.cancel();
+    _libraryChangeDebounce = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) _loadGraph(backgroundRefresh: _nodes.isNotEmpty);
     });
   }
 
@@ -479,9 +567,12 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
     _breadcrumb = [
       if (_subjectName != null) _subjectName!,
       if (node.type == GraphNodeType.topic) node.label,
-      if (node.type == GraphNodeType.subtopic ||
-          node.type == GraphNodeType.aiExpanded) ...[
+      if (node.type == GraphNodeType.subtopic) ...[
         _findParentLabel(node),
+        node.label,
+      ],
+      if (node.type == GraphNodeType.aiExpanded) ...[
+        _findTopicLabel(node) ?? '',
         node.label,
       ],
     ].where((s) => s.isNotEmpty).toList();
@@ -497,10 +588,19 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         .label;
   }
 
+  String? _findTopicLabel(GraphNode node) {
+    final topicId = node.topicId;
+    if (topicId == null) return null;
+    final topic = _nodes.where((item) => item.id == topicId);
+    if (topic.isEmpty) return _findParentLabel(node);
+    return topic.first.type == GraphNodeType.subject ? null : topic.first.label;
+  }
+
   void _navigateTool(String tool, String nodeId) {
     final route = switch (tool) {
       'flashcards' => AppRoutes.flashcards,
       'quiz' => AppRoutes.quiz,
+      'pyq' => AppRoutes.questionPaperAnalyzer,
       'summary' => AppRoutes.summary,
       _ => AppRoutes.flashcards,
     };
@@ -511,7 +611,15 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(activeKnowledgeSubjectNameSyncProvider);
     final isDesktop = MediaQuery.of(context).size.width > 900;
+    final activeSubjectId = ref.watch(activeKnowledgeSubjectIdProvider) ??
+        ref.watch(activeKnowledgeWorkspaceIdProvider) ??
+        '';
+    ref.listen<AsyncValue<String>>(
+      subjectTopicsVersionProvider(activeSubjectId),
+      _onLibraryVersionChanged,
+    );
 
     return Scaffold(
       backgroundColor: _canvasBackground,
@@ -546,6 +654,27 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       ),
       child: Row(
         children: [
+          if (_syncing)
+            Row(
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF60A5FA),
+                  ),
+                ),
+                if (MediaQuery.of(context).size.width > 700) ...[
+                  const SizedBox(width: 6),
+                  const Text(
+                    'Updating study tools...',
+                    style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                  ),
+                ],
+                const SizedBox(width: 8),
+              ],
+            ),
           // Back button
           IconButton(
             icon: const Icon(Icons.arrow_back_rounded,
@@ -615,7 +744,8 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
-                  borderSide: const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+                  borderSide:
+                      const BorderSide(color: Color(0xFF3B82F6), width: 1.5),
                 ),
                 filled: true,
                 fillColor: const Color(0xFF102743).withOpacity(0.85),
@@ -721,7 +851,12 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
                     onClose: _closePanel,
                     onAiExpand: () => _expandNodeWithAI(_selectedNode!),
                     onNavigateTool: _navigateTool,
-                  )
+                  ).animate().slideX(
+                      begin: 0.08,
+                      end: 0,
+                      duration: 280.ms,
+                      curve: Curves.easeOutCubic,
+                    )
                 : const SizedBox.shrink(),
           ),
         ],

@@ -29,6 +29,11 @@ class _QuestionPaperAnalyzerScreenState
   // Reactive sync
   Timer? _libraryChangeDebounce;
   String? _lastLibraryVersion;
+  bool _refreshAfterAnalysis = false;
+  String? _lastAnalysisTitle;
+  String? _lastAnalysisPrompt;
+  String? _lastAnalysisTopicId;
+  List<String> _lastAnalysisSourceIds = const [];
 
   @override
   void dispose() {
@@ -182,7 +187,12 @@ ${jsonEncode(questionBatch)}''',
     required String prompt,
     String? topicId,
     List<String> sourceIds = const [],
+    bool forceRefresh = false,
   }) async {
+    _lastAnalysisTitle = title;
+    _lastAnalysisPrompt = prompt;
+    _lastAnalysisTopicId = topicId;
+    _lastAnalysisSourceIds = List<String>.of(sourceIds);
     setState(() {
       _error = null;
       _isBusy = true;
@@ -193,6 +203,7 @@ ${jsonEncode(questionBatch)}''',
             sourceIds: sourceIds.isEmpty
                 ? ref.read(selectedKnowledgeSourceIdsProvider)
                 : sourceIds,
+            forceRefresh: forceRefresh,
             prompt: prompt,
           );
     });
@@ -202,15 +213,29 @@ ${jsonEncode(questionBatch)}''',
       if (mounted)
         setState(() => _error = 'Analysis failed. Please try again.');
     } finally {
-      if (mounted) setState(() => _isBusy = false);
+      if (mounted) {
+        setState(() => _isBusy = false);
+        if (_refreshAfterAnalysis && _lastAnalysisTitle != null) {
+          _refreshAfterAnalysis = false;
+          _runAnalysis(
+            title: _lastAnalysisTitle!,
+            prompt: _lastAnalysisPrompt!,
+            topicId: _lastAnalysisTopicId,
+            sourceIds: _lastAnalysisSourceIds,
+            forceRefresh: true,
+          );
+        }
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(activeKnowledgeSubjectNameSyncProvider);
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
-    final activeSubjectId =
-        ref.watch(activeKnowledgeSubjectIdProvider) ?? '';
+    final activeSubjectId = ref.watch(activeKnowledgeSubjectIdProvider) ??
+        ref.watch(activeKnowledgeWorkspaceIdProvider) ??
+        '';
 
     // ── Reactive library sync ───────────────────────────────────────
     ref.listen<AsyncValue<String>>(
@@ -225,14 +250,19 @@ ${jsonEncode(questionBatch)}''',
         if (version == _lastLibraryVersion) return;
         _lastLibraryVersion = version;
         _libraryChangeDebounce?.cancel();
-        _libraryChangeDebounce =
-            Timer(const Duration(milliseconds: 600), () {
-          if (mounted && !_isBusy) {
-            setState(() {
-              _analysis = null;
-              _error = null;
-            });
+        _libraryChangeDebounce = Timer(const Duration(milliseconds: 600), () {
+          if (!mounted || _analysis == null) return;
+          if (_isBusy) {
+            _refreshAfterAnalysis = true;
+            return;
           }
+          _runAnalysis(
+            title: _lastAnalysisTitle!,
+            prompt: _lastAnalysisPrompt!,
+            topicId: _lastAnalysisTopicId,
+            sourceIds: _lastAnalysisSourceIds,
+            forceRefresh: true,
+          );
         });
       },
     );
@@ -499,16 +529,28 @@ ${jsonEncode(questionBatch)}''',
             ],
             if (_analysis != null) ...[
               const SizedBox(height: 16),
+              if (_isBusy) ...[
+                const LinearProgressIndicator(minHeight: 2),
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text('Updating study tools...'),
+                ),
+              ],
               FutureBuilder<Map<String, dynamic>>(
                 future: _analysis,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
+                  if (snapshot.connectionState != ConnectionState.done &&
+                      !snapshot.hasData) {
                     return const Padding(
                       padding: EdgeInsets.all(28),
                       child: Center(child: CircularProgressIndicator()),
                     );
                   }
-                  if (snapshot.hasError || snapshot.data == null) {
+                  if ((snapshot.hasError || snapshot.data == null) &&
+                      !snapshot.hasData) {
+                    return Text(_error ?? 'Analysis unavailable.');
+                  }
+                  if (snapshot.data == null) {
                     return Text(_error ?? 'Analysis unavailable.');
                   }
                   return _analysisResults(context, snapshot.data!);

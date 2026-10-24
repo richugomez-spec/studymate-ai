@@ -59,9 +59,11 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(activeKnowledgeSubjectNameSyncProvider);
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
-    final activeSubjectId =
-        ref.watch(activeKnowledgeSubjectIdProvider) ?? '';
+    final activeSubjectId = ref.watch(activeKnowledgeSubjectIdProvider) ??
+        ref.watch(activeKnowledgeWorkspaceIdProvider) ??
+        '';
 
     // ── Reactive library sync ───────────────────────────────────────
     ref.listen<AsyncValue<String>>(
@@ -76,8 +78,7 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
         if (version == _lastLibraryVersion) return;
         _lastLibraryVersion = version;
         _libraryChangeDebounce?.cancel();
-        _libraryChangeDebounce =
-            Timer(const Duration(milliseconds: 600), () {
+        _libraryChangeDebounce = Timer(const Duration(milliseconds: 600), () {
           if (mounted) setState(() => _generate(forceRefresh: true));
         });
       },
@@ -115,9 +116,10 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
             child: FutureBuilder<Map<String, dynamic>>(
                 future: _result,
                 builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done)
+                  if (snapshot.connectionState != ConnectionState.done &&
+                      !snapshot.hasData)
                     return const Center(child: CircularProgressIndicator());
-                  if (snapshot.hasError)
+                  if (snapshot.hasError && !snapshot.hasData)
                     return const Center(child: Text('Please try again.'));
                   final result = snapshot.data;
                   if (result == null) {
@@ -125,7 +127,25 @@ class _SummaryScreenState extends ConsumerState<SummaryScreen> {
                         child:
                             Text('Could not format this summary. Try again.'));
                   }
-                  return _buildSummary(context, result);
+                  return AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 220),
+                    child: Column(
+                      key: ValueKey<Object>(snapshot.connectionState),
+                      children: [
+                        if (snapshot.connectionState != ConnectionState.done)
+                          const Column(
+                            children: [
+                              LinearProgressIndicator(minHeight: 2),
+                              Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text('Updating study tools...'),
+                              ),
+                            ],
+                          ),
+                        Expanded(child: _buildSummary(context, result)),
+                      ],
+                    ),
+                  );
                 })),
       ]),
     );

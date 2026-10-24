@@ -7,26 +7,12 @@ import '../../../../core/ai/services/knowledge_engine.dart';
 import '../../../../core/services/document_processing_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../services/firestore_service.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
 
-class _SRSFlashcard {
-  final String id;
+class _StudyFlashcard {
   final String front;
   final String back;
-  final String difficulty; // 'Easy' | 'Medium' | 'Hard'
-  double intervalDays;
-  double easeFactor;
-  int repetitionCount;
 
-  _SRSFlashcard({
-    required this.id,
-    required this.front,
-    required this.back,
-    this.difficulty = 'Medium',
-    this.intervalDays = 1.0,
-    this.easeFactor = 2.5,
-    this.repetitionCount = 0,
-  });
+  const _StudyFlashcard({required this.front, required this.back});
 }
 
 class FlashcardScreen extends ConsumerStatefulWidget {
@@ -44,16 +30,12 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
 
   int _currentIndex = 0;
   bool _isFlipped = false;
-  final List<_SRSFlashcard> _cards = [];
-  bool _sessionComplete = false;
+  final List<_StudyFlashcard> _cards = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
   bool _generationFailed = false;
-  bool _hasRequestedCards = false;
-
-  int _againCount = 0;
-  int _hardCount = 0;
-  int _goodCount = 0;
-  int _easyCount = 0;
+  bool _refreshFailed = false;
+  bool _refreshAfterGeneration = false;
 
   // Reactive sync: debounce timer for library-change triggered reload.
   Timer? _libraryChangeDebounce;
@@ -77,12 +59,17 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     super.dispose();
   }
 
-  Future<void> _loadCards() async {
-    _hasRequestedCards = true;
+  Future<void> _loadCards({bool forceRefresh = false}) async {
+    if (_isRefreshing) {
+      _refreshAfterGeneration = true;
+      return;
+    }
     if (mounted) {
       setState(() {
-        _isLoading = true;
+        _isLoading = _cards.isEmpty;
+        _isRefreshing = true;
         _generationFailed = false;
+        _refreshFailed = false;
       });
     }
     try {
@@ -91,10 +78,11 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           subjectId: ref.read(activeKnowledgeSubjectIdProvider) ??
               ref.read(activeKnowledgeWorkspaceIdProvider),
           sourceIds: ref.read(selectedKnowledgeSourceIdsProvider),
+          forceRefresh: forceRefresh,
           prompt:
               'Create useful active recall cards. Return cards as a list of objects with a concise front question and a correct, clear back answer.');
       final generated = result['cards'];
-      _cards.clear();
+      final nextCards = <_StudyFlashcard>[];
       if (generated is List) {
         for (int i = 0; i < generated.length; i++) {
           if (generated[i] is! Map) continue;
@@ -103,25 +91,49 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
               (card['front'] ?? card['question'] ?? '').toString().trim();
           final back = (card['back'] ?? card['answer'] ?? '').toString().trim();
           if (front.isEmpty || back.isEmpty) continue;
-          _cards.add(_SRSFlashcard(
-            id: '$i',
+          nextCards.add(_StudyFlashcard(
             front: front,
             back: back,
           ));
         }
       }
-      if (_cards.isEmpty) _generationFailed = true;
-    } catch (_) {
+      if (nextCards.isEmpty) {
+        if (_cards.isEmpty) _generationFailed = true;
+        if (_cards.isNotEmpty) _refreshFailed = true;
+        return;
+      }
+      if (mounted) {
+        _flipController.reset();
+        setState(() {
+          _cards
+            ..clear()
+            ..addAll(nextCards);
+          _currentIndex = 0;
+          _isFlipped = false;
+          _generationFailed = false;
+          _refreshFailed = false;
+        });
+      }
+    } catch (error) {
       debugPrint('Flashcard generation did not complete after failover.');
-      _generationFailed = true;
+      if (_cards.isEmpty) _generationFailed = true;
+      if (_cards.isNotEmpty) _refreshFailed = true;
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isRefreshing = false;
+        });
+        if (_refreshAfterGeneration) {
+          _refreshAfterGeneration = false;
+          _loadCards(forceRefresh: true);
+        }
+      }
     }
   }
 
-  // (dispose moved above to consolidate)
-
   void _flipCard() {
+    if (_isRefreshing) return;
     if (_isFlipped) {
       _flipController.reverse();
     } else {
@@ -130,64 +142,29 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     setState(() => _isFlipped = !_isFlipped);
   }
 
-  /// SM-2 Spaced Repetition calculation
-  void _rateCard(int quality) {
-    if (_cards.isEmpty || _currentIndex >= _cards.length) return;
-    final card = _cards[_currentIndex];
-
-    // SM-2 Algorithm Implementation
-    // quality: 0 (Again), 3 (Hard), 4 (Good), 5 (Easy)
-    if (quality == 0) _againCount++;
-    if (quality == 3) _hardCount++;
-    if (quality == 4) _goodCount++;
-    if (quality == 5) _easyCount++;
-
-    if (quality < 3) {
-      card.repetitionCount = 0;
-      card.intervalDays = 1.0;
-    } else {
-      if (card.repetitionCount == 0) {
-        card.intervalDays = 1.0;
-      } else if (card.repetitionCount == 1) {
-        card.intervalDays = 6.0;
-      } else {
-        card.intervalDays =
-            (card.intervalDays * card.easeFactor).roundToDouble();
-      }
-      card.repetitionCount++;
+  void _showCard(int index) {
+    if (_isRefreshing ||
+        index < 0 ||
+        index >= _cards.length ||
+        index == _currentIndex) {
+      return;
     }
-
-    // Update ease factor: EF' = EF + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02))
-    card.easeFactor = max(
-        1.3,
-        card.easeFactor +
-            (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)));
-
-    // Increment user study progress in Firestore
-    final user = ref.read(currentUserProvider);
-    final firestoreService = ref.read(firestoreServiceProvider);
-    final uid = user?.id ?? firestoreService.currentUserId;
-    if (uid != null && uid.isNotEmpty) {
-      firestoreService.incrementFlashcardsReviewed(uid, count: 1);
-    }
-
     if (_isFlipped) {
       _flipController.reverse();
+    }
+    setState(() {
       _isFlipped = false;
-    }
-
-    if (_currentIndex < _cards.length - 1) {
-      setState(() => _currentIndex++);
-    } else {
-      setState(() => _sessionComplete = true);
-    }
+      _currentIndex = index;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(activeKnowledgeSubjectNameSyncProvider);
     final subjectName = ref.watch(activeKnowledgeSubjectNameProvider);
-    final activeSubjectId =
-        ref.watch(activeKnowledgeSubjectIdProvider) ?? '';
+    final activeSubjectId = ref.watch(activeKnowledgeSubjectIdProvider) ??
+        ref.watch(activeKnowledgeWorkspaceIdProvider) ??
+        '';
 
     // ── Reactive library sync ─────────────────────────────────────────────
     // Listen to Firestore topic/note changes and re-generate if the library
@@ -206,37 +183,25 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         _lastLibraryVersion = version;
         // Library changed — debounce then reload cards from scratch.
         _libraryChangeDebounce?.cancel();
-        _libraryChangeDebounce =
-            Timer(const Duration(milliseconds: 600), () {
+        _libraryChangeDebounce = Timer(const Duration(milliseconds: 600), () {
           if (mounted) {
-            setState(() {
-              _currentIndex = 0;
-              _sessionComplete = false;
-              _hasRequestedCards = false;
-            });
-            _loadCards();
+            _loadCards(forceRefresh: true);
           }
         });
       },
     );
 
-    if (!_hasRequestedCards) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_hasRequestedCards) _loadCards();
-      });
-    }
-
-    if (_isLoading) {
+    if (_isLoading && _cards.isEmpty) {
       return const Scaffold(body: Center(child: Text('Thinking...')));
     }
     if (_generationFailed) {
       return Scaffold(
         appBar: AppBar(
             title: Text(
-                '${subjectName == null ? '' : '$subjectName · '}SRS Flashcards')),
+                '${subjectName == null ? '' : '$subjectName · '}Flashcards')),
         body: Center(
           child: TextButton(
-            onPressed: _loadCards,
+            onPressed: () => _loadCards(forceRefresh: true),
             child: const Text('Please try again.'),
           ),
         ),
@@ -248,7 +213,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
             title: Text(
-                '${subjectName == null ? '' : '$subjectName · '}SRS Flashcards',
+                '${subjectName == null ? '' : '$subjectName · '}Flashcards',
                 style: TextStyle(
                     fontFamily: 'Inter',
                     fontWeight: FontWeight.w700,
@@ -286,7 +251,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton.icon(
-                  onPressed: _loadCards,
+                  onPressed: () => _loadCards(forceRefresh: true),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.electricViolet,
                       foregroundColor: Colors.white),
@@ -300,123 +265,103 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
       );
     }
 
-    if (_sessionComplete) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        appBar: AppBar(
-            title: Text(
-                '${subjectName == null ? '' : '$subjectName · '}Review Complete',
-                style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16))),
-        body: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 480),
-            margin: const EdgeInsets.all(24),
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.darkBorderSubtle),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.verified_rounded,
-                    size: 52, color: AppColors.teal),
-                const SizedBox(height: 16),
-                const Text('Cards Mastered Today!',
-                    style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white)),
-                const SizedBox(height: 8),
-                Text(
-                    'SM-2 Spaced Repetition has calculated your next review intervals.',
-                    style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 13,
-                        color: Colors.white60)),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _StatBadge(
-                        label: 'Again',
-                        count: _againCount,
-                        color: AppColors.error),
-                    _StatBadge(
-                        label: 'Hard',
-                        count: _hardCount,
-                        color: AppColors.amber),
-                    _StatBadge(
-                        label: 'Good',
-                        count: _goodCount,
-                        color: AppColors.skyBlue),
-                    _StatBadge(
-                        label: 'Easy',
-                        count: _easyCount,
-                        color: AppColors.teal),
-                  ],
-                ),
-                const SizedBox(height: 28),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    setState(() {
-                      _currentIndex = 0;
-                      _sessionComplete = false;
-                      _againCount = 0;
-                      _hardCount = 0;
-                      _goodCount = 0;
-                      _easyCount = 0;
-                    });
-                  },
-                  icon: const Icon(Icons.replay_rounded, size: 16),
-                  label: const Text('Review Again'),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.electricViolet,
-                      foregroundColor: Colors.white),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
     final card = _cards[_currentIndex];
-    final progress = (_currentIndex + 1) / _cards.length;
+    final completion =
+        _cards.length <= 1 ? 0.0 : _currentIndex / (_cards.length - 1);
+    final estimatedMinutes = (_cards.length * 0.5).ceil();
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text(
-            '${subjectName == null ? '' : '$subjectName · '}SRS Flashcards',
+        title: Text('${subjectName == null ? '' : '$subjectName · '}Flashcards',
             style: const TextStyle(
                 fontFamily: 'Inter', fontWeight: FontWeight.w700, fontSize: 15),
             overflow: TextOverflow.ellipsis),
+        actions: [
+          TextButton.icon(
+            onPressed:
+                _isRefreshing ? null : () => _loadCards(forceRefresh: true),
+            icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+            label: Text(_isRefreshing
+                ? 'Updating...'
+                : _cards.isEmpty
+                    ? 'Generate Flashcards'
+                    : 'Regenerate Flashcards'),
+          ),
+        ],
       ),
       body: Column(
         children: [
-          // Linear Progress Indicator
+          if (_isRefreshing) const LinearProgressIndicator(minHeight: 2),
           LinearProgressIndicator(
-            value: progress,
+            value: completion,
             backgroundColor: Colors.white.withOpacity(0.06),
             valueColor: const AlwaysStoppedAnimation<Color>(AppColors.teal),
             minHeight: 3,
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Card ${_currentIndex + 1} of ${_cards.length}',
+                Text('${_cards.length} Flashcards',
                     style: TextStyle(
                         fontFamily: 'JetBrains Mono',
                         fontSize: 11,
                         color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                Text('~$estimatedMinutes min review',
+                    style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                Text('${(completion * 100).round()}% complete',
+                    style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ],
+            ),
+          ),
+          if (_isRefreshing)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text('Updating study tools...'),
+            ),
+          if (_refreshFailed)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: TextButton.icon(
+                onPressed:
+                    _isRefreshing ? null : () => _loadCards(forceRefresh: true),
+                icon: const Icon(Icons.warning_amber_rounded, size: 17),
+                label: const Text(
+                    'Could not update; showing previous cards. Try again.'),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                TextButton.icon(
+                  onPressed: !_isRefreshing && _currentIndex > 0
+                      ? () => _showCard(_currentIndex - 1)
+                      : null,
+                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                  label: const Text('Previous'),
+                ),
+                Text('Card ${_currentIndex + 1} / ${_cards.length}',
+                    style: const TextStyle(
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
+                TextButton.icon(
+                  onPressed: !_isRefreshing && _currentIndex < _cards.length - 1
+                      ? () => _showCard(_currentIndex + 1)
+                      : null,
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                  label: const Text('Next'),
+                ),
               ],
             ),
           ),
@@ -424,58 +369,40 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
           // ── Flippable 3D Card ─────────────────────────────────────────────
           Expanded(
             child: Center(
-              child: GestureDetector(
-                onTap: _flipCard,
-                child: Container(
-                  constraints:
-                      const BoxConstraints(maxWidth: 520, maxHeight: 360),
-                  margin:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  child: AnimatedBuilder(
-                    animation: _flipAnimation,
-                    builder: (context, child) {
-                      final isUnder = (_flipAnimation.value > 0.5);
-                      final angle = _flipAnimation.value * pi;
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: GestureDetector(
+                  key: ValueKey<int>(_currentIndex),
+                  onTap: _isRefreshing ? null : _flipCard,
+                  child: Container(
+                    constraints:
+                        const BoxConstraints(maxWidth: 520, maxHeight: 360),
+                    margin: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    child: AnimatedBuilder(
+                      animation: _flipAnimation,
+                      builder: (context, child) {
+                        final isUnder = (_flipAnimation.value > 0.5);
+                        final angle = _flipAnimation.value * pi;
 
-                      return Transform(
-                        alignment: Alignment.center,
-                        transform: Matrix4.identity()
-                          ..setEntry(3, 2, 0.0012)
-                          ..rotateY(angle),
-                        child: isUnder
-                            ? Transform(
-                                alignment: Alignment.center,
-                                transform: Matrix4.identity()..rotateY(pi),
-                                child: _buildCardBack(card),
-                              )
-                            : _buildCardFront(card),
-                      );
-                    },
+                        return Transform(
+                          alignment: Alignment.center,
+                          transform: Matrix4.identity()
+                            ..setEntry(3, 2, 0.0012)
+                            ..rotateY(angle),
+                          child: isUnder
+                              ? Transform(
+                                  alignment: Alignment.center,
+                                  transform: Matrix4.identity()..rotateY(pi),
+                                  child: _buildCardBack(card),
+                                )
+                              : _buildCardFront(card),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-
-          // ── SM-2 Rating Bar ───────────────────────────────────────────────
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerLow,
-              border: Border(
-                  top:
-                      BorderSide(color: AppColors.darkBorder.withOpacity(0.5))),
-            ),
-            child: Row(
-              children: [
-                _buildRatingButton('Again', 0, AppColors.error),
-                const SizedBox(width: 8),
-                _buildRatingButton('Hard', 3, AppColors.amber),
-                const SizedBox(width: 8),
-                _buildRatingButton('Good', 4, AppColors.skyBlue),
-                const SizedBox(width: 8),
-                _buildRatingButton('Easy', 5, AppColors.teal),
-              ],
             ),
           ),
         ],
@@ -483,7 +410,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     );
   }
 
-  Widget _buildCardFront(_SRSFlashcard card) {
+  Widget _buildCardFront(_StudyFlashcard card) {
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
@@ -504,11 +431,6 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                       fontWeight: FontWeight.w700,
                       color: AppColors.teal,
                       letterSpacing: 0.8)),
-              Text('Difficulty: ${card.difficulty}',
-                  style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 11,
-                      color: Colors.white38)),
             ],
           ),
           const Spacer(),
@@ -532,7 +454,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
     );
   }
 
-  Widget _buildCardBack(_SRSFlashcard card) {
+  Widget _buildCardBack(_StudyFlashcard card) {
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
@@ -553,11 +475,6 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                       fontWeight: FontWeight.w700,
                       color: AppColors.electricVioletLight,
                       letterSpacing: 0.8)),
-              Text('Next: ${card.intervalDays.toStringAsFixed(0)}d',
-                  style: const TextStyle(
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: 11,
-                      color: AppColors.teal)),
             ],
           ),
           const Spacer(),
@@ -570,7 +487,7 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                   color: Colors.white,
                   height: 1.45)),
           const Spacer(),
-          Text('Rate your recall below to schedule next review',
+          Text('Use Previous and Next to continue reviewing',
               textAlign: TextAlign.center,
               style: TextStyle(
                   fontFamily: 'Inter',
@@ -578,52 +495,6 @@ class _FlashcardScreenState extends ConsumerState<FlashcardScreen>
                   color: Colors.white.withOpacity(0.35))),
         ],
       ),
-    );
-  }
-
-  Widget _buildRatingButton(String label, int quality, Color color) {
-    return Expanded(
-      child: OutlinedButton(
-        onPressed: () => _rateCard(quality),
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: color.withOpacity(0.5)),
-          foregroundColor: color,
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Text(label,
-            style: const TextStyle(
-                fontFamily: 'Inter',
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600)),
-      ),
-    );
-  }
-}
-
-class _StatBadge extends StatelessWidget {
-  final String label;
-  final int count;
-  final Color color;
-
-  const _StatBadge(
-      {required this.label, required this.count, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text('$count',
-            style: TextStyle(
-                fontFamily: 'JetBrains Mono',
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: color)),
-        const SizedBox(height: 2),
-        Text(label,
-            style: TextStyle(
-                fontFamily: 'Inter', fontSize: 11, color: Colors.white60)),
-      ],
     );
   }
 }
