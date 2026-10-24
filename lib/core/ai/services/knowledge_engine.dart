@@ -87,12 +87,12 @@ class KnowledgeEngine {
 
   Future<String?> _resolveActiveSubjectId(
       FirestoreService firestore, String? requestedSubjectId) async {
-    final active = _ref.read(activeKnowledgeSubjectIdProvider) ??
-        _ref.read(activeKnowledgeWorkspaceIdProvider);
-    if (active != null && active.trim().isNotEmpty) return active.trim();
     if (requestedSubjectId != null && requestedSubjectId.trim().isNotEmpty) {
       return requestedSubjectId.trim();
     }
+    final active = _ref.read(activeKnowledgeSubjectIdProvider) ??
+        _ref.read(activeKnowledgeWorkspaceIdProvider);
+    if (active != null && active.trim().isNotEmpty) return active.trim();
     final persisted = await firestore.getActiveSubjectId();
     if (persisted == null || persisted.trim().isEmpty) return null;
     final subjectId = persisted.trim();
@@ -102,26 +102,12 @@ class KnowledgeEngine {
   }
 
   Map<String, dynamic> _buildHierarchyContext(Map<String, dynamic> hierarchy) {
-    const maxCharacters = 12000;
     final buffer = StringBuffer();
     final notes = <Map<String, dynamic>>[];
     final signatureParts = <String>[];
-    var truncated = false;
 
     void append(String line) {
-      if (truncated) return;
-      final remaining = maxCharacters - buffer.length;
-      if (remaining <= 0) {
-        truncated = true;
-        return;
-      }
-      final value = '$line\n';
-      if (value.length > remaining) {
-        buffer.write(value.substring(0, remaining));
-        truncated = true;
-      } else {
-        buffer.write(value);
-      }
+      buffer.writeln(line);
     }
 
     List<Map<String, dynamic>> maps(Object? value) => value is List
@@ -184,9 +170,6 @@ class KnowledgeEngine {
     if (notes.isEmpty) {
       append('Manual Notes: None');
     }
-    if (truncated) {
-      buffer.write('\n[Context limit reached; remaining note text omitted.]');
-    }
     return {
       'context': buffer.toString().trim(),
       'notes': notes,
@@ -207,8 +190,24 @@ class KnowledgeEngine {
       throw StateError(
           'That subject is not available. Select a subject and try again.');
     }
+    final context = _buildHierarchyContext(hierarchy);
+    final subject = hierarchy['subject'] as Map<String, dynamic>? ?? const {};
+    final topics = hierarchy['topics'] as List<dynamic>? ?? const [];
+    final topicMaps = topics.whereType<Map>();
+    final subtopicCount = topicMaps.fold<int>(
+      0,
+      (total, topic) => total + ((topic['subtopics'] as List?)?.length ?? 0),
+    );
+    debugPrint('STUDY_HIERARCHY_LOADED ${jsonEncode({
+      'subjectId': subjectId,
+      'subject': subject['name'],
+      'topics': topics.length,
+      'subtopics': subtopicCount,
+      'notes': context['noteCount'],
+      'signature': context['signature'],
+    })}');
     return {
-      ..._buildHierarchyContext(hierarchy),
+      ...context,
       'subjectId': subjectId,
       'subjectName': (hierarchy['subject'] as Map<String, dynamic>?)?['name'] ??
           'Selected subject',
@@ -230,8 +229,11 @@ class KnowledgeEngine {
     final relevant = loaded['notes'] as List<Map<String, dynamic>>;
     final studyContext = loaded['context'] as String;
     final sourceSignature = loaded['signature'] as String;
+    final regenerationId = forceRefresh
+        ? '${DateTime.now().microsecondsSinceEpoch}_${math.Random().nextInt(_operationIdRandomMax)}'
+        : '';
     final cacheKey = _stableKey(
-      '${firestore.currentUserId ?? 'guest'}|${task.toLowerCase()}|$activeSubjectId|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature',
+      '${firestore.currentUserId ?? 'guest'}|${task.toLowerCase()}|$activeSubjectId|${prompt.trim()}|${jsonEncode(options)}|$sourceSignature|$regenerationId',
     );
     final cached =
         forceRefresh ? null : await firestore.getGenerationCache(cacheKey);
@@ -259,6 +261,7 @@ class KnowledgeEngine {
       scopeId: activeSubjectId,
       sources: relevant,
       studyContext: studyContext,
+      regenerationId: regenerationId,
     );
     _inFlight[cacheKey] = generation;
     try {
@@ -369,7 +372,15 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
     required String? scopeId,
     required List<Map<String, dynamic>> sources,
     required String studyContext,
+    required String regenerationId,
   }) async {
+    debugPrint('STUDY_TOOL_AI_INPUT ${jsonEncode({
+      'task': task,
+      'subjectId': subjectId,
+      'sourceSignature': _stableKey(studyContext),
+      'regenerationId': regenerationId,
+      'input': studyContext,
+    })}');
     final request = AIRequest(messages: [
       AIMessage(
           role: AIRole.system,
@@ -378,7 +389,7 @@ Generate comprehensive, accurate university-level study notes for this syllabus 
       AIMessage(
           role: AIRole.user,
           content:
-              'Task: $task\nRequest: $prompt\nOptions: ${jsonEncode(options)}\nStructured context:\n$studyContext'),
+              'Task: $task\nRequest: $prompt${regenerationId.isEmpty ? '' : '\nRegeneration ID: $regenerationId. Create a fresh, materially different set of content from any prior generation while covering the complete syllabus.'}\nOptions: ${jsonEncode(options)}\nStructured context:\n$studyContext'),
     ]);
     final response = await _completeWithFailover(request, temperature: 0.4);
     final raw = response.content

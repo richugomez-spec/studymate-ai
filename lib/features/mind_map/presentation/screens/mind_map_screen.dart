@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -368,6 +369,13 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
 
   void _onNodeTap(GraphNode node) {
     HapticFeedback.selectionClick();
+    debugPrint('MIND_MAP_NODE_TAPPED ${jsonEncode({
+      'nodeId': node.id,
+      'nodeName': node.label,
+      'nodeType': node.type.name,
+      'children': node.childCount,
+      'notesFound': node.notes.length,
+    })}');
     setState(() {
       // Deselect all
       _nodes = _nodes.map((n) => n.copyWith(isSelected: false)).toList();
@@ -376,6 +384,8 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       if (idx >= 0) {
         _nodes[idx] = _nodes[idx].copyWith(isSelected: true);
         _selectedNode = _nodes[idx];
+      } else {
+        _selectedNode = node;
       }
       _updateBreadcrumb(node);
       _topicName = switch (node.type) {
@@ -386,6 +396,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
       };
       _panelVisible = true;
     });
+    debugPrint('MIND_MAP_DETAIL_PANEL visible=$_panelVisible node=${_selectedNode?.id}');
   }
 
   void _onNodeDoubleTap(GraphNode node) {

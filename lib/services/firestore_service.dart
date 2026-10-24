@@ -776,12 +776,16 @@ class FirestoreService {
     if (uid == null || cleanSubjectId.isEmpty) return null;
 
     final snapshots = await Future.wait([
-      _subjectsCol.doc(cleanSubjectId).get(),
-      _subjectTopicsCol(cleanSubjectId).orderBy('order').get(),
+      _subjectsCol
+          .doc(cleanSubjectId)
+          .get(const GetOptions(source: Source.server)),
+      _subjectTopicsCol(cleanSubjectId)
+          .orderBy('order')
+          .get(const GetOptions(source: Source.server)),
       _knowledgeCol
           .where('ownerId', isEqualTo: uid)
           .where('subjectId', isEqualTo: cleanSubjectId)
-          .get(),
+          .get(const GetOptions(source: Source.server)),
     ]);
     final subjectSnapshot =
         snapshots[0] as DocumentSnapshot<Map<String, dynamic>>;
@@ -792,7 +796,9 @@ class FirestoreService {
     final noteSnapshot = snapshots[2] as QuerySnapshot<Map<String, dynamic>>;
     final subtopicSnapshots = await Future.wait(topicSnapshot.docs.map(
       (topic) =>
-          _topicSubtopicsCol(cleanSubjectId, topic.id).orderBy('order').get(),
+          _topicSubtopicsCol(cleanSubjectId, topic.id)
+              .orderBy('order')
+              .get(const GetOptions(source: Source.server)),
     ));
 
     final notes = noteSnapshot.docs
@@ -855,6 +861,20 @@ class FirestoreService {
           entry.value.docs.any((subtopic) => subtopic.id == subtopicId));
       return !knownTopic || (subtopicId.isNotEmpty && !knownSubtopic);
     }).toList(growable: false);
+
+    final subtopicCount = subtopicSnapshots.fold<int>(
+      0,
+      (total, snapshot) => total + snapshot.docs.length,
+    );
+    debugPrint('STUDY_FIRESTORE_HIERARCHY ${jsonEncode({
+      'subjectId': cleanSubjectId,
+      'subject': subjectSnapshot.data()?['name'],
+      'topics': topics.length,
+      'topicNames': topics.map((topic) => topic['name']).toList(),
+      'subtopics': subtopicCount,
+      'notes': notes.length,
+      'readSource': 'server',
+    })}');
 
     return {
       'subject': {'id': subjectSnapshot.id, ...subjectSnapshot.data()!},
