@@ -538,7 +538,7 @@ class _MindMapScreenState extends ConsumerState<MindMapScreen> {
         AppNotification.dismissAll();
         AppNotification.showError(
           context: context,
-          message: 'AI expansion failed. Please check your API key.',
+          message: 'AI expansion failed. Please try again.',
         );
       }
     } finally {

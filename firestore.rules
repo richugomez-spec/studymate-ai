@@ -67,5 +67,9 @@ service cloud.firestore {
     match /study_progress/{userId} {
       allow read, write: if signedIn() && request.auth.uid == userId;
     }
+
+    match /system_config/{configId} {
+      allow read, write: if signedIn();
+    }
   }
 }

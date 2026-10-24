@@ -57,9 +57,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final shouldReset = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reset API Key'),
+        title: const Text('Reset Global API Key(s)'),
         content: const Text(
-            'Remove the saved personal key and return to the predefined keys?'),
+            'Remove the global API key(s) and return to predefined application keys?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -77,8 +77,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (mounted) {
       AppNotification.showWarning(
         context: context,
-        title: 'API Key Reset',
-        message: 'Saved personal API key has been cleared.',
+        title: 'API Keys Reset',
+        message: 'Saved global API key(s) have been cleared.',
       );
     }
   }
@@ -121,7 +121,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   void _showApiKeyDialog(BuildContext context, WidgetRef ref) {
-    final currentKey = ref.read(aiApiKeyProvider) ?? '';
+    final configuredKeys = ref.read(aiApiKeyListProvider);
+    final currentKey = configuredKeys.isNotEmpty
+        ? configuredKeys.join('\n')
+        : (ref.read(aiApiKeyProvider) ?? '');
     final controller = TextEditingController(text: currentKey);
 
     showDialog(
@@ -130,7 +133,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
-          'AI Access Key',
+          'Global Gemini API Keys',
           style: TextStyle(
               fontFamily: 'Inter',
               fontWeight: FontWeight.w700,
@@ -142,7 +145,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Enter an access key for AI study features.',
+              'Configure global Gemini API key(s) permanently for the application. All users will automatically use these keys with round-robin rotation and failover. Enter one key per line or comma-separated.',
               style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 13,
@@ -152,12 +155,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: controller,
+              minLines: 2,
+              maxLines: 6,
               style: TextStyle(
                   fontFamily: 'JetBrains Mono',
                   fontSize: 12,
                   color: Theme.of(context).colorScheme.onSurface),
               decoration: InputDecoration(
-                hintText: 'AIzaSy...',
+                hintText: 'AIzaSy... (one key per line)',
                 hintStyle: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant),
                 filled: true,
@@ -187,17 +192,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ),
           ElevatedButton(
-            onPressed: () {
-              ref.read(aiApiKeyProvider.notifier).setApiKey(controller.text);
-              Navigator.of(ctx).pop();
-              AppNotification.showSuccess(
-                context: context,
-                message: 'AI access key updated successfully.',
-              );
+            onPressed: () async {
+              final text = controller.text;
+              await ref.read(aiApiKeyProvider.notifier).setApiKeysFromText(text);
+              if (ctx.mounted) Navigator.of(ctx).pop();
+              if (context.mounted) {
+                AppNotification.showSuccess(
+                  context: context,
+                  message: 'Global API key(s) permanently saved.',
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.electricViolet),
-            child: const Text('Save Key',
+            child: const Text('Save Keys',
                 style: TextStyle(
                     color: Colors.white, fontWeight: FontWeight.w600)),
           ),
@@ -771,7 +779,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final themeMode = ref.watch(themeModeNotifierProvider);
     final isDark = themeMode == ThemeMode.dark;
     final apiKey = ref.watch(aiApiKeyProvider);
-    final hasCustomKey = apiKey != null && apiKey.isNotEmpty;
+    final configuredList = ref.watch(aiApiKeyListProvider);
+    final keyCount = configuredList.isNotEmpty
+        ? configuredList.length
+        : (apiKey != null && apiKey.isNotEmpty ? 1 : 0);
+    final hasCustomKey = keyCount > 0;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -838,10 +850,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             _SettingsTile(
               icon: Icons.vpn_key_outlined,
               iconColor: AppColors.electricViolet,
-              title: 'AI Access Key',
+              title: 'Global AI Access Keys',
               subtitle: hasCustomKey
-                  ? 'Personal key configured'
-                  : 'Using predefined API keys',
+                  ? '$keyCount key(s) active permanently for all users'
+                  : 'Using predefined application keys',
               trailing: null,
               onTap: () => _showApiKeyDialog(context, ref),
             ),
@@ -864,16 +876,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             _SettingsTile(
               icon: Icons.edit_outlined,
               iconColor: AppColors.electricViolet,
-              title: 'Edit API Key',
-              subtitle: 'Update the saved personal key',
+              title: 'Edit Global API Keys',
+              subtitle: 'Update or rotate keys permanently',
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => _showApiKeyDialog(context, ref),
             ),
             _SettingsTile(
               icon: Icons.restart_alt_rounded,
               iconColor: AppColors.error,
-              title: 'Reset API Key',
-              subtitle: 'Remove saved key and use predefined keys',
+              title: 'Reset Global API Keys',
+              subtitle: 'Clear saved keys and revert to defaults',
               trailing: null,
               onTap: _resetApiKey,
             ),
