@@ -51,3 +51,4 @@ Thumbs.db
 *.log
 hs_err_pid*
 coverage/
+.firebase/
