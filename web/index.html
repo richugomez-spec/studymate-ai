@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="StudyMate AI — Your AI-powered Learning Operating System. Upload notes, get AI explanations, quizzes, flashcards and more.">
+  <meta name="keywords" content="AI study app, flashcards, quiz generator, PDF notes, AI tutor, university study">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="StudyMate AI — Learn Smarter">
+  <meta property="og:description" content="AI-powered study platform. Upload your notes, get summaries, quizzes, flashcards and personalized learning guidance.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://studymateai.app">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="StudyMate AI">
+  <meta name="twitter:description" content="AI-powered study platform for university students.">
+
+  <!-- Theme -->
+  <meta name="theme-color" content="#0D0D12">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="StudyMate AI">
+
+  <title>StudyMate AI — Learn Smarter</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/jpeg" href="icons/logo.jpg"/>
+  <link rel="shortcut icon" type="image/jpeg" href="icons/logo.jpg">
+  <link rel="apple-touch-icon" href="icons/logo.jpg">
+  <link rel="manifest" href="manifest.json">
+
+  <!-- Performance Prefetches -->
+  <link rel="dns-prefetch" href="https://fonts.googleapis.com">
+  <link rel="dns-prefetch" href="https://fonts.gstatic.com">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background-color: #0D0D12;
+      overflow: hidden;
+    }
+
+    /* Loading Screen */
+    #loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #0D0D12 0%, #1A1A24 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.5s ease-out;
+    }
+
+    #loading.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .logo-container {
+      margin-bottom: 40px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .logo {
+      width: 100px;
+      height: 100px;
+      border-radius: 24px;
+      object-fit: cover;
+      box-shadow: 0 8px 40px rgba(123, 97, 255, 0.4);
+    }
+
+    .app-name {
+      font-family: 'Inter', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-top: 16px;
+      letter-spacing: -0.5px;
+    }
+
+    .tagline {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      color: #8B8B9A;
+      margin-top: 8px;
+    }
+
+    /* Spinner */
+    .spinner {
+      width: 40px;
+      height: 40px;
+      margin-top: 32px;
+      border: 3px solid rgba(123, 97, 255, 0.2);
+      border-top-color: #7B61FF;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    /* Loading dots animation */
+    .loading-text {
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      color: #8B8B9A;
+      margin-top: 24px;
+    }
+
+    .loading-text::after {
+      content: '';
+      animation: dots 1.5s steps(4, end) infinite;
+    }
+
+    @keyframes dots {
+      0%, 20% { content: ''; }
+      40% { content: '.'; }
+      60% { content: '..'; }
+      80%, 100% { content: '...'; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loading">
+    <div class="logo-container">
+      <img class="logo" src="icons/logo.jpg" alt="StudyMate AI">
+    </div>
+    <div class="app-name">StudyMate AI</div>
+    <div class="tagline">Your AI-powered Learning OS</div>
+    <div class="spinner"></div>
+    <div class="loading-text">Loading</div>
+  </div>
+
+  <script>
+    // Hide loading screen when Flutter app is ready
+    window.addEventListener('flutter-first-frame', function() {
+      const loading = document.getElementById('loading');
+      loading.classList.add('fade-out');
+      setTimeout(() => loading.remove(), 500);
+    });
+
+    // Fallback: hide after 10 seconds if Flutter doesn't load
+    setTimeout(function() {
+      const loading = document.getElementById('loading');
+      if (loading) {
+        loading.classList.add('fade-out');
+        setTimeout(() => loading.remove(), 500);
+      }
+    }, 10000);
+  </script>
+
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

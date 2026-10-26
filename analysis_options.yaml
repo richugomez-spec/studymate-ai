@@ -1,0 +1,41 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+  errors:
+    invalid_annotation_target: ignore
+  plugins:
+    - custom_lint
+
+linter:
+  rules:
+    - always_declare_return_types
+    - always_put_required_named_parameters_first
+    - avoid_print
+    - avoid_relative_lib_imports
+    - avoid_redundant_argument_values
+    - avoid_unused_constructor_parameters
+    - cancel_subscriptions
+    - close_sinks
+    - comment_references
+    - literal_only_boolean_expressions
+    - missing_whitespace_between_adjacent_strings
+    - no_adjacent_strings_in_list
+    - prefer_const_constructors
+    - prefer_const_declarations
+    - prefer_final_fields
+    - prefer_final_in_for_each
+    - prefer_final_locals
+    - prefer_single_quotes
+    - unnecessary_lambdas
+    - unnecessary_parenthesis
+    - use_super_parameters

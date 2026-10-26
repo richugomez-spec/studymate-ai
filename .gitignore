@@ -1,0 +1,53 @@
+# .gitignore for StudyMate AI Flutter project
+
+# Dart / Flutter build
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+.gradle/
+android/.gradle/
+android/app/build/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+linux/build/
+macos/build/
+windows/build/
+# build/web is intentionally excluded from git — Vercel builds from source
+# using: flutter build web --release --dart-define=GEMINI_API_KEY=$GEMINI_API_KEY
+
+# Generated files (mocks only)
+*.mocks.dart
+
+# Firebase native secrets
+google-services.json
+GoogleService-Info.plist
+
+# Environment / Secrets
+.env
+.env.local
+*.key
+key.properties
+*.jks
+*.keystore
+local.properties
+
+# IDE
+.idea/workspace.xml
+.vscode/settings.json
+*.iml
+*.ipr
+*.iws
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+hs_err_pid*
+coverage/

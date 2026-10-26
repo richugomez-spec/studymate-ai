@@ -1,0 +1,25 @@
+{
+  "name": "StudyMate AI",
+  "short_name": "StudyMate",
+  "description": "AI-powered Learning Operating System for university students",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0D0D12",
+  "theme_color": "#7B61FF",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icons/logo.jpg",
+      "sizes": "any",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "icons/logo.jpg",
+      "sizes": "any",
+      "type": "image/jpeg",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["education", "productivity"],
+  "screenshots": []
+}
